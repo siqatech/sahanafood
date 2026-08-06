@@ -1,0 +1,5 @@
+# Fase 5 — Venta digital
+Objetivo: el canal propio vende y el cliente final tiene experiencia completa.
+Alcance: Storefront con dominio propio · Payments online (2 pasarelas mínimo vía adaptador) · links de pago · Bandeja omnicanal (spec 18) · Agente IA configurable con acciones deterministas, fuentes, herramientas de datos vivos, sandbox y presupuesto (spec 19, ADR-0011) · Delivery repartidores + tracking público · capacidad/saturación de cocina (RN-KIT-04) · plataforma ai (docs/28: adaptador, pgvector, prompts versionados, suite dorada en CI) · pentest externo.
+Salida: compra real end-to-end con pasarela sandbox → boleta → tracking · demo IA: acción determinista + consulta con datos vivos + carrito + derivación con contexto · suite de conversaciones doradas en verde · validador anti-precio-inventado probado adversarialmente · KPI mensajes/pedido ≤ 8 y costo IA/conversación medido · Lighthouse móvil ≥ 85 · pentest sin hallazgos altos abiertos · canary operativo.
+Gate de negocio: 3 operadores piloto usando F4 en producción real ANTES de cerrar F5 (feedback incorporado o registrado).
