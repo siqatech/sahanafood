@@ -37,13 +37,13 @@ export default tseslint.config(
         'error',
         {
           selector:
-            "TSPropertySignature[key.name=/^(amount|price|prices|unitPrice|total|subtotal|grandTotal|cost|unitCost|igv|tax|taxAmount|discount|discountAmount|fee|commission|balance|money|paid|change|tip|deposit)$/i] > TSTypeAnnotation > TSNumberKeyword",
+            'TSPropertySignature[key.name=/^(amount|price|prices|unitPrice|total|subtotal|grandTotal|cost|unitCost|igv|tax|taxAmount|discount|discountAmount|fee|commission|balance|money|paid|change|tip|deposit)$/i] > TSTypeAnnotation > TSNumberKeyword',
           message:
             'Campo monetario tipado como `number`. Usa el value object Money (enteros en céntimos) de @sahana/domain. Ver ADR-0006 y CLAUDE.md.',
         },
         {
           selector:
-            "PropertyDefinition[key.name=/^(amount|price|unitPrice|total|subtotal|grandTotal|cost|unitCost|igv|tax|taxAmount|discount|fee|commission|balance)$/i] > TSTypeAnnotation > TSNumberKeyword",
+            'PropertyDefinition[key.name=/^(amount|price|unitPrice|total|subtotal|grandTotal|cost|unitCost|igv|tax|taxAmount|discount|fee|commission|balance)$/i] > TSTypeAnnotation > TSNumberKeyword',
           message:
             'Campo monetario tipado como `number`. Usa Money (enteros en céntimos) de @sahana/domain. Ver ADR-0006.',
         },

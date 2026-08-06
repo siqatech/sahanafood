@@ -24,8 +24,12 @@ describe('IGV — desglose hacia atrás (RN-T05)', () => {
   });
 
   it('rechaza tasa inválida', () => {
-    expect(() => extractInclusiveTax(Money.parse('100'), -1)).toThrow(MoneyError);
-    expect(() => extractInclusiveTax(Money.parse('100'), 1.5)).toThrow(MoneyError);
+    expect(() => extractInclusiveTax(Money.parse('100'), -1)).toThrow(
+      MoneyError,
+    );
+    expect(() => extractInclusiveTax(Money.parse('100'), 1.5)).toThrow(
+      MoneyError,
+    );
   });
 });
 

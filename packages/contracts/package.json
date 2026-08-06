@@ -1,8 +1,8 @@
 {
-  "name": "@sahana/domain",
+  "name": "@sahana/contracts",
   "version": "0.1.0",
   "private": true,
-  "description": "Lógica de dominio compartida (servidor + PWA offline): Money, cálculo de totales/IGV, máquina de estados. Se compila una vez y corre idéntica en ambos lados (ADR-0006).",
+  "description": "DTOs y contratos de API compartidos (zod). Anti-corruption layer: el dominio nunca ve payloads de proveedor.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,13 +18,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^3.0.5",
-    "fast-check": "^3.23.2",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   }

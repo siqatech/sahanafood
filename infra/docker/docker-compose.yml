@@ -1,0 +1,62 @@
+# Entorno local de Sahana Food (T3.02).
+# Postgres 16 con RLS, Redis para colas/caché, Mailhog para correo de prueba.
+# Uso: `make up` desde la raíz del repo.
+name: sahana-food
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sahana-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sahana}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sahana_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-sahana}
+      # RLS exige que el rol de app NO sea superusuario ni tenga BYPASSRLS.
+      # El rol de app y el de migraciones se crean en el script de init.
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-sahana} -d ${POSTGRES_DB:-sahana}',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: sahana-redis
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: sahana-mailhog
+    ports:
+      - '${MAILHOG_SMTP_PORT:-1025}:1025' # SMTP
+      - '${MAILHOG_UI_PORT:-8025}:8025' # UI web
+    healthcheck:
+      test: ['CMD', 'sh', '-c', 'nc -z localhost 1025 || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,4 +1,5 @@
-import { Money, MoneyError } from './money.js';
+import type { Money } from './money.js';
+import { MoneyError } from './money.js';
 
 /**
  * Impuestos incluidos en el precio (RN-T05).

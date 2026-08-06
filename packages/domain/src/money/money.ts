@@ -203,7 +203,9 @@ export class Money {
    */
   allocate(parts: number): Money[] {
     if (!Number.isInteger(parts) || parts <= 0) {
-      throw new MoneyError('El número de porciones debe ser un entero positivo.');
+      throw new MoneyError(
+        'El número de porciones debe ser un entero positivo.',
+      );
     }
     const base = Math.trunc(this.minorUnits / parts);
     let remainder = this.minorUnits - base * parts;
@@ -221,7 +223,9 @@ export class Money {
   // ------------------------------------------------------------ Comparación
 
   equals(other: Money): boolean {
-    return this.currency === other.currency && this.minorUnits === other.minorUnits;
+    return (
+      this.currency === other.currency && this.minorUnits === other.minorUnits
+    );
   }
 
   compareTo(other: Money): -1 | 0 | 1 {
@@ -288,7 +292,9 @@ export class Money {
 /** Suma una lista de Money de la misma moneda. Lista vacía → error (moneda ambigua). */
 export function sumMoney(values: readonly Money[]): Money {
   if (values.length === 0) {
-    throw new MoneyError('No se puede sumar una lista vacía (moneda ambigua). Usa Money.zero(moneda).');
+    throw new MoneyError(
+      'No se puede sumar una lista vacía (moneda ambigua). Usa Money.zero(moneda).',
+    );
   }
   return values.reduce((acc, m) => acc.add(m));
 }

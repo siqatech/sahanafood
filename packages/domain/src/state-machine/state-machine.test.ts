@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { StateMachine, InvalidTransitionError } from './state-machine.js';
 
 // Ejemplo mínimo tipo pedido para ejercitar la base (el orquestador real llega en F4).
-type S = 'pending' | 'accepted' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+type S =
+  'pending' | 'accepted' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
 type E = 'accept' | 'start' | 'finish' | 'deliver' | 'cancel';
 
 const sm = new StateMachine<S, E>({

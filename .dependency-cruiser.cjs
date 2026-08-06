@@ -16,7 +16,8 @@ module.exports = {
     {
       name: 'no-circular',
       severity: 'error',
-      comment: 'Dependencia circular: rompe el aislamiento y complica el testeo.',
+      comment:
+        'Dependencia circular: rompe el aislamiento y complica el testeo.',
       from: {},
       to: { circular: true },
     },
@@ -74,6 +75,7 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
+    exclude: { path: '(^|/)(node_modules|dist|coverage|\\.next|build)(/|$)' },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {

@@ -9,12 +9,17 @@
  *    caso de uso que la envuelve dentro de su transacción.
  */
 
-export class InvalidTransitionError<S extends string, E extends string> extends Error {
+export class InvalidTransitionError<
+  S extends string,
+  E extends string,
+> extends Error {
   constructor(
     readonly from: S,
     readonly event: E,
   ) {
-    super(`Transición inválida: no se puede aplicar "${event}" desde el estado "${from}".`);
+    super(
+      `Transición inválida: no se puede aplicar "${event}" desde el estado "${from}".`,
+    );
     this.name = 'InvalidTransitionError';
   }
 }

@@ -33,7 +33,9 @@ describe('Money — construcción', () => {
   });
 
   it('rechaza desbordamiento (entero no seguro)', () => {
-    expect(() => Money.fromMinor(Number.MAX_SAFE_INTEGER + 1)).toThrow(MoneyError);
+    expect(() => Money.fromMinor(Number.MAX_SAFE_INTEGER + 1)).toThrow(
+      MoneyError,
+    );
   });
 
   it('zero devuelve 0 en la moneda dada', () => {
@@ -64,14 +66,20 @@ describe('Money — aritmética', () => {
   });
 
   it('multiplyByQuantity con enteros', () => {
-    expect(Money.parse('3.50').multiplyByQuantity(4).toDecimalString()).toBe('14.0000');
+    expect(Money.parse('3.50').multiplyByQuantity(4).toDecimalString()).toBe(
+      '14.0000',
+    );
     expect(Money.parse('3.50').multiplyByQuantity(0).isZero()).toBe(true);
-    expect(() => Money.parse('3.50').multiplyByQuantity(1.5)).toThrow(MoneyError);
+    expect(() => Money.parse('3.50').multiplyByQuantity(1.5)).toThrow(
+      MoneyError,
+    );
   });
 
   it('multiplyByRatio aplica porcentaje con half-up', () => {
     // 15% de 10.00 = 1.50
-    expect(Money.parse('10.00').multiplyByRatio(15, 100).toDecimalString()).toBe('1.5000');
+    expect(
+      Money.parse('10.00').multiplyByRatio(15, 100).toDecimalString(),
+    ).toBe('1.5000');
     // 1/3 de 0.0001 = 0.00003 -> half-up en escala 4 = 0.0000
     expect(Money.parse('0.0001').multiplyByRatio(1, 3).minorUnits).toBe(0);
     // 2/3 de 0.0001 = 0.0000666 -> half-up escala 4 = 0.0001
@@ -79,7 +87,9 @@ describe('Money — aritmética', () => {
   });
 
   it('multiplyByRatio rechaza no-enteros', () => {
-    expect(() => Money.parse('10').multiplyByRatio(1.5, 100)).toThrow(MoneyError);
+    expect(() => Money.parse('10').multiplyByRatio(1.5, 100)).toThrow(
+      MoneyError,
+    );
     expect(() => Money.parse('10').multiplyByRatio(1, 0)).toThrow(MoneyError);
   });
 
@@ -92,11 +102,19 @@ describe('Money — aritmética', () => {
 
 describe('Money — redondeo half-up (RN-T04)', () => {
   it('redondea a céntimos con ties away from zero', () => {
-    expect(Money.parse('1.2350').roundToCents().toDecimalString()).toBe('1.2400');
-    expect(Money.parse('1.2250').roundToCents().toDecimalString()).toBe('1.2300');
-    expect(Money.parse('1.2349').roundToCents().toDecimalString()).toBe('1.2300');
+    expect(Money.parse('1.2350').roundToCents().toDecimalString()).toBe(
+      '1.2400',
+    );
+    expect(Money.parse('1.2250').roundToCents().toDecimalString()).toBe(
+      '1.2300',
+    );
+    expect(Money.parse('1.2349').roundToCents().toDecimalString()).toBe(
+      '1.2300',
+    );
     // Negativos: away from zero
-    expect(Money.parse('-1.2350').roundToCents().toDecimalString()).toBe('-1.2400');
+    expect(Money.parse('-1.2350').roundToCents().toDecimalString()).toBe(
+      '-1.2400',
+    );
   });
 
   it('roundTo(4) es identidad (misma escala interna)', () => {
@@ -188,7 +206,11 @@ describe('Money — serialización', () => {
 describe('sumMoney', () => {
   it('suma una lista', () => {
     expect(
-      sumMoney([Money.parse('1'), Money.parse('2'), Money.parse('3')]).toDecimalString(),
+      sumMoney([
+        Money.parse('1'),
+        Money.parse('2'),
+        Money.parse('3'),
+      ]).toDecimalString(),
     ).toBe('6.0000');
   });
   it('lista vacía es error (moneda ambigua)', () => {

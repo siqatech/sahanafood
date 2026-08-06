@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node", "reflect-metadata"],
+    // NestJS usa decoradores con metadatos de tipo en runtime.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    // Los decoradores de Nest a veces chocan con estas comprobaciones estrictas.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}
