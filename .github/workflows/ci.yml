@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+    branches: [main]
+
+# Cancela ejecuciones previas del mismo ref para ahorrar minutos.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Calidad estática: lint, tipos, fronteras de módulo. Sin BD.
+  # ---------------------------------------------------------------------------
+  static:
+    name: Lint · Types · Boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: ESLint (incluye regla anti-number monetario)
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Fronteras de módulos (dependency-cruiser)
+        run: pnpm depcruise
+      - name: Formato (prettier)
+        run: pnpm format:check
+
+  # ---------------------------------------------------------------------------
+  # Dominio: pruebas unitarias + property tests. Gate: 100% de ramas en dinero.
+  # ---------------------------------------------------------------------------
+  domain:
+    name: Domain (Money · 100% ramas)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Pruebas de dominio con cobertura
+        run: pnpm --filter @sahana/domain test:coverage
+
+  # ---------------------------------------------------------------------------
+  # Integración: RLS, esquema y outbox contra Postgres 16 real.
+  # Gates de Fase 3: fuga de aislamiento ×1000, esquema RLS, exactamente-una-vez.
+  # ---------------------------------------------------------------------------
+  integration:
+    name: Integration (RLS · Schema · Outbox)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sahana
+          POSTGRES_PASSWORD: sahana_dev
+          POSTGRES_DB: sahana
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sahana -d sahana"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://sahana_app:sahana_app_dev@localhost:5432/sahana
+      MIGRATION_DATABASE_URL: postgres://sahana_migrator:sahana_migrator_dev@localhost:5432/sahana
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cliente psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Crear roles (app/migrator SIN BYPASSRLS)
+        run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/01-roles.sql
+      - name: Migraciones
+        run: pnpm --filter @sahana/api migrate
+      - name: Pruebas de integración (incluye gates de aislamiento)
+        run: pnpm --filter @sahana/api test
+
+  # ---------------------------------------------------------------------------
+  # Build de paquetes y apps.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [static, domain]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+
+  # ---------------------------------------------------------------------------
+  # Análisis de composición (SCA): dependencias con vulnerabilidades conocidas.
+  # No bloquea (aún); se endurecerá como gate en la Fase 5 (pentest).
+  # ---------------------------------------------------------------------------
+  sca:
+    name: SCA (pnpm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Auditoría de dependencias (informativa)
+        run: pnpm audit --audit-level high || true

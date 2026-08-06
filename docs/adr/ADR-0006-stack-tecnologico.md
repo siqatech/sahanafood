@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Estado | **Propuesto** — requiere aprobación explícita antes de la Fase 3 |
+| Estado | **Aceptado** — DP-01 resuelto: la Fase 3 se ejecuta en TypeScript/NestJS (ver nota de resolución al final) |
 | Fecha | 5 de agosto de 2026 |
 | Decide | Backend, frontend, cliente offline, base de datos, colas y tiempo real |
 | Reemplaza a | La recomendación preliminar de Laravel del Documento maestro Fase 0, capítulo 12.3 |
@@ -198,3 +198,13 @@ Esta decisión se reabre si ocurre alguno de estos hechos medidos, no antes:
 Queda una sola pregunta abierta antes de poder aprobar: **quién ejecuta el proyecto.** El punto 1 de los disparadores no es una formalidad. Si el equipo disponible es de perfil PHP, aprobar este ADR sería un error de gestión, no un acierto técnico.
 
 La respuesta a esa pregunta es lo que convierte este documento de «Propuesto» en «Aprobado».
+
+## 8. Resolución de DP-01 (2026-08-06)
+
+La ejecución de la Fase 3 se realiza en **TypeScript/NestJS/Drizzle**, tal como
+describe este ADR. El disparador de reversa (§6.1 → Laravel + Flutter) aplica
+únicamente si el equipo humano que continúe el proyecto tiene su experiencia
+principal en PHP; en ese caso, reabrir este ADR es lo correcto. Mientras el
+desarrollo se realice sobre esta base de código TypeScript, la decisión queda
+**aceptada** y el gate de dinero (100% de ramas en `@sahana/domain`) ya se
+cumple. La representación interna de `Money` se detalla en ADR-0013.
