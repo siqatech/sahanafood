@@ -8,6 +8,9 @@ import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { TraceMiddleware } from './common/trace.middleware.js';
 import { HealthModule } from './modules/health/index.js';
+import { IdentityModule } from './modules/identity/index.js';
+import { TenancyModule } from './modules/tenancy/index.js';
+import { AuditModule } from './modules/audit/index.js';
 
 /**
  * Módulo raíz del monolito modular. Los módulos de negocio (tenancy, identity,
@@ -38,6 +41,9 @@ import { HealthModule } from './modules/health/index.js';
     }),
     DatabaseModule,
     HealthModule,
+    IdentityModule,
+    TenancyModule,
+    AuditModule,
   ],
 })
 export class AppModule implements NestModule {

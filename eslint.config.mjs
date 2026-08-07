@@ -63,6 +63,21 @@ export default tseslint.config(
     },
   },
   {
+    /**
+     * NestJS resuelve las dependencias del constructor leyendo el metadato
+     * `design:paramtypes`, que solo se emite si el tipo se importa como VALOR.
+     * Convertir esos imports a `import type` deja el metadato en `undefined` y
+     * la inyección falla en tiempo de ejecución (con la clase compilando
+     * perfectamente). Por eso la regla se desactiva en la API: TypeScript sigue
+     * verificando los tipos igual, y no arriesgamos un fallo que las pruebas
+     * de tipos no pueden ver.
+     */
+    files: ['apps/api/**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': 'off',
+    },
+  },
+  {
     // Los tests pueden usar console y helpers laxos.
     files: ['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**'],
     rules: {

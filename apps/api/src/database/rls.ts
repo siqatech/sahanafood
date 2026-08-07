@@ -98,3 +98,39 @@ export async function withSystem<T>(
     client.release();
   }
 }
+
+/**
+ * Contexto de RESOLUCIÓN DE LOGIN. El email de un usuario llega antes de saber
+ * a qué tenant pertenece, así que la búsqueda inicial no puede tener contexto
+ * de tenant. Fija `app.auth_lookup = 'on'` LOCAL a la transacción, lo que activa
+ * una política PERMISIVA de SOLO SELECT sobre `idn_users` (migración 0004).
+ *
+ * Restricciones deliberadas de este escape:
+ *  - Solo lectura: no habilita INSERT/UPDATE/DELETE en ninguna tabla.
+ *  - Solo `idn_users`: ninguna otra tabla consulta este flag; el resto del
+ *    negocio sigue exigiendo coincidencia estricta de tenant.
+ *  - Uso acotado: exclusivamente el paso de resolución de credenciales. Una vez
+ *    resuelto el tenant, TODO lo demás pasa por `withTenant`.
+ */
+export async function withAuthLookup<T>(
+  pool: Pool,
+  work: (ctx: { db: Db; client: PoolClient }) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT set_config($1, $2, true)', [
+      'app.auth_lookup',
+      'on',
+    ]);
+    const db = drizzle(client, { schema });
+    const result = await work({ db, client });
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}

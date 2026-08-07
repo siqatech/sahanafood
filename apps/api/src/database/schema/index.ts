@@ -113,3 +113,86 @@ export const inbox = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.consumer, t.eventId] })],
 );
+
+// --- Identity (módulo 02) ---
+
+export const users = pgTable(
+  'idn_users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    email: text('email').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    fullName: text('full_name').notNull(),
+    status: text('status').notNull().default('active'),
+    isOwner: boolean('is_owner').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_users_tenant').on(t.tenantId)],
+);
+
+export const roles = pgTable(
+  'idn_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    isSystem: boolean('is_system').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_roles_tenant').on(t.tenantId)],
+);
+
+export const rolePermissions = pgTable(
+  'idn_role_permissions',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    roleId: uuid('role_id').notNull(),
+    permission: text('permission').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.roleId, t.permission] })],
+);
+
+export const userRoles = pgTable(
+  'idn_user_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    roleId: uuid('role_id').notNull(),
+    scopeType: text('scope_type').notNull().default('tenant'),
+    scopeId: uuid('scope_id'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_user_roles_user').on(t.tenantId, t.userId)],
+);
+
+export const sessions = pgTable(
+  'idn_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    familyId: uuid('family_id').notNull(),
+    refreshHash: text('refresh_hash').notNull(),
+    status: text('status').notNull().default('active'),
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+  },
+  (t) => [index('idx_sessions_user').on(t.tenantId, t.userId)],
+);

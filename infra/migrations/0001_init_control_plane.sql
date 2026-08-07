@@ -52,13 +52,19 @@ CREATE TABLE ten_feature_flags (
 );
 
 -- RLS: habilitar + FORCE (aplica incluso al dueño de la tabla) + política.
--- current_setting('app.tenant_id') SIN missing_ok => si no hay contexto de
--- tenant, la consulta FALLA en vez de exponer datos (fail-closed).
+--
+-- Patrón NULL-safe obligatorio en TODA política de aislamiento:
+--   NULLIF(current_setting('app.tenant_id', true), '')::uuid
+-- Motivo: al terminar una transacción con SET LOCAL, PostgreSQL devuelve el
+-- parámetro a su valor de reinicio, que es la CADENA VACÍA, no NULL. Sobre una
+-- conexión reutilizada del pool, `''::uuid` reventaría la evaluación de la
+-- política. Con NULLIF, la ausencia de contexto produce NULL → la comparación
+-- es falsa → CERO filas (fail-closed). Nunca expone datos de otro tenant.
 ALTER TABLE ten_feature_flags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ten_feature_flags FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON ten_feature_flags
-  USING (tenant_id = current_setting('app.tenant_id')::uuid)
-  WITH CHECK (tenant_id = current_setting('app.tenant_id')::uuid);
+  USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+  WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 
 -- Índice caliente: toda consulta empieza por tenant_id (docs/09 §Rendimiento).
 CREATE INDEX idx_feature_flags_tenant ON ten_feature_flags (tenant_id);

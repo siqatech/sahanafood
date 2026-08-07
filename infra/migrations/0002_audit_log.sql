@@ -21,8 +21,8 @@ CREATE TABLE audit_log (
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON audit_log
-  USING (tenant_id = current_setting('app.tenant_id')::uuid)
-  WITH CHECK (tenant_id = current_setting('app.tenant_id')::uuid);
+  USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+  WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 
 CREATE INDEX idx_audit_tenant_time ON audit_log (tenant_id, occurred_at DESC);
 CREATE INDEX idx_audit_resource ON audit_log (tenant_id, resource_type, resource_id);

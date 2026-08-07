@@ -6,10 +6,11 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 |---|---|---|
 | Fase 0 — Investigación | Finalizada | Doc maestro v0.1 + revisión comité v0.2 + anexos C/D |
 | Fase 1 — Definición de producto | Propuesta | docs/00–07; validar con entrevistas (DP-08) |
-| Fase 2 — Arquitectura base | Propuesta | ADR-0001..0013; pendientes de F2: threat model STRIDE + fichas docs/repositories/ |
+| Fase 2 — Arquitectura base | Propuesta | ADR-0001..0014; pendientes de F2: threat model STRIDE + fichas docs/repositories/ |
 | ADR-0006 (stack) | **Aceptada** | DP-01 resuelto: la ejecución es en TypeScript/NestJS. Reversa solo si el equipo humano es de perfil PHP (§8) |
 | ADR-0013 (Money escala 4) | Aceptada | Representación interna de `Money` documentada e implementada |
-| **Fase 3 — Fundamentos** | **En ejecución** | Núcleo técnico verificado contra Postgres real (8/8 pruebas de gate en verde) |
+| ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
+| **Fase 3 — Fundamentos** | **En ejecución** | Núcleo + identidad/tenancy/auditoría verificados contra Postgres real (87 pruebas en verde: 38 API + 49 dominio) |
 | Fases 4–9 | Pendiente | Backlog se genera al abrir cada fase (T4.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
@@ -22,13 +23,13 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | T3.04 | apps/api NestJS + config tipada + logger + Problem Details | **Finalizada** | `GET /api/v1/health` 200 con `trace_id`; 404 → `application/problem+json` |
 | T3.05 | Drizzle + RLS `withTenant` + pool modo transacción | **Finalizada** | **Fuga ×1000 en verde** (misma conexión, tenants alternados) |
 | T3.06 | Test de esquema: tenant_id + RLS en toda tabla de negocio | **Finalizada** | Suite `schema-rls` en verde; falla si una tabla nueva no cumple |
-| T3.07 | Módulo Tenancy (spec 01) | En análisis | Tablas base (`ten_*`) creadas; falta API + verificación de límites |
-| T3.08 | Módulo Identity (spec 02): JWT + roles con ámbito | Pendiente | Config JWT lista; matriz permiso×rol por implementar |
-| T3.09 | Dispositivos POS + PIN argon2 | Pendiente | — |
-| T3.10 | Módulo Audit (spec 17): append-only + interceptor | En análisis | Tabla `audit_log` con REVOKE UPDATE/DELETE; falta interceptor Nest |
+| T3.07 | Módulo Tenancy (spec 01) | **Finalizada** | `GET /tenant`, `/limits`, `/flags`; límites con cerrojo `FOR UPDATE` (429); suspensión bloquea login sin borrar datos |
+| T3.08 | Módulo Identity (spec 02): JWT + roles con ámbito | **Finalizada** | argon2id, refresh rotativo con **revocación de familia por reuso** (RN-IDN-02), guard `@RequirePermission` global, matriz permiso×rol testeada |
+| T3.09 | Dispositivos POS + PIN argon2 | Pendiente | `safeEqual()` (comparación en tiempo constante) ya disponible |
+| T3.10 | Módulo Audit (spec 17): append-only + interceptor | **Finalizada** | `recordAudit()` transaccional + `GET /audit` con `audit.read`; UPDATE/DELETE fallan en BD (probado). Interceptor automático llega con los módulos de F4 |
 | T3.11 | Outbox/inbox + relay (ADR-0007) | **Finalizada** | **Exactamente-una-vez** verificado bajo kill del relay |
 | T3.12 | Módulo Organization (spec 03) + zonas geography | Pendiente | — |
-| T3.13 | Harness de aislamiento por endpoint reutilizable | En análisis | Helpers de test creados; falta harness genérico por endpoint |
+| T3.13 | Harness de aislamiento por endpoint reutilizable | **En ejecución** | Fixture de 2 tenants aplicado a `/tenant` y `/audit`; falta extraerlo como helper genérico |
 | T3.14 | OTel + Prometheus + Sentry + dashboards | Pendiente | `trace_id` propagado extremo a extremo; falta exportador OTel |
 | T3.15 | CI/CD completo | **En ejecución** | Workflow GitHub Actions (static, domain, integration con Postgres, build, SCA) |
 | T3.16 | Terraform dev | Pendiente | — |
@@ -36,4 +37,4 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | T3.18 | Gate F3: criterios de salida + demo grabada | Pendiente | 3 gates duros ya en verde; faltan T3.07–T3.16 |
 
 **Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql`.
-**Próxima acción de Claude Code:** continuar el backlog F3 por T3.07 (módulo Tenancy: API + verificación de límites) y T3.08 (Identity).
+**Próxima acción de Claude Code:** continuar el backlog F3 por T3.12 (Organization: jerarquía empresa/marca/local/cocina y zonas), que desbloquea los ámbitos reales de permisos, y T3.09 (dispositivos POS + PIN).

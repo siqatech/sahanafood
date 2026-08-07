@@ -44,4 +44,4 @@ infra/migrations  SQL versionado (fuente de verdad del DDL y de las políticas R
 - Decisiones: [`docs/adr/`](docs/adr/)
 - Avance: [`docs/progress.md`](docs/progress.md)
 - Convenciones de código: [`docs/29-coding-conventions.md`](docs/29-coding-conventions.md)
-- Módulos: 19 (specs/modules 01–19) · ADRs: 13 · Fases: 0–9 con gates
+- Módulos: 19 (specs/modules 01–19) · ADRs: 14 · Fases: 0–9 con gates
