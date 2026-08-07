@@ -120,7 +120,9 @@ export class KitchenService {
       ctx?: TenantContext | undefined;
     } = {},
   ): Promise<CreateTicketsResult> {
-    const trabajo = async (ctx: TenantContext): Promise<CreateTicketsResult> => {
+    const trabajo = async (
+      ctx: TenantContext,
+    ): Promise<CreateTicketsResult> => {
       const pedido = await this.loadOrderForKitchen(ctx, orderId);
 
       // Cocina destino: la que produce la marca en ese local (RN-ORG-01). El
@@ -241,7 +243,9 @@ export class KitchenService {
             kitchenId,
             tickets: ticketIds.length,
           },
-          ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
+          ...(options.traceId !== undefined
+            ? { traceId: options.traceId }
+            : {}),
         });
       }
 
@@ -643,11 +647,17 @@ export class KitchenService {
     const estaciones = await ctx.db
       .select({ id: schema.stations.id, name: schema.stations.name })
       .from(schema.stations)
-      .where(inArray(schema.stations.id, [...new Set(filas.map((f) => f.stationId))]));
+      .where(
+        inArray(schema.stations.id, [
+          ...new Set(filas.map((f) => f.stationId)),
+        ]),
+      );
     const marcas = await ctx.db
       .select({ id: schema.brands.id, name: schema.brands.name })
       .from(schema.brands)
-      .where(inArray(schema.brands.id, [...new Set(filas.map((f) => f.brandId))]));
+      .where(
+        inArray(schema.brands.id, [...new Set(filas.map((f) => f.brandId))]),
+      );
 
     const nombreEstacion = new Map(estaciones.map((e) => [e.id, e.name]));
     const nombreMarca = new Map(marcas.map((m) => [m.id, m.name]));
@@ -758,7 +768,10 @@ export class KitchenService {
         // veinte pedidos encima.
         modifiersText:
           Array.isArray(l.modifiers) && l.modifiers.length > 0
-            ? l.modifiers.map((m) => m.name ?? '').filter(Boolean).join(', ')
+            ? l.modifiers
+                .map((m) => m.name ?? '')
+                .filter(Boolean)
+                .join(', ')
             : null,
         notes: l.notes,
         stationKind: l.station_kind,

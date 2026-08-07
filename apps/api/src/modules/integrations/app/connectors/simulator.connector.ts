@@ -108,10 +108,7 @@ export class SimulatorConnector implements ChannelConnector {
       );
     }
     if (!Array.isArray(cuerpo.items) || cuerpo.items.length === 0) {
-      throw new ConnectorParseError(
-        'El pedido no trae líneas.',
-        'items',
-      );
+      throw new ConnectorParseError('El pedido no trae líneas.', 'items');
     }
 
     const lines: NormalizedOrderLine[] = cuerpo.items.map((item, i) => {

@@ -59,7 +59,10 @@ describe('Umbral de aprobación (RN-T08)', () => {
   it('justo EN el umbral tampoco: el 15 % está permitido', () => {
     const r = checkDiscountApproval({
       subtotalMinor: CIEN,
-      discount: { kind: 'percentage', bps: DEFAULT_DISCOUNT_POLICY.thresholdBps },
+      discount: {
+        kind: 'percentage',
+        bps: DEFAULT_DISCOUNT_POLICY.thresholdBps,
+      },
     });
     expect(r.totalBps).toBe(1500);
     expect(r.requiresApproval).toBe(false);
@@ -139,7 +142,10 @@ describe('Umbral de aprobación (RN-T08)', () => {
       checkDiscountApproval({
         subtotalMinor: CIEN,
         alreadyDiscountedMinor: Money.parse('90.00').minorUnits,
-        discount: { kind: 'amount', amountMinor: Money.parse('20.00').minorUnits },
+        discount: {
+          kind: 'amount',
+          amountMinor: Money.parse('20.00').minorUnits,
+        },
       }),
     ).toThrow(/acumulado supera el subtotal/);
   });

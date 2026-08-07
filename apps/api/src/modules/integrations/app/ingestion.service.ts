@@ -292,8 +292,7 @@ export class IngestionService {
         // operativa, no un descarte silencioso.
         const intentos = evento.attempts + 1;
         const agotado = intentos >= MAX_INGESTION_ATTEMPTS;
-        const mensaje =
-          error instanceof Error ? error.message : String(error);
+        const mensaje = error instanceof Error ? error.message : String(error);
 
         await client.query(
           `UPDATE int_webhook_events

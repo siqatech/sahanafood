@@ -218,11 +218,7 @@ describe('Generador de tráfico del simulador', () => {
   it('los envíos válidos van correctamente firmados y los de firma mala no', () => {
     const connector = new SimulatorConnector();
     for (const envio of new MarketplaceSimulator(opciones).burst(100)) {
-      const ok = connector.verifyWebhook(
-        envio.rawBody,
-        envio.headers,
-        SECRETO,
-      );
+      const ok = connector.verifyWebhook(envio.rawBody, envio.headers, SECRETO);
       expect(ok, `escenario ${envio.scenario}`).toBe(
         envio.scenario !== 'bad_signature',
       );

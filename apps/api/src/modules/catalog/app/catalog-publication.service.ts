@@ -87,11 +87,7 @@ function toSnapshot(resolved: ResolvedCatalog): CatalogSnapshot {
  */
 function checksumOf(snapshot: CatalogSnapshot): string {
   const estable = JSON.stringify(snapshot, (_clave, valor: unknown) => {
-    if (
-      typeof valor === 'object' &&
-      valor !== null &&
-      !Array.isArray(valor)
-    ) {
+    if (typeof valor === 'object' && valor !== null && !Array.isArray(valor)) {
       const obj = valor as Record<string, unknown>;
       return Object.keys(obj)
         .sort()

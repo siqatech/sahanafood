@@ -147,13 +147,11 @@ describe('Aplicar el diff reconstruye la versión destino', () => {
       available: fc.boolean(),
       prepMinutes: fc.integer({ min: 1, max: 60 }),
     });
-    const arbSnapshot = fc
-      .array(arbProducto, { maxLength: 12 })
-      .map((ps) => {
-        // Ids únicos: dos productos con el mismo id no es un catálogo válido.
-        const porId = new Map(ps.map((p) => [p.id, p]));
-        return snapshot([...porId.values()]);
-      });
+    const arbSnapshot = fc.array(arbProducto, { maxLength: 12 }).map((ps) => {
+      // Ids únicos: dos productos con el mismo id no es un catálogo válido.
+      const porId = new Map(ps.map((p) => [p.id, p]));
+      return snapshot([...porId.values()]);
+    });
 
     fc.assert(
       fc.property(arbSnapshot, arbSnapshot, (v1, v2) => {

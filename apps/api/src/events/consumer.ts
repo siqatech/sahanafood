@@ -59,9 +59,7 @@ export async function consumeEvent(
       },
       () =>
         withTenant(options.pool, event.tenantId, async (ctx) => {
-          if (
-            await alreadyProcessed(ctx, options.consumer, event.eventId)
-          ) {
+          if (await alreadyProcessed(ctx, options.consumer, event.eventId)) {
             return 'skipped' as const;
           }
           await handler(ctx, event);

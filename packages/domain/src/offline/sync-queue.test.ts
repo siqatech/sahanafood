@@ -70,9 +70,9 @@ describe('Cola de sincronización offline', () => {
     expect(item.status).toBe('pending');
     expect(item.attempts).toBe(1);
     // Todavía no toca: el backoff lo aparta del siguiente lote.
-    expect(
-      cola.nextBatch(T0).map((i) => i.clientId),
-    ).not.toContain('01J000000000000000000000A');
+    expect(cola.nextBatch(T0).map((i) => i.clientId)).not.toContain(
+      '01J000000000000000000000A',
+    );
     expect(cola.nextBatch(item.nextAttemptAt).map((i) => i.clientId)).toContain(
       '01J000000000000000000000A',
     );
@@ -97,9 +97,9 @@ describe('Cola de sincronización offline', () => {
     expect(item.status).toBe('stuck');
     expect(cola.all()).toHaveLength(1);
     // Y sigue siendo reintentable.
-    expect(
-      cola.nextBatch(item.nextAttemptAt).map((i) => i.clientId),
-    ).toContain('x');
+    expect(cola.nextBatch(item.nextAttemptAt).map((i) => i.clientId)).toContain(
+      'x',
+    );
   });
 
   it('recupera lo que quedó EN VUELO al cerrarse el navegador', () => {
@@ -150,10 +150,12 @@ describe('Cola de sincronización offline', () => {
     cola.markNeedsAttention('01J000000000000000000000B', 'ojo');
 
     expect(cola.purgeSynced()).toBe(1);
-    expect(cola.all().map((i) => i.clientId).sort()).toEqual([
-      '01J000000000000000000000B',
-      '01J000000000000000000000C',
-    ]);
+    expect(
+      cola
+        .all()
+        .map((i) => i.clientId)
+        .sort(),
+    ).toEqual(['01J000000000000000000000B', '01J000000000000000000000C']);
   });
 
   it('sobrevive al reinicio: se serializa y se restaura entera', () => {

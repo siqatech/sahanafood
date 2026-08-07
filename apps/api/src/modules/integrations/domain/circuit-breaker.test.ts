@@ -98,9 +98,9 @@ describe('Cortacircuitos por conector (RN-INT-03)', () => {
     expect(trasFallo.circuitOpenedAt?.getTime()).toBe(reintento.getTime());
     // Inmediatamente después sigue abierto: no se reintenta en bucle.
     expect(circuitState(trasFallo, reintento)).toBe('open');
-    expect(
-      circuitAllows(trasFallo, new Date(reintento.getTime() + 1)),
-    ).toBe(false);
+    expect(circuitAllows(trasFallo, new Date(reintento.getTime() + 1))).toBe(
+      false,
+    );
   });
 
   it('el estado abierto de un conector no dice nada de otro (bulkhead)', () => {

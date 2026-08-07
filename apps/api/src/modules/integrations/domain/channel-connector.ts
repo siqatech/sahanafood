@@ -80,7 +80,11 @@ export interface ChannelConnector {
    * parsear porque cualquier round-trip por `JSON.parse`/`stringify` cambia
    * bytes (orden de claves, espacios) y rompería un HMAC válido.
    */
-  verifyWebhook(rawBody: string, headers: WebhookHeaders, secret: string): boolean;
+  verifyWebhook(
+    rawBody: string,
+    headers: WebhookHeaders,
+    secret: string,
+  ): boolean;
 
   /** Extrae los identificadores sin necesidad de entender el pedido entero. */
   identify(payload: unknown, headers: WebhookHeaders): WebhookIdentity;

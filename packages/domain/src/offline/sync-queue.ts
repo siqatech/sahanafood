@@ -61,7 +61,10 @@ export function backoffFor(
   attempts: number,
   options: SyncQueueOptions = {},
 ): number {
-  const { backoffBaseMs, backoffMaxMs } = { ...DEFAULT_SYNC_OPTIONS, ...options };
+  const { backoffBaseMs, backoffMaxMs } = {
+    ...DEFAULT_SYNC_OPTIONS,
+    ...options,
+  };
   const espera = backoffBaseMs * 2 ** Math.max(0, attempts - 1);
   return Math.min(espera, backoffMaxMs);
 }
@@ -110,7 +113,10 @@ export class SyncQueue<T = unknown> {
           (i.status === 'pending' || i.status === 'stuck') &&
           i.nextAttemptAt <= now,
       )
-      .sort((a, b) => a.createdAt - b.createdAt || a.clientId.localeCompare(b.clientId))
+      .sort(
+        (a, b) =>
+          a.createdAt - b.createdAt || a.clientId.localeCompare(b.clientId),
+      )
       .slice(0, limit);
   }
 

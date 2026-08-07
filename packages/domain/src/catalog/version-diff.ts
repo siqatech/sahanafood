@@ -77,7 +77,12 @@ function sameValue(a: unknown, b: unknown): boolean {
   if ((a === undefined || a === null) && (b === undefined || b === null)) {
     return true;
   }
-  if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
+  if (
+    typeof a === 'object' &&
+    typeof b === 'object' &&
+    a !== null &&
+    b !== null
+  ) {
     return JSON.stringify(a) === JSON.stringify(b);
   }
   return false;

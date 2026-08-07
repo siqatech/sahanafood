@@ -36,7 +36,6 @@ export class TenantContextError extends Error {
   }
 }
 
-
 /**
  * Transacción con ajustes LOCAL fijados, y con el detalle que separa un
  * proceso robusto de uno que se cae solo:

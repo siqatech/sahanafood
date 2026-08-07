@@ -1,16 +1,7 @@
-import {
-  Controller,
-  HttpCode,
-  Param,
-  Post,
-  Req,
-} from '@nestjs/common';
+import { Controller, HttpCode, Param, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { ValidationError } from '../../../common/errors.js';
-import {
-  IngestionService,
-  type AckResult,
-} from '../app/ingestion.service.js';
+import { IngestionService, type AckResult } from '../app/ingestion.service.js';
 import type { WebhookHeaders } from '../domain/channel-connector.js';
 
 /**

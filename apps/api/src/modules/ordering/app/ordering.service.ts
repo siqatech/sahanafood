@@ -198,7 +198,8 @@ export interface OfflineOrderLine {
   lineTotalMinor: number;
   modifiersTotalMinor?: number | undefined;
   discountMinor?: number | undefined;
-  modifiers?: Array<{ id: string; name: string; priceDeltaMinor: number }> | undefined;
+  modifiers?:
+    Array<{ id: string; name: string; priceDeltaMinor: number }> | undefined;
   notes?: string | undefined;
 }
 
@@ -1416,7 +1417,10 @@ export class OrderingService {
       deliveryFeeMinor = cobertura.deliveryFee.minorUnits;
     }
 
-    const totals = calculateOrderTotals({ lines: domainLines, deliveryFeeMinor });
+    const totals = calculateOrderTotals({
+      lines: domainLines,
+      deliveryFeeMinor,
+    });
 
     return withTenant(this.pool, tenantId, async (ctx) => {
       const { rows } = await ctx.client.query<{

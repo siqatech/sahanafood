@@ -68,7 +68,8 @@ export class CashSessionClosedError extends DomainError {
 /** Cerrar con descuadre exige motivo y aprobación con PIN (RN-POS-02). */
 export class CashDifferenceRequiresApprovalError extends DomainError {
   readonly status = 422;
-  readonly type = 'https://errors.sahana.food/cash-difference-requires-approval';
+  readonly type =
+    'https://errors.sahana.food/cash-difference-requires-approval';
   readonly title = 'La diferencia de caja exige motivo y PIN de supervisor';
   readonly code = 'CASH_DIFFERENCE_REQUIRES_APPROVAL';
 }
@@ -173,10 +174,16 @@ export class CashService {
    */
   async findOpenSession(
     tenantId: string,
-    where: { deviceId?: string | undefined; locationId?: string | undefined; openedBy?: string | undefined },
+    where: {
+      deviceId?: string | undefined;
+      locationId?: string | undefined;
+      openedBy?: string | undefined;
+    },
     existingCtx?: TenantContext,
   ): Promise<CashSessionView | undefined> {
-    const buscar = async (ctx: TenantContext): Promise<CashSessionView | undefined> => {
+    const buscar = async (
+      ctx: TenantContext,
+    ): Promise<CashSessionView | undefined> => {
       const condiciones = [ne(schema.cashSessions.status, 'closed')];
       if (where.deviceId) {
         condiciones.push(eq(schema.cashSessions.deviceId, where.deviceId));
@@ -195,7 +202,9 @@ export class CashService {
         .limit(1);
       return filas[0] ? this.toView(filas[0]) : undefined;
     };
-    return existingCtx ? buscar(existingCtx) : withTenant(this.pool, tenantId, buscar);
+    return existingCtx
+      ? buscar(existingCtx)
+      : withTenant(this.pool, tenantId, buscar);
   }
 
   /**
@@ -204,7 +213,11 @@ export class CashService {
    */
   async assertOpenSession(
     tenantId: string,
-    where: { deviceId?: string | undefined; locationId?: string | undefined; openedBy?: string | undefined },
+    where: {
+      deviceId?: string | undefined;
+      locationId?: string | undefined;
+      openedBy?: string | undefined;
+    },
   ): Promise<CashSessionView> {
     const sesion = await this.findOpenSession(tenantId, where);
     if (!sesion) {

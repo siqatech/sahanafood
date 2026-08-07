@@ -218,9 +218,7 @@ suite('Cocina / KDS', () => {
     expect(parrilla.lines.map((l) => l.productName)).toEqual([
       'Pollo a la brasa entero',
     ]);
-    expect(fritura.lines.map((l) => l.productName)).toEqual([
-      'Combo familiar',
-    ]);
+    expect(fritura.lines.map((l) => l.productName)).toEqual(['Combo familiar']);
   });
 
   it('los modificadores llegan en TEXTO, no en identificadores', async () => {
@@ -398,9 +396,7 @@ suite('Cocina / KDS', () => {
     ).expect(200);
 
     expect(res.body.activeTickets).toBeGreaterThan(0);
-    expect(res.body.activeItems).toBeGreaterThanOrEqual(
-      res.body.activeTickets,
-    );
+    expect(res.body.activeItems).toBeGreaterThanOrEqual(res.body.activeTickets);
     expect(res.body.byStation.length).toBeGreaterThan(0);
     expect(res.body.byStation[0]).toHaveProperty('oldestWaitingMinutes');
   });

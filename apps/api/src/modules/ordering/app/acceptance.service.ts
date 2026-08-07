@@ -128,10 +128,10 @@ export class AcceptanceService {
     );
   }
 
-  async listPolicies(tenantId: string): Promise<
-    Array<
-      AcceptancePolicy & { brandId: string | null; channel: string | null }
-    >
+  async listPolicies(
+    tenantId: string,
+  ): Promise<
+    Array<AcceptancePolicy & { brandId: string | null; channel: string | null }>
   > {
     return withTenant(this.pool, tenantId, async (ctx) => {
       const rows = await ctx.db.select().from(schema.acceptancePolicies);
@@ -187,8 +187,7 @@ export class AcceptanceService {
         pedido.brand_id,
         pedido.channel,
       );
-      const minutos =
-        (now.getTime() - pedido.created_at.getTime()) / 60_000;
+      const minutos = (now.getTime() - pedido.created_at.getTime()) / 60_000;
 
       if (minutos >= politica.autoRejectAfterMinutes) {
         // Se rechaza a través del orquestador, no con un UPDATE: así pasa por

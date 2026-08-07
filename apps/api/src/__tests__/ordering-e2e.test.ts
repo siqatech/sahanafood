@@ -754,7 +754,9 @@ suite('Ordering e2e', () => {
     ).expect(201);
 
     expect(resuelto.body.status).toBe('received');
-    expect(resuelto.body.total.minorUnits).toBe(Money.parse('38.00').minorUnits);
+    expect(resuelto.body.total.minorUnits).toBe(
+      Money.parse('38.00').minorUnits,
+    );
 
     // Y ya no está en la bandeja.
     const bandeja = await ordering.listExceptions(tenantA);
@@ -780,17 +782,13 @@ suite('Ordering e2e', () => {
     const cuerpo = { lines: [{ productId: cat.comboId, quantity: 1 }] };
 
     await auth(
-      http()
-        .post(`/api/v1/orders/${apartado.id}/resolve-mapping`)
-        .send(cuerpo),
+      http().post(`/api/v1/orders/${apartado.id}/resolve-mapping`).send(cuerpo),
     ).expect(201);
 
     // El segundo supervisor llega tarde: se le dice que ya está resuelto en vez
     // de duplicarle las líneas.
     const segundo = await auth(
-      http()
-        .post(`/api/v1/orders/${apartado.id}/resolve-mapping`)
-        .send(cuerpo),
+      http().post(`/api/v1/orders/${apartado.id}/resolve-mapping`).send(cuerpo),
     ).expect(409);
     expect(segundo.body.code).toBe('ORDER_INVALID_TRANSITION');
   });

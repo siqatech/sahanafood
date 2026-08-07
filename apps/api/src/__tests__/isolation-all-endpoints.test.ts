@@ -438,7 +438,9 @@ suite('Aislamiento — todos los endpoints', () => {
     await assertEndpointIsolation(
       app,
       caseFor('GET /catalog/versions', (r) =>
-        r.get(`/api/v1/catalog/versions?brand=${demoA.brandIds[0]}&channel=web`),
+        r.get(
+          `/api/v1/catalog/versions?brand=${demoA.brandIds[0]}&channel=web`,
+        ),
       ),
     );
   });

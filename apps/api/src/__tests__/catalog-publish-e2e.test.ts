@@ -102,9 +102,7 @@ suite('Catálogo versionado', () => {
 
   it('la primera publicación es la versión 1 y trae los productos del canal', async () => {
     const res = await auth(
-      http()
-        .post('/api/v1/catalog/publish')
-        .send({ brandId, channel: 'pos' }),
+      http().post('/api/v1/catalog/publish').send({ brandId, channel: 'pos' }),
     ).expect(201);
 
     expect(res.body.version).toBe(1);
@@ -219,7 +217,11 @@ suite('Catálogo versionado', () => {
     });
 
     const res = await auth(
-      http().get('/api/v1/catalog/versions/download?brand=' + brandId + '&channel=descarga'),
+      http().get(
+        '/api/v1/catalog/versions/download?brand=' +
+          brandId +
+          '&channel=descarga',
+      ),
     ).expect(200);
 
     expect(res.body.version).toBe(v2.version);

@@ -70,7 +70,13 @@ function tenantKey(masterKey: string, tenantId: string): Buffer {
     );
   }
   return Buffer.from(
-    hkdfSync('sha256', masterKey, 'sahana.int.credentials', tenantId, KEY_BYTES),
+    hkdfSync(
+      'sha256',
+      masterKey,
+      'sahana.int.credentials',
+      tenantId,
+      KEY_BYTES,
+    ),
   );
 }
 
@@ -161,7 +167,9 @@ export class CredentialCipher {
  */
 export function redactCredentials<
   T extends Record<string, unknown> & { credentials?: unknown },
->(connection: T): Omit<T, 'credentials'> & { credentials: Record<string, '***'> } {
+>(
+  connection: T,
+): Omit<T, 'credentials'> & { credentials: Record<string, '***'> } {
   const claves = Object.keys(
     (connection.credentials as Record<string, unknown>) ?? {},
   );

@@ -98,8 +98,7 @@ export class MarketplaceSimulator {
   burst(count: number): SimulatedDelivery[] {
     const salida: SimulatedDelivery[] = [];
     for (let i = 0; i < count; i++) {
-      const escenario =
-        i === 0 ? 'valid' : elegirEscenario(this.rand());
+      const escenario = i === 0 ? 'valid' : elegirEscenario(this.rand());
       salida.push(this.build(escenario));
     }
     return salida;

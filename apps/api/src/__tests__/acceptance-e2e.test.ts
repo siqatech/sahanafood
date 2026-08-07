@@ -235,7 +235,9 @@ suite('Aceptación de pedidos y programados', () => {
       autoRejectAfterMinutes: 10,
     });
     const pedido = await crear('aviso');
-    const creadoEn = new Date((await ordering.getSummary(tenantA, pedido.id)).createdAt);
+    const creadoEn = new Date(
+      (await ordering.getSummary(tenantA, pedido.id)).createdAt,
+    );
     const enT = (m: number) => new Date(creadoEn.getTime() + m * 60_000);
 
     // A los 4 minutos todavía no toca.
@@ -265,7 +267,9 @@ suite('Aceptación de pedidos y programados', () => {
       autoRejectAfterMinutes: 10,
     });
     const pedido = await crear('rechazo');
-    const creadoEn = new Date((await ordering.getSummary(tenantA, pedido.id)).createdAt);
+    const creadoEn = new Date(
+      (await ordering.getSummary(tenantA, pedido.id)).createdAt,
+    );
     const enT = (m: number) => new Date(creadoEn.getTime() + m * 60_000);
 
     const resultado = await acceptance.sweepTenant(tenantA, enT(11));
@@ -345,7 +349,9 @@ suite('Aceptación de pedidos y programados', () => {
 
   it('liberar es idempotente: una segunda pasada no hace nada', async () => {
     const dentroDeUnaHora = new Date(Date.now() + 60 * 60_000);
-    const pedido = await crear('programado-2', { scheduledAt: dentroDeUnaHora });
+    const pedido = await crear('programado-2', {
+      scheduledAt: dentroDeUnaHora,
+    });
     const dentroDeVentana = new Date(dentroDeUnaHora.getTime() - 30 * 60_000);
 
     expect(await acceptance.releaseScheduled(tenantA, dentroDeVentana)).toBe(1);

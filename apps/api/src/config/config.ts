@@ -65,8 +65,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
     credentialsMasterKey:
-      env.CREDENTIALS_MASTER_KEY ??
-      'dev-only-credentials-master-key-change-me',
+      env.CREDENTIALS_MASTER_KEY ?? 'dev-only-credentials-master-key-change-me',
     jwt: {
       accessSecret: env.JWT_ACCESS_SECRET ?? 'dev-only-access-secret-change-me',
       refreshSecret:

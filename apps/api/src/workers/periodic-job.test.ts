@@ -8,7 +8,10 @@ import { PeriodicJob } from './periodic-job.js';
  */
 
 /** `sleep` que resuelve al instante y cuenta las esperas pedidas. */
-function sleepInstantaneo(): { sleep: (ms: number) => Promise<void>; esperas: number[] } {
+function sleepInstantaneo(): {
+  sleep: (ms: number) => Promise<void>;
+  esperas: number[];
+} {
   const esperas: number[] = [];
   return {
     esperas,

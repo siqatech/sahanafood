@@ -59,9 +59,7 @@ function capturarCuerpoCrudo(
  * peticiones (comportamiento documentado de body-parser).
  */
 function configureBodyParsing(app: INestApplication): void {
-  app.use(
-    raw({ type: esWebhook, limit: '1mb', verify: capturarCuerpoCrudo }),
-  );
+  app.use(raw({ type: esWebhook, limit: '1mb', verify: capturarCuerpoCrudo }));
   app.use(json({ limit: '1mb', verify: capturarCuerpoCrudo }));
   app.use(urlencoded({ extended: true, limit: '1mb' }));
 }

@@ -6,7 +6,11 @@ import { AppModule } from '../app.module.js';
 import { CONFIG, type AppConfig } from '../config/config.js';
 import { PG_POOL } from '../database/database.module.js';
 import { AcceptanceService } from '../modules/ordering/index.js';
-import { relayOnce, pendingCount, oldestPendingAgeSeconds } from '../events/outbox.js';
+import {
+  relayOnce,
+  pendingCount,
+  oldestPendingAgeSeconds,
+} from '../events/outbox.js';
 import {
   createQueuePublisher,
   createRedis,
@@ -19,7 +23,10 @@ import {
   type DomainEventMessage,
 } from '../modules/kitchen/index.js';
 import { Worker } from 'bullmq';
-import { outboxPending, outboxOldestPendingSeconds } from '../observability/metrics.js';
+import {
+  outboxPending,
+  outboxOldestPendingSeconds,
+} from '../observability/metrics.js';
 import { startTracing, stopTracing } from '../observability/tracing.js';
 import { PeriodicJob } from './periodic-job.js';
 

@@ -251,15 +251,18 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
 
     await expect(
       withTenant(pool, tenantA, async ({ client }) => {
-        await client.query('UPDATE cash_movements SET amount = 1 WHERE id = $1', [
-          mov.id,
-        ]);
+        await client.query(
+          'UPDATE cash_movements SET amount = 1 WHERE id = $1',
+          [mov.id],
+        );
       }),
     ).rejects.toThrow(/permission denied|permiso denegado/i);
 
     await expect(
       withTenant(pool, tenantA, async ({ client }) => {
-        await client.query('DELETE FROM cash_movements WHERE id = $1', [mov.id]);
+        await client.query('DELETE FROM cash_movements WHERE id = $1', [
+          mov.id,
+        ]);
       }),
     ).rejects.toThrow(/permission denied|permiso denegado/i);
   });
@@ -343,13 +346,19 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
     expect(cerrada.approvedBy).toBe(ownerId);
 
     const auditoria = await withTenant(pool, tenantA, async ({ client }) => {
-      const { rows } = await client.query<{ resource_id: string; reason: string }>(
+      const { rows } = await client.query<{
+        resource_id: string;
+        reason: string;
+      }>(
         "SELECT resource_id, reason FROM audit_log WHERE action = 'cash.session_closed_with_difference'",
       );
       return rows;
     });
     const suya = auditoria.find((a) => a.resource_id === sesion.id);
-    expect(suya, 'el cierre descuadrado no dejó rastro en auditoría').toBeTruthy();
+    expect(
+      suya,
+      'el cierre descuadrado no dejó rastro en auditoría',
+    ).toBeTruthy();
     expect(suya!.reason).toContain('vuelto de más');
   });
 
@@ -455,7 +464,10 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
     expect(res.body.total.minorUnits).toBe(soles('28.50'));
 
     const auditoria = await withTenant(pool, tenantA, async ({ client }) => {
-      const { rows } = await client.query<{ resource_id: string; data: { approvedBy: string } }>(
+      const { rows } = await client.query<{
+        resource_id: string;
+        data: { approvedBy: string };
+      }>(
         "SELECT resource_id, data FROM audit_log WHERE action = 'order.discount_approved'",
       );
       return rows;

@@ -106,7 +106,11 @@ suite('POS offline: cola local y sincronización', () => {
    */
   function venderSinRed(
     n: number,
-    opciones: { cantidad?: number; precioMinor?: number; prefijo?: string } = {},
+    opciones: {
+      cantidad?: number;
+      precioMinor?: number;
+      prefijo?: string;
+    } = {},
   ): OfflineOrderInput {
     const cantidad = opciones.cantidad ?? 1;
     const precio = opciones.precioMinor ?? Money.parse('38.00').minorUnits;
@@ -159,9 +163,10 @@ suite('POS offline: cola local y sincronización', () => {
       const pedido = venderSinRed(i, { cantidad: (i % 3) + 1 });
       cola.enqueue(pedido.clientId, pedido, ahora + i);
     }
-    expect(cola.canCloseShift().ok, 'no se puede cerrar con ventas pendientes').toBe(
-      false,
-    );
+    expect(
+      cola.canCloseShift().ok,
+      'no se puede cerrar con ventas pendientes',
+    ).toBe(false);
 
     const lote = cola.nextBatch(ahora + 1_000, 50);
     cola.markInFlight(lote.map((i) => i.clientId));
@@ -238,7 +243,9 @@ suite('POS offline: cola local y sincronización', () => {
     expect(reintento).toHaveLength(10);
     const res = await sincronizar(reintento.map((i) => i.payload)).expect(201);
 
-    expect(res.body.duplicates, 'no se detectaron los ya sincronizados').toBe(5);
+    expect(res.body.duplicates, 'no se detectaron los ya sincronizados').toBe(
+      5,
+    );
     expect(res.body.accepted).toBe(5);
 
     // Y en la base hay exactamente 10 pedidos, ni uno más.
@@ -298,7 +305,9 @@ suite('POS offline: cola local y sincronización', () => {
 
     const res = await sincronizar([pedido]).expect(201);
     expect(res.body.results[0].outcome).toBe('accepted_with_alerts');
-    expect(res.body.results[0].alerts.join(' ')).toMatch(/precio de .* cambió/i);
+    expect(res.body.results[0].alerts.join(' ')).toMatch(
+      /precio de .* cambió/i,
+    );
 
     const enBd = await ordering.getSummary(
       tenantA,
@@ -378,8 +387,9 @@ suite('POS offline: cola local y sincronización', () => {
     expect(res.body.accepted).toBe(1);
     expect(res.body.failed).toBe(1);
     expect(
-      res.body.results.find((r: { clientId: string }) => r.clientId === malo.clientId)
-        .outcome,
+      res.body.results.find(
+        (r: { clientId: string }) => r.clientId === malo.clientId,
+      ).outcome,
     ).toBe('failed');
   });
 
