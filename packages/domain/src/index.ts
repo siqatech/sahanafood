@@ -55,3 +55,23 @@ export {
   type LocalMoment,
   type Weekday,
 } from './schedule/schedule.js';
+
+export {
+  calculateOrderTotals,
+  compareTotals,
+  PricingError,
+  type Discount,
+  type OrderLineInput,
+  type OrderTotalsInput,
+  type LineTotals,
+  type OrderTotals,
+} from './pricing/totals.js';
+
+export {
+  validateAndPriceModifiers,
+  assertValidGroupDefinition,
+  ModifierError,
+  type ModifierGroup,
+  type ModifierOption,
+  type ModifierSelection,
+} from './pricing/modifiers.js';

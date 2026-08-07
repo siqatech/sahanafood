@@ -12,7 +12,7 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
 | **Fase 3 — Fundamentos** | **En ejecución** | Negocio y observabilidad completos, verificados contra Postgres real (**198 pruebas en verde**: 101 API + 97 dominio). Queda T3.16 (Terraform) y el gate T3.18 |
-| **Fase 4 — Operación principal** | **Backlog propuesto** | T4.00 completado: 32 tareas derivadas de las specs en `specs/phases/phase-4-operacion.md`. **Pendiente de aprobación** antes de codificar |
+| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.02/T4.04 (cálculo de totales con 100% de ramas). En curso: catálogo |
 | Fases 5–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
