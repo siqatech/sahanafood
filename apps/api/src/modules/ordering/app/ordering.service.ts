@@ -391,6 +391,116 @@ export class OrderingService {
   }
 
   /**
+   * Aparta un pedido que NO se pudo interpretar (RN-ORD-10, RN-INT-02).
+   *
+   * Este método es la razón de que «cero pérdida» sea alcanzable. Cuando la
+   * ingesta no puede mapear un SKU o el payload viene roto, la alternativa
+   * cómoda es registrar el error y descartar; el resultado es un cliente que
+   * pagó y nunca recibe comida, y nadie se entera hasta la reclamación. Aquí el
+   * pedido se crea igualmente, en `needs_review`, con el payload crudo en su
+   * timeline para que alguien pueda resolverlo y reprocesarlo.
+   *
+   * Los importes van a cero a propósito: no se conoce el precio de algo que no
+   * se pudo mapear, e inventarlo sería peor que dejarlo en cero y visible.
+   * También respeta el dedupe: dos reintentos del mismo webhook roto producen
+   * UN pedido en la bandeja, no una avalancha.
+   */
+  async submitForReview(
+    tenantId: string,
+    input: {
+      brandId: string;
+      locationId: string;
+      channel: string;
+      externalRef: string;
+      reason: string;
+      rawPayload: unknown;
+      customerName?: string | undefined;
+      customerPhone?: string | undefined;
+      traceId?: string | undefined;
+    },
+  ): Promise<OrderSummary> {
+    const existente = await this.findByExternalRef(
+      tenantId,
+      input.channel,
+      input.externalRef,
+    );
+    if (existente) return { ...existente, deduplicated: true };
+
+    const cero = Money.zero().toDecimalString();
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const orderNumber = await this.nextOrderNumber(ctx);
+      const [order] = await ctx.db
+        .insert(schema.orders)
+        .values({
+          tenantId,
+          brandId: input.brandId,
+          locationId: input.locationId,
+          orderNumber,
+          channel: input.channel,
+          externalRef: input.externalRef,
+          status: 'needs_review',
+          customerName: input.customerName ?? null,
+          customerPhone: input.customerPhone ?? null,
+          subtotal: cero,
+          discountTotal: cero,
+          deliveryFee: cero,
+          tip: cero,
+          total: cero,
+          taxableBase: cero,
+          tax: cero,
+          notes: input.reason,
+        })
+        .returning({
+          id: schema.orders.id,
+          createdAt: schema.orders.createdAt,
+        });
+
+      const orderId = order!.id;
+
+      await this.appendEvent(ctx, {
+        orderId,
+        event: 'mapping_failed',
+        fromStatus: null,
+        toStatus: 'needs_review',
+        actorType: 'system',
+        reason: input.reason,
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        // El payload crudo viaja con el pedido: sin él, «resolver la excepción»
+        // sería adivinar.
+        data: { rawPayload: input.rawPayload, channel: input.channel },
+      });
+
+      await enqueueEvent(ctx, {
+        aggregateType: 'order',
+        aggregateId: orderId,
+        eventType: 'order.needs_review',
+        payload: {
+          orderId,
+          orderNumber,
+          channel: input.channel,
+          externalRef: input.externalRef,
+          reason: input.reason,
+        },
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+      });
+
+      return {
+        id: orderId,
+        orderNumber,
+        status: 'needs_review' as OrderState,
+        channel: input.channel,
+        brandId: input.brandId,
+        locationId: input.locationId,
+        total: Money.zero().toJSON(),
+        tax: Money.zero().toJSON(),
+        promisedAt: null,
+        createdAt: order!.createdAt.toISOString(),
+      };
+    });
+  }
+
+  /**
    * Aplica una transición de estado. La validez la decide `@sahana/domain`,
    * el mismo código que usa el POS offline.
    */

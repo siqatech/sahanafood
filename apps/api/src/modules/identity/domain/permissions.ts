@@ -48,6 +48,11 @@ export const PERMISSIONS = [
   // Reportes
   'reports.read',
   'reports.export',
+  // Integraciones (F4 con simulador, F7 conectores reales)
+  'integrations.read',
+  // Crear o pausar una conexión toca credenciales y el flujo de pedidos de un
+  // canal entero: se separa de la lectura a propósito.
+  'integrations.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -110,6 +115,9 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'inventory.read',
       'inventory.adjust',
       'reports.read',
+      // Ve la salud de los canales y la bandeja de excepciones, pero no toca
+      // credenciales: gestionar conexiones queda en propietario/administrador.
+      'integrations.read',
     ],
   },
   {

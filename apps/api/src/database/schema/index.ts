@@ -707,3 +707,73 @@ export const idempotencyKeys = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.key] })],
 );
+
+// --- Plataforma de integraciones (módulo 13) ---
+
+export const integrationConnections = pgTable(
+  'int_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    provider: text('provider').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    locationId: uuid('location_id').notNull(),
+    channel: text('channel').notNull(),
+    status: text('status').notNull().default('active'),
+    webhookToken: text('webhook_token').notNull(),
+    /** Cifrado campo a campo con clave por tenant (RN-INT-04). */
+    credentials: jsonb('credentials').notNull().default({}),
+    config: jsonb('config').notNull().default({}),
+    consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+    circuitOpenedAt: timestamp('circuit_opened_at', { withTimezone: true }),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_int_connections_tenant').on(t.tenantId, t.provider)],
+);
+
+export const integrationCatalogMap = pgTable(
+  'int_catalog_map',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    connectionId: uuid('connection_id').notNull(),
+    externalSku: text('external_sku').notNull(),
+    productId: uuid('product_id'),
+    modifierOptionId: uuid('modifier_option_id'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_int_catalog_map_tenant').on(t.tenantId, t.connectionId)],
+);
+
+export const integrationWebhookEvents = pgTable(
+  'int_webhook_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    connectionId: uuid('connection_id').notNull(),
+    provider: text('provider').notNull(),
+    deliveryId: text('delivery_id').notNull(),
+    externalRef: text('external_ref'),
+    eventType: text('event_type').notNull().default('order.created'),
+    payload: jsonb('payload').notNull(),
+    headers: jsonb('headers').notNull().default({}),
+    status: text('status').notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    orderId: uuid('order_id'),
+    traceId: text('trace_id'),
+    receivedAt: timestamp('received_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+  },
+  (t) => [index('idx_int_webhook_tenant').on(t.tenantId, t.receivedAt)],
+);

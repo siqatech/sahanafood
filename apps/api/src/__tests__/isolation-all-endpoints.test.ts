@@ -3,12 +3,16 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../app.module.js';
-import { configureApp } from '../bootstrap.js';
+import { configureApp, NEST_APP_OPTIONS } from '../bootstrap.js';
 import { createPool } from '../database/pool.js';
 import { withTenant } from '../database/rls.js';
 import { TenancyService } from '../modules/tenancy/index.js';
 import { seedDemoOrganization } from '../modules/organization/index.js';
 import { seedDemoCatalog } from '../modules/catalog/index.js';
+import {
+  ConnectionService,
+  SIMULATOR_PROVIDER,
+} from '../modules/integrations/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -43,7 +47,7 @@ suite('Aislamiento — todos los endpoints', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication(NEST_APP_OPTIONS);
     configureApp(app);
     await app.init();
 
@@ -92,6 +96,24 @@ suite('Aislamiento — todos los endpoints', () => {
       }),
     );
 
+    // Conexiones de integración: el token de webhook de B identifica su canal y
+    // permitiría dirigirle pedidos, así que cuenta como secreto suyo.
+    const connections = app.get(ConnectionService);
+    await connections.create(a.tenantId, {
+      provider: SIMULATOR_PROVIDER,
+      channel: 'simulador',
+      brandId: demoA.brandIds[0],
+      locationId: demoA.locationId,
+      signingSecret: 'secreto-de-firma-del-tenant-a-iso',
+    });
+    const conexionB = await connections.create(b.tenantId, {
+      provider: SIMULATOR_PROVIDER,
+      channel: 'simulador',
+      brandId: demoB.brandIds[0],
+      locationId: demoB.locationId,
+      signingSecret: 'secreto-de-firma-del-tenant-b-iso',
+    });
+
     // Todo lo que identifica al tenant B y jamás debe salir en la respuesta de A.
     secretsOfB = [
       b.tenantId,
@@ -117,6 +139,10 @@ suite('Aislamiento — todos los endpoints', () => {
       catB.groupExtrasId,
       catB.optionGrandeId,
       catB.optionQuesoId,
+      // Integraciones del tenant B.
+      conexionB.id,
+      conexionB.webhookToken,
+      'secreto-de-firma-del-tenant-b-iso',
     ];
 
     const loginA = await request(app.getHttpServer())
@@ -262,6 +288,24 @@ suite('Aislamiento — todos los endpoints', () => {
       app,
       caseFor('GET /orders/exceptions', (r) =>
         r.get('/api/v1/orders/exceptions'),
+      ),
+    );
+  });
+
+  it('GET /integrations/connections', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /integrations/connections', (r) =>
+        r.get('/api/v1/integrations/connections'),
+      ),
+    );
+  });
+
+  it('GET /integrations/dead-letters', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /integrations/dead-letters', (r) =>
+        r.get('/api/v1/integrations/dead-letters'),
       ),
     );
   });

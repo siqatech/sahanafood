@@ -4,7 +4,7 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { loadConfig } from './config/config.js';
 import { startTracing, stopTracing } from './observability/tracing.js';
-import { configureApp } from './bootstrap.js';
+import { configureApp, NEST_APP_OPTIONS } from './bootstrap.js';
 
 /**
  * Punto de entrada de la API. Versionado `/api/v1`, logs estructurados,
@@ -20,7 +20,10 @@ async function bootstrap(): Promise<void> {
     serviceName: 'sahana-api',
     endpoint: config.otelEndpoint,
   });
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    ...NEST_APP_OPTIONS,
+  });
 
   app.useLogger(app.get(Logger));
   configureApp(app);

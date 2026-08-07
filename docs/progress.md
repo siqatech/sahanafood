@@ -12,7 +12,7 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
 | **Fase 3 — Fundamentos** | **En ejecución** | Negocio y observabilidad completos, verificados contra Postgres real (**198 pruebas en verde**: 101 API + 97 dominio). Queda T3.16 (Terraform) y el gate T3.18 |
-| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.05, T4.07–T4.09 (totales, catálogo, máquina de estados y alta de pedidos con dedupe). **333 pruebas en verde** (191 dominio + 142 API). Siguiente: T4.14 simulador de marketplace + T4.15 caos de ingesta |
+| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.05, T4.07–T4.09, T4.14–T4.15 (totales, catálogo, pedidos con dedupe, simulador de marketplace y **prueba de caos con cero pérdida**). **402 pruebas en verde** (191 dominio + 211 API). Siguiente: T4.10–T4.13 (validaciones, API de transiciones, aceptación automática y bandeja) |
 | Fases 5–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
@@ -54,7 +54,10 @@ Backlog completo (32 tareas) en `specs/phases/phase-4-operacion.md`. Aquí solo 
 | **T4.07** | **Máquina de estados de pedido** | **Finalizada** | 12 estados × 13 eventos: **las 156 combinaciones** probadas (transicionan o lanzan); BFS de alcanzabilidad; sin callejones sin salida |
 | T4.08 | `OrderingService.submit()` + `ord_*` con snapshot inmutable | **Finalizada** | Migración `0009_ordering.sql`; la línea copia nombre y precio (no referencia a `cat_prices`); timeline append-only verificado en BD |
 | T4.09 | Idempotencia y dedupe (ADR-0010) | **Finalizada** | **Dedupe concurrente en verde**: dos `submit()` simultáneos con el mismo `external_ref` → 1 pedido (garantía del índice único, no del código) |
-| T4.10–T4.32 | Resto del backlog | Pendiente | — |
+| T4.10–T4.13 | Validaciones, API de transiciones, aceptación automática y bandeja | Pendiente | Parcialmente cubierto por T4.08/T4.14; falta el timeout de aceptación y `resolve-mapping` |
+| **T4.14** | **Simulador de marketplace (spec 13)** | **Finalizada** | `ChannelConnector` + simulador **reproducible por semilla**; ack < 250 ms medido; firma HMAC sobre el cuerpo crudo; credenciales cifradas por tenant (AES-256-GCM + HKDF, tenant como AAD); cortacircuitos por conexión |
+| **T4.15** | **Prueba de caos de ingesta** | **Finalizada** | **Cero pérdida verificada matando el worker con `pg_terminate_backend`** a media faena, 6 rondas: todo webhook con ack acaba en pedido o en `needs_review`, sin duplicados, sin cola de muertos y sin cerrojos zombis |
+| T4.16–T4.32 | Resto del backlog | Pendiente | — |
 
-**Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql` · resolver PA-01/02/03 (`docs/22-risks.md`).
-**Próxima acción de Claude Code:** T4.14 (simulador de marketplace) + T4.15 (prueba de caos de ingesta), que juntas verifican el criterio de aceptación más duro de la fase: cero pérdida de pedidos.
+**Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql` · resolver PA-01/02/03 (`docs/22-risks.md`) · **definir `CREDENTIALS_MASTER_KEY` en cada entorno** (sin ella no arranca en producción, y rotarla obliga a recifrar).
+**Próxima acción de Claude Code:** T4.10–T4.13 (validaciones de submit con códigos propios, aceptación automática con timeout RN-ORD-04 y `POST /orders/:id/resolve-mapping` para vaciar la bandeja).

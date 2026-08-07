@@ -14,6 +14,7 @@ import { AuditModule } from './modules/audit/index.js';
 import { OrganizationModule } from './modules/organization/index.js';
 import { CatalogModule } from './modules/catalog/index.js';
 import { OrderingModule } from './modules/ordering/index.js';
+import { IntegrationsModule } from './modules/integrations/index.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 
 /**
@@ -51,6 +52,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     OrganizationModule,
     CatalogModule,
     OrderingModule,
+    IntegrationsModule,
     ObservabilityModule,
   ],
 })

@@ -21,6 +21,13 @@ const configSchema = z.object({
   /** Colector OTLP. Sin él no se arranca el tracing (ver observability/tracing). */
   otelEndpoint: z.string().url().optional(),
 
+  /**
+   * Clave maestra de la que se derivan (HKDF) las claves por tenant que cifran
+   * las credenciales de conector (RN-INT-04). 32 caracteres es el mínimo que
+   * exige el cifrador; rotarla obliga a recifrar las credenciales existentes.
+   */
+  credentialsMasterKey: z.string().min(32),
+
   jwt: z.object({
     accessSecret: z.string().min(16),
     refreshSecret: z.string().min(16),
@@ -40,6 +47,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     migrationDatabaseUrl: env.MIGRATION_DATABASE_URL,
     redisUrl: env.REDIS_URL,
     otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    credentialsMasterKey:
+      env.CREDENTIALS_MASTER_KEY ??
+      'dev-only-credentials-master-key-change-me',
     jwt: {
       accessSecret: env.JWT_ACCESS_SECRET ?? 'dev-only-access-secret-change-me',
       refreshSecret:
@@ -55,6 +65,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .join('\n');
     throw new Error(`Configuración inválida:\n${issues}`);
   }
+
+  // Los valores por defecto están en el repositorio, así que en producción
+  // equivalen a no tener secreto: cualquiera con acceso al código firmaría
+  // tokens válidos o descifraría las credenciales de conector de todos los
+  // tenants. Arrancar así es peor que no arrancar.
+  if (parsed.data.nodeEnv === 'production') {
+    const porDefecto = Object.entries({
+      JWT_ACCESS_SECRET: parsed.data.jwt.accessSecret,
+      JWT_REFRESH_SECRET: parsed.data.jwt.refreshSecret,
+      CREDENTIALS_MASTER_KEY: parsed.data.credentialsMasterKey,
+    })
+      .filter(([, valor]) => valor.startsWith('dev-only-'))
+      .map(([nombre]) => nombre);
+
+    if (porDefecto.length > 0) {
+      throw new Error(
+        `Configuración inválida: en producción hay que definir ${porDefecto.join(', ')}; ` +
+          'los valores por defecto son públicos (están en el repositorio).',
+      );
+    }
+  }
+
   return parsed.data;
 }
 

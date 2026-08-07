@@ -36,6 +36,50 @@ export class TenantContextError extends Error {
   }
 }
 
+
+/**
+ * Transacción con ajustes LOCAL fijados, y con el detalle que separa un
+ * proceso robusto de uno que se cae solo:
+ *
+ * Cuando Postgres termina un backend —failover, `pg_terminate_backend`, el
+ * contenedor que se reinicia a mitad del despliegue—, el cliente YA PRESTADO
+ * emite un evento `error`. Un EventEmitter sin oyentes convierte ese evento en
+ * una excepción no capturada, y una excepción no capturada tumba el proceso
+ * ENTERO. Es decir: perder una conexión mataría toda la API, no solo la
+ * petición en curso. El oyente vacío deja que el fallo llegue por donde debe,
+ * como rechazo de la consulta en vuelo, y se retira al liberar el cliente para
+ * no acumular oyentes en una conexión reutilizada.
+ *
+ * Lo descubrió la prueba de caos de ingesta (T4.15).
+ */
+async function inTransaction<T>(
+  pool: Pool,
+  settings: ReadonlyArray<readonly [string, string]>,
+  work: (ctx: { db: Db; client: PoolClient }) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  const ignorarErrorDeConexion = (): void => undefined;
+  client.on('error', ignorarErrorDeConexion);
+  try {
+    await client.query('BEGIN');
+    for (const [clave, valor] of settings) {
+      // Parametrizado y LOCAL a la transacción: al terminar, el valor se
+      // descarta y la conexión vuelve limpia al pool.
+      await client.query('SELECT set_config($1, $2, true)', [clave, valor]);
+    }
+    const db = drizzle(client, { schema });
+    const result = await work({ db, client });
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.off('error', ignorarErrorDeConexion);
+    client.release();
+  }
+}
+
 /**
  * Ejecuta `work` dentro de una transacción con `app.tenant_id` fijado a
  * `tenantId`. La RLS de Postgres restringe cada consulta a ese tenant.
@@ -50,24 +94,9 @@ export async function withTenant<T>(
     // Defensa en profundidad: un tenant_id malformado nunca debe llegar a SQL.
     throw new TenantContextError(`tenant_id inválido: ${tenantId}`);
   }
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    // LOCAL a la transacción; parametrizado.
-    await client.query('SELECT set_config($1, $2, true)', [
-      'app.tenant_id',
-      tenantId,
-    ]);
-    const db = drizzle(client, { schema });
-    const result = await work({ db, client, tenantId });
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
-  }
+  return inTransaction(pool, [['app.tenant_id', tenantId]], ({ db, client }) =>
+    work({ db, client, tenantId }),
+  );
 }
 
 /**
@@ -83,20 +112,7 @@ export async function withSystem<T>(
   pool: Pool,
   work: (ctx: { db: Db; client: PoolClient }) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('SELECT set_config($1, $2, true)', ['app.system', 'on']);
-    const db = drizzle(client, { schema });
-    const result = await work({ db, client });
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
-  }
+  return inTransaction(pool, [['app.system', 'on']], work);
 }
 
 /**
@@ -116,21 +132,27 @@ export async function withAuthLookup<T>(
   pool: Pool,
   work: (ctx: { db: Db; client: PoolClient }) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('SELECT set_config($1, $2, true)', [
-      'app.auth_lookup',
-      'on',
-    ]);
-    const db = drizzle(client, { schema });
-    const result = await work({ db, client });
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
-  }
+  return inTransaction(pool, [['app.auth_lookup', 'on']], work);
+}
+
+/**
+ * Contexto de RESOLUCIÓN DE CONEXIÓN DE INTEGRACIÓN. Mismo problema que el
+ * login y misma forma de resolverlo: el webhook de un marketplace llega sin
+ * ningún token nuestro, solo con el `webhook_token` opaco de la URL, así que la
+ * conexión —y con ella el tenant— hay que resolverla ANTES de tener contexto.
+ *
+ * Restricciones deliberadas, idénticas a `withAuthLookup` (ADR-0014):
+ *  - Solo lectura: la política `integration_lookup` es `FOR SELECT`.
+ *  - Solo `int_connections`: ninguna otra tabla consulta este flag.
+ *  - Uso acotado: exclusivamente el paso de resolver la conexión. Escribir el
+ *    evento entrante ya va por `withTenant` con el tenant recién resuelto.
+ *
+ * Resolver la conexión NO autoriza nada: la firma HMAC se verifica después, y
+ * un token válido con firma inválida se rechaza sin encolar (RN-INT-01).
+ */
+export async function withIntegrationLookup<T>(
+  pool: Pool,
+  work: (ctx: { db: Db; client: PoolClient }) => Promise<T>,
+): Promise<T> {
+  return inTransaction(pool, [['app.integration_lookup', 'on']], work);
 }

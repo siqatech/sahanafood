@@ -116,6 +116,40 @@ export const tenantLimitExceeded = new Counter({
   registers: [registry],
 });
 
+// ------------------------------------------------------- Integraciones
+
+/**
+ * Ingesta de marketplaces. La etiqueta es el PROVEEDOR, no el tenant: el número
+ * de proveedores está acotado (son integraciones que se certifican una a una),
+ * así que la cardinalidad no se dispara, y cuando algo se rompe lo hace por
+ * proveedor —un cambio de formato de Rappi afecta a todos sus tenants a la vez.
+ */
+export const webhooksReceived = new Counter({
+  name: 'sahana_webhooks_received_total',
+  help: 'Webhooks de integración recibidos con conexión válida',
+  labelNames: ['provider'] as const,
+  registers: [registry],
+});
+
+export const webhooksRejected = new Counter({
+  name: 'sahana_webhooks_rejected_total',
+  help: 'Webhooks rechazados sin encolar (firma inválida, conexión pausada)',
+  labelNames: ['provider', 'reason'] as const,
+  registers: [registry],
+});
+
+/**
+ * Desenlace de cada envío procesado. `outcome=needs_review` subiendo significa
+ * que el mapeo de catálogo se rompió: el canal sigue vendiendo algo que no
+ * sabemos preparar, y eso se paga en cancelaciones.
+ */
+export const webhooksProcessed = new Counter({
+  name: 'sahana_webhooks_processed_total',
+  help: 'Webhooks procesados por desenlace',
+  labelNames: ['provider', 'outcome'] as const, // order | needs_review | failed
+  registers: [registry],
+});
+
 /** Devuelve las métricas en formato de exposición Prometheus. */
 export async function renderMetrics(): Promise<string> {
   return registry.metrics();
