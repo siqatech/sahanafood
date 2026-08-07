@@ -69,6 +69,49 @@ const discountSchema = z
     message: 'Indica amountMinor O bps (exactamente uno de los dos).',
   });
 
+const offlineLineSchema = z.object({
+  productId: z.string().uuid(),
+  productName: z.string().min(1),
+  quantity: z.number().int().positive(),
+  unitPriceMinor: z.number().int().nonnegative(),
+  lineTotalMinor: z.number().int().nonnegative(),
+  modifiersTotalMinor: z.number().int().optional(),
+  discountMinor: z.number().int().nonnegative().optional(),
+  modifiers: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        priceDeltaMinor: z.number().int(),
+      }),
+    )
+    .optional(),
+  notes: z.string().max(500).optional(),
+});
+
+const offlineOrderSchema = z.object({
+  clientId: z.string().min(10).max(64),
+  brandId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  channel: z.string().min(1).optional(),
+  lines: z.array(offlineLineSchema).min(1),
+  totalMinor: z.number().int().nonnegative(),
+  discountTotalMinor: z.number().int().nonnegative().optional(),
+  deliveryFeeMinor: z.number().int().nonnegative().optional(),
+  tipMinor: z.number().int().nonnegative().optional(),
+  taxRateBps: z.number().int().nonnegative().max(10_000).optional(),
+  customerName: z.string().max(200).optional(),
+  customerPhone: z.string().max(40).optional(),
+  notes: z.string().max(1000).optional(),
+  soldAt: z.string().datetime().optional(),
+});
+
+const syncBatchSchema = z.object({
+  // Lote acotado: un POS que estuvo un día sin red podría mandar cientos, y
+  // una petición gigante que falla a mitad reintenta el trabajo entero.
+  orders: z.array(offlineOrderSchema).min(1).max(100),
+});
+
 const resolveMappingSchema = z.object({
   lines: z
     .array(lineSchema)
@@ -153,6 +196,77 @@ export class OrderingController {
       actorId: req.auth!.sub,
       ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
     });
+  }
+
+  /**
+   * Sincronización del POS offline (RN-T07, ADR-0008).
+   *
+   * Procesa el lote pedido a pedido y responde por CADA UNO: la PWA necesita
+   * saber cuáles marcar como sincronizados y cuáles reintentar. Un lote que
+   * falla entero por culpa de un pedido obligaría a reenviar los 99 que sí
+   * entraron, y la segunda vuelta chocaría contra el dedupe sin necesidad.
+   */
+  @Post('sync')
+  @RequirePermission('orders.create')
+  async sync(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<{
+    results: Array<{
+      clientId: string;
+      outcome: string;
+      orderId?: string;
+      orderNumber?: number;
+      alerts?: string[];
+      error?: string;
+    }>;
+    accepted: number;
+    duplicates: number;
+    failed: number;
+  }> {
+    const dto = parse(syncBatchSchema, body);
+    const results: Array<{
+      clientId: string;
+      outcome: string;
+      orderId?: string;
+      orderNumber?: number;
+      alerts?: string[];
+      error?: string;
+    }> = [];
+
+    let accepted = 0;
+    let duplicates = 0;
+    let failed = 0;
+
+    for (const pedido of dto.orders) {
+      try {
+        const r = await this.ordering.submitOffline(req.auth!.tid, {
+          ...pedido,
+          actorId: req.auth!.sub,
+          ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
+        });
+        results.push({
+          clientId: pedido.clientId,
+          outcome: r.outcome,
+          orderId: r.order.id,
+          orderNumber: r.order.orderNumber,
+          alerts: r.alerts,
+        });
+        if (r.outcome === 'duplicate') duplicates++;
+        else accepted++;
+      } catch (error) {
+        // Un fallo de infraestructura en UN pedido no puede tumbar el lote:
+        // se informa y la PWA lo reintentará solo a él.
+        failed++;
+        results.push({
+          clientId: pedido.clientId,
+          outcome: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return { results, accepted, duplicates, failed };
   }
 
   @Get()

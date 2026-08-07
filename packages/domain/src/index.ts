@@ -123,3 +123,13 @@ export {
   type DiscountApprovalCheck,
   type DiscountApprovalResult,
 } from './pricing/discount-policy.js';
+
+// --- POS offline (ADR-0008, RN-T07) ---
+export {
+  SyncQueue,
+  backoffFor,
+  DEFAULT_SYNC_OPTIONS,
+  type SyncItem,
+  type SyncItemStatus,
+  type SyncQueueOptions,
+} from './offline/sync-queue.js';

@@ -347,6 +347,39 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('POST /orders/sync (POS offline)', async () => {
+    // El ULID de cliente es del tenant que lo manda: si el endpoint no filtrara,
+    // B podría sincronizar pedidos contra la marca y el local de A.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /orders/sync',
+        (r) =>
+          r.post('/api/v1/orders/sync').send({
+            orders: [
+              {
+                clientId: `01JISO${Date.now()}${Math.floor(Math.random() * 1000)}`,
+                brandId: demoA.brandIds[0],
+                locationId: demoA.locationId,
+                channel: 'pos',
+                lines: [
+                  {
+                    productId: catA.comboId,
+                    productName: 'Combo familiar',
+                    quantity: 1,
+                    unitPriceMinor: 380_000,
+                    lineTotalMinor: 380_000,
+                  },
+                ],
+                totalMinor: 380_000,
+              },
+            ],
+          }),
+        { expectedStatusForA: [201] },
+      ),
+    );
+  });
+
   it('GET /cash-sessions', async () => {
     await assertEndpointIsolation(
       app,

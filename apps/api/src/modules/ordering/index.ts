@@ -21,6 +21,9 @@ export {
   type SubmitOrderInput,
   type SubmitLineInput,
   type OrderSummary,
+  type OfflineOrderInput,
+  type OfflineOrderLine,
+  type OfflineSubmitResult,
 } from './app/ordering.service.js';
 export {
   AcceptanceService,

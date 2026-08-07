@@ -6,6 +6,7 @@ import {
   Money,
   calculateOrderTotals,
   extractInclusiveTax,
+  compareTotals,
   transitionOrder,
   canModify as canModifyOrder,
   checkDiscountApproval,
@@ -186,6 +187,48 @@ export interface OrderSummary {
   rowVersion: number;
   /** true si la petición se resolvió por dedupe/idempotencia (RN-ORD-03). */
   deduplicated?: boolean;
+}
+
+/** Línea vendida sin red, con su snapshot de precios ya calculado en el POS. */
+export interface OfflineOrderLine {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPriceMinor: number;
+  lineTotalMinor: number;
+  modifiersTotalMinor?: number | undefined;
+  discountMinor?: number | undefined;
+  modifiers?: Array<{ id: string; name: string; priceDeltaMinor: number }> | undefined;
+  notes?: string | undefined;
+}
+
+export interface OfflineOrderInput {
+  /** ULID generado en el POS. Es la clave de dedupe (ADR-0010). */
+  clientId: string;
+  brandId: string;
+  locationId: string;
+  channel?: string | undefined;
+  lines: OfflineOrderLine[];
+  /** Total que el POS cobró de verdad. Prevalece sobre el recalculado. */
+  totalMinor: number;
+  discountTotalMinor?: number | undefined;
+  deliveryFeeMinor?: number | undefined;
+  tipMinor?: number | undefined;
+  taxRateBps?: number | undefined;
+  customerName?: string | undefined;
+  customerPhone?: string | undefined;
+  notes?: string | undefined;
+  /** Instante real de la venta en el local. */
+  soldAt?: string | undefined;
+  actorId?: string | undefined;
+  traceId?: string | undefined;
+}
+
+export interface OfflineSubmitResult {
+  order: OrderSummary;
+  outcome: 'accepted' | 'accepted_with_alerts' | 'duplicate';
+  /** Inconsistencias detectadas. NUNCA bloquean el pedido (RN-T07). */
+  alerts: string[];
 }
 
 /** Margen sobre el tiempo de preparación para liberar un programado (RN-ORD-05). */
@@ -784,6 +827,222 @@ export class OrderingService {
     return existingCtx
       ? fetch(existingCtx)
       : withTenant(this.pool, tenantId, fetch);
+  }
+
+  // ------------------------------------- Sincronización offline (RN-T07)
+
+  /**
+   * Ingresa un pedido vendido SIN RED (RN-T07, ADR-0008, spec 05 §5 F3).
+   *
+   * La regla es una y no admite excepciones: **la venta offline nunca se
+   * rechaza al sincronizar**. El cliente ya se fue con su comida y su boleta;
+   * el servidor no puede decidir tres horas después que ese pedido no existió.
+   *
+   * De ahí las tres diferencias con `submit()`:
+   *
+   * 1. **Los importes vienen del SNAPSHOT del POS, no del catálogo actual.** Si
+   *    el precio cambió mientras el local estaba sin red, prevalece el que se
+   *    le cobró al cliente. Recalcular produciría un pedido que no coincide con
+   *    el ticket que la persona tiene en la mano.
+   * 2. **Ninguna validación bloquea.** Producto retirado, fuera de cobertura,
+   *    bajo el mínimo: todo eso genera ALERTA y el pedido entra igual.
+   * 3. **Los totales del POS se comparan con los del servidor** y la diferencia,
+   *    si la hay, se alerta. Es la comprobación que detecta que el dominio
+   *    compartido dejó de estar sincronizado entre ambos lados.
+   *
+   * El dedupe lo da el índice único `(tenant, channel, external_ref)` con el
+   * ULID del cliente: reenviar el mismo lote no crea pedidos nuevos.
+   */
+  async submitOffline(
+    tenantId: string,
+    input: OfflineOrderInput,
+  ): Promise<OfflineSubmitResult> {
+    // Dedupe primero: un reintento de sincronización es lo normal, no la
+    // excepción, y no debe costar ni una transacción de escritura.
+    const existente = await this.findByExternalRef(
+      tenantId,
+      input.channel ?? 'pos',
+      input.clientId,
+    );
+    if (existente) {
+      return { order: existente, outcome: 'duplicate', alerts: [] };
+    }
+
+    const canal = input.channel ?? 'pos';
+    const alerts: string[] = [];
+
+    // Se contrasta contra el catálogo VIGENTE solo para detectar diferencias;
+    // el importe que manda sigue siendo el del snapshot.
+    let catalogoActual: Map<string, { name: string; priceMinor: number }>;
+    try {
+      const catalogo = await this.catalog.getResolvedCatalog(tenantId, {
+        brandId: input.brandId,
+        channel: canal,
+        locationId: input.locationId,
+      });
+      catalogoActual = new Map(
+        catalogo.products.map((p) => [
+          p.id,
+          { name: p.name, priceMinor: p.price.minorUnits },
+        ]),
+      );
+    } catch {
+      // Ni siquiera poder leer el catálogo puede impedir que la venta entre.
+      catalogoActual = new Map();
+      alerts.push(
+        'No se pudo contrastar contra el catálogo vigente al sincronizar.',
+      );
+    }
+
+    let subtotal = Money.zero();
+    for (const linea of input.lines) {
+      const actual = catalogoActual.get(linea.productId);
+      if (!actual) {
+        alerts.push(
+          `El producto "${linea.productName}" ya no está disponible en el canal; se acepta con el precio del ticket.`,
+        );
+      } else if (actual.priceMinor !== linea.unitPriceMinor) {
+        // RN-T07: prevalece el precio del snapshot. La alerta existe para que
+        // alguien revise el margen, no para corregir el pedido.
+        alerts.push(
+          `El precio de "${linea.productName}" cambió (${Money.fromMinor(linea.unitPriceMinor).toDecimalString()} → ${Money.fromMinor(actual.priceMinor).toDecimalString()}); prevalece el del ticket.`,
+        );
+      }
+      subtotal = subtotal.add(Money.fromMinor(linea.lineTotalMinor));
+    }
+
+    const envio = Money.fromMinor(input.deliveryFeeMinor ?? 0);
+    const propina = Money.fromMinor(input.tipMinor ?? 0);
+    const descuento = Money.fromMinor(input.discountTotalMinor ?? 0);
+    const base = subtotal.subtract(descuento).add(envio);
+    const totalServidor = base.add(propina);
+    const impuesto = extractInclusiveTax(base, input.taxRateBps ?? 1800);
+
+    // Comparación POS ↔ servidor: es lo que detecta que el dominio compartido
+    // dejó de estar sincronizado entre ambos lados, que sería un fallo grave y
+    // silencioso.
+    const reportado = Money.fromMinor(input.totalMinor);
+    const comparacion = compareTotals(totalServidor, reportado);
+    if (!comparacion.matches) {
+      alerts.push(
+        `El total del POS (${reportado.toDecimalString()}) no coincide con el recalculado (${totalServidor.toDecimalString()}); prevalece el del ticket.`,
+      );
+    }
+    // Prevalece SIEMPRE el del ticket: es lo que el cliente pagó.
+    const total = reportado;
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const orderNumber = await this.nextOrderNumber(ctx);
+
+      const [order] = await ctx.db
+        .insert(schema.orders)
+        .values({
+          tenantId,
+          brandId: input.brandId,
+          locationId: input.locationId,
+          orderNumber,
+          channel: canal,
+          externalRef: input.clientId,
+          // La venta offline entra ya aceptada: se cobró y se entregó. Nacer
+          // en `received` invitaría a que el barrido la rechazara sola.
+          status: 'accepted',
+          customerName: input.customerName ?? null,
+          customerPhone: input.customerPhone ?? null,
+          subtotal: subtotal.toDecimalString(),
+          discountTotal: descuento.toDecimalString(),
+          deliveryFee: envio.toDecimalString(),
+          tip: propina.toDecimalString(),
+          total: total.toDecimalString(),
+          taxableBase: base.toDecimalString(),
+          tax: impuesto.tax.toDecimalString(),
+          taxRateBps: input.taxRateBps ?? 1800,
+          acceptedAt: new Date(),
+          notes: input.notes ?? null,
+        })
+        .returning({ id: schema.orders.id });
+
+      const orderId = order!.id;
+
+      await ctx.db.insert(schema.orderLines).values(
+        input.lines.map((l) => ({
+          tenantId,
+          orderId,
+          productId: l.productId,
+          productName: l.productName,
+          quantity: l.quantity,
+          unitPrice: Money.fromMinor(l.unitPriceMinor).toDecimalString(),
+          modifiersTotal: Money.fromMinor(
+            l.modifiersTotalMinor ?? 0,
+          ).toDecimalString(),
+          discount: Money.fromMinor(l.discountMinor ?? 0).toDecimalString(),
+          lineTotal: Money.fromMinor(l.lineTotalMinor).toDecimalString(),
+          modifiers: l.modifiers ?? [],
+          notes: l.notes ?? null,
+        })),
+      );
+
+      await this.appendEvent(ctx, {
+        orderId,
+        event: 'submit',
+        fromStatus: null,
+        toStatus: 'accepted',
+        actorType: 'system',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        data: {
+          offline: true,
+          clientId: input.clientId,
+          soldAt: input.soldAt ?? null,
+        },
+      });
+
+      // Las alertas van al TIMELINE del pedido, no a un log: quien revise ese
+      // pedido mañana tiene que ver por qué se marcó, sin buscar en otro sitio.
+      if (alerts.length > 0) {
+        await this.appendEvent(ctx, {
+          orderId,
+          event: 'offline_alert',
+          fromStatus: 'accepted',
+          toStatus: 'accepted',
+          actorType: 'system',
+          reason: alerts.join(' | '),
+          ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+          data: { alerts },
+        });
+
+        await recordAudit(ctx, {
+          actorType: 'system',
+          action: 'order.offline_alert',
+          resourceType: 'order',
+          resourceId: orderId,
+          reason: alerts.join(' | '),
+          ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+          data: { clientId: input.clientId, alerts },
+        });
+      }
+
+      await enqueueEvent(ctx, {
+        aggregateType: 'order',
+        aggregateId: orderId,
+        eventType: 'order.accepted',
+        payload: {
+          orderId,
+          orderNumber,
+          channel: canal,
+          offline: true,
+          total: total.toJSON(),
+          alerts: alerts.length,
+        },
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+      });
+
+      const resumen = await this.getSummary(tenantId, orderId, ctx);
+      return {
+        order: resumen,
+        outcome: alerts.length > 0 ? 'accepted_with_alerts' : 'accepted',
+        alerts,
+      };
+    });
   }
 
   // ------------------------------------------- Descuentos (RN-T08, RN-POS-03)
