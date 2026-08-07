@@ -347,6 +347,24 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /kitchen/queue', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /kitchen/queue', (r) =>
+        r.get(`/api/v1/kitchen/queue?kitchen=${demoA.kitchenId}`),
+      ),
+    );
+  });
+
+  it('GET /kitchen/load', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /kitchen/load', (r) =>
+        r.get(`/api/v1/kitchen/load?kitchen=${demoA.kitchenId}`),
+      ),
+    );
+  });
+
   it('GET /catalog/resolved', async () => {
     // Ambos tenants tienen catálogos con la MISMA estructura y nombres: si
     // hubiera fuga, no se notaría por el contenido, solo por los ids.

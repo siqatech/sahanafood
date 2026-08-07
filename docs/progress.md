@@ -12,7 +12,7 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
 | **Fase 3 — Fundamentos** | **En ejecución** | Negocio y observabilidad completos, verificados contra Postgres real (**198 pruebas en verde**: 101 API + 97 dominio). Queda T3.16 (Terraform) y el gate T3.18 |
-| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.15 (totales, catálogo, pedidos con dedupe, modificación con control optimista, aceptación automática con vencimiento, bandeja de excepciones resoluble, simulador de marketplace y **prueba de caos con cero pérdida**). catálogo versionado con diff). **477 pruebas en verde** (201 dominio + 276 API). Siguiente: T4.16 (KDS) y T4.17–T4.19 (caja y arqueo) |
+| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.15 (totales, catálogo, pedidos con dedupe, modificación con control optimista, aceptación automática con vencimiento, bandeja de excepciones resoluble, simulador de marketplace y **prueba de caos con cero pérdida**). catálogo versionado con diff, **KDS con el ciclo de eventos cerrado**). **495 pruebas en verde** (201 dominio + 294 API). Siguiente: T4.17–T4.19 (caja, arqueo y descuentos con PIN) |
 | Fases 5–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
@@ -60,9 +60,10 @@ Backlog completo (32 tareas) en `specs/phases/phase-4-operacion.md`. Aquí solo 
 | **T4.13** | **Bandeja de excepciones + `resolve-mapping`** | **Finalizada** | `POST /orders/:id/resolve-mapping` recalcula el pedido apartado con el catálogo vigente y lo devuelve al flujo; permiso `orders.review_exceptions`; resolver dos veces → 409 |
 | **T4.14** | **Simulador de marketplace (spec 13)** | **Finalizada** | `ChannelConnector` + simulador **reproducible por semilla**; ack < 250 ms medido; firma HMAC sobre el cuerpo crudo; credenciales cifradas por tenant (AES-256-GCM + HKDF, tenant como AAD); cortacircuitos por conexión |
 | **T4.15** | **Prueba de caos de ingesta** | **Finalizada** | **Cero pérdida verificada matando el worker con `pg_terminate_backend`** a media faena, 6 rondas: todo webhook con ack acaba en pedido o en `needs_review`, sin duplicados, sin cola de muertos y sin cerrojos zombis |
-| T4.16–T4.32 | Resto del backlog | Pendiente | — |
+| **T4.16** | **KDS: cocina ve los pedidos** | **Finalizada** | Migración `0013_kitchen.sql`; **un ticket por estación** con snapshot de sus líneas; el pedido pasa a `ready` solo con TODOS los tickets listos (RN-KIT-02); empaque con checklist obligatorio y **etiqueta con la marca correcta verificada con dos marcas simultáneas**; `GET /kitchen/load`. **Cierra el ciclo de eventos**: consumidor BullMQ con `inbox` en la misma transacción que el efecto (exactamente-una-vez efectivo). **SLO medido**: aceptado → visible en cocina < 5 s por el camino completo |
+| T4.17–T4.32 | Resto del backlog | Pendiente | — |
 
 **Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql` · resolver PA-01/02/03 (`docs/22-risks.md`) · **definir `CREDENTIALS_MASTER_KEY` en cada entorno** (sin ella no arranca en producción, y rotarla obliga a recifrar).
 **Deuda saldada:** el worker (`apps/api/src/workers/main.ts`, `make worker`) ya dispara el relay del outbox y el barrido de aceptación. Verificado de dos formas: pruebas que ejecutan el mismo `PeriodicJob` de producción contra **BullMQ y Postgres reales** (el evento sale del outbox y llega a la cola), y arranque del proceso completo con apagado limpio ante SIGTERM.
 
-**Próxima acción de Claude Code:** T4.16 (KDS: el pedido por fin visible en cocina) y T4.17–T4.19 (sesiones de caja, arqueo y descuentos con PIN).
+**Próxima acción de Claude Code:** T4.17–T4.19 (sesiones de caja, arqueo y descuentos con PIN).

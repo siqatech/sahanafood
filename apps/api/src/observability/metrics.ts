@@ -151,6 +151,40 @@ export const workerRunDuration = new Histogram({
   registers: [registry],
 });
 
+// ------------------------------------------------ Consumo de eventos
+
+/**
+ * Consumo del inbox. `outcome=skipped` NO es un fallo: es una entrega repetida
+ * correctamente descartada, y verla subir confirma que el exactamente-una-vez
+ * está trabajando. Lo preocupante es que `processed` se estanque mientras el
+ * outbox crece: eso significa que los eventos salen pero nadie los aplica.
+ */
+export const eventsConsumed = new Counter({
+  name: 'sahana_events_consumed_total',
+  help: 'Eventos de dominio consumidos, por desenlace',
+  labelNames: ['consumer', 'event_type', 'outcome'] as const,
+  registers: [registry],
+});
+
+export const eventsConsumeErrors = new Counter({
+  name: 'sahana_events_consume_errors_total',
+  help: 'Fallos al consumir eventos de dominio',
+  labelNames: ['consumer', 'event_type'] as const,
+  registers: [registry],
+});
+
+/**
+ * Latencia de aceptado → visible en cocina. Es el SLO de la spec 07 (< 5 s) y
+ * la única métrica que dice si el KDS sirve: un pedido que tarda medio minuto
+ * en aparecer ya salió tarde aunque todo lo demás esté verde.
+ */
+export const kitchenTicketLatency = new Histogram({
+  name: 'sahana_kitchen_ticket_latency_seconds',
+  help: 'Segundos entre aceptar el pedido y tener su ticket en cocina',
+  buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+  registers: [registry],
+});
+
 // ------------------------------------------------------- Integraciones
 
 /**

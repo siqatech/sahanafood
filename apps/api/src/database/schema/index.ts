@@ -304,6 +304,8 @@ export const stations = pgTable(
     tenantId: uuid('tenant_id').notNull(),
     kitchenId: uuid('kitchen_id').notNull(),
     name: text('name').notNull(),
+    /** Tipo acordado por el tenant: grill, fry, assembly, drinks... */
+    kind: text('kind'),
     sortOrder: integer('sort_order').notNull().default(0),
     active: boolean('active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -474,6 +476,8 @@ export const products = pgTable(
     imageUrl: text('image_url'),
     allergens: jsonb('allergens').notNull().default([]),
     prepMinutes: integer('prep_minutes').notNull().default(10),
+    /** Estación que lo prepara; NULL = estación por defecto de la cocina. */
+    stationKind: text('station_kind'),
     isCombo: boolean('is_combo').notNull().default(false),
     active: boolean('active').notNull().default(true),
     rowVersion: integer('row_version').notNull().default(1),
@@ -826,4 +830,49 @@ export const integrationWebhookEvents = pgTable(
     processedAt: timestamp('processed_at', { withTimezone: true }),
   },
   (t) => [index('idx_int_webhook_tenant').on(t.tenantId, t.receivedAt)],
+);
+
+// --- Cocina / KDS (módulo 07) ---
+
+export const kitchenTickets = pgTable(
+  'kit_tickets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    orderId: uuid('order_id').notNull(),
+    kitchenId: uuid('kitchen_id').notNull(),
+    stationId: uuid('station_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    status: text('status').notNull().default('pending'),
+    orderNumber: integer('order_number').notNull(),
+    promisedAt: timestamp('promised_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    readyAt: timestamp('ready_at', { withTimezone: true }),
+    rowVersion: integer('row_version').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_tickets_order').on(t.tenantId, t.orderId)],
+);
+
+export const kitchenTicketLines = pgTable(
+  'kit_ticket_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    ticketId: uuid('ticket_id').notNull(),
+    orderLineId: uuid('order_line_id'),
+    productName: text('product_name').notNull(),
+    quantity: integer('quantity').notNull(),
+    modifiersText: text('modifiers_text'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_ticket_lines_ticket').on(t.tenantId, t.ticketId)],
 );

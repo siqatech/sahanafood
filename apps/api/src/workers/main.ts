@@ -7,7 +7,18 @@ import { CONFIG, type AppConfig } from '../config/config.js';
 import { PG_POOL } from '../database/database.module.js';
 import { AcceptanceService } from '../modules/ordering/index.js';
 import { relayOnce, pendingCount, oldestPendingAgeSeconds } from '../events/outbox.js';
-import { createQueuePublisher, createRedis } from '../events/queue.js';
+import {
+  createQueuePublisher,
+  createRedis,
+  DOMAIN_EVENTS_QUEUE,
+} from '../events/queue.js';
+import { consumeEvent } from '../events/consumer.js';
+import {
+  KitchenEventHandlers,
+  KITCHEN_CONSUMER,
+  type DomainEventMessage,
+} from '../modules/kitchen/index.js';
+import { Worker } from 'bullmq';
 import { outboxPending, outboxOldestPendingSeconds } from '../observability/metrics.js';
 import { startTracing, stopTracing } from '../observability/tracing.js';
 import { PeriodicJob } from './periodic-job.js';
@@ -51,6 +62,34 @@ async function bootstrap(): Promise<void> {
   const redis = createRedis(config.redisUrl);
   const publisher = createQueuePublisher(redis);
 
+  // Consumidor de eventos de dominio. Es lo que hace que cocina se entere de
+  // los pedidos: sin él, `order.accepted` sería un evento que nadie escucha.
+  // Conexión propia porque BullMQ bloquea la suya esperando trabajo, y
+  // compartirla con el publicador dejaría al relay esperando su turno.
+  const consumerRedis = createRedis(config.redisUrl);
+  const handlers = app.get(KitchenEventHandlers).handlers();
+  const consumer = new Worker<DomainEventMessage>(
+    DOMAIN_EVENTS_QUEUE,
+    async (job) => {
+      const resultado = await consumeEvent(
+        { pool, consumer: KITCHEN_CONSUMER, handlers },
+        job.data,
+      );
+      if (resultado === 'processed') {
+        logger.debug(`Evento aplicado: ${job.data.eventType}`);
+      }
+    },
+    { connection: consumerRedis, concurrency: 4 },
+  );
+
+  consumer.on('failed', (job, error) => {
+    // BullMQ reintenta con backoff (5 intentos). Se registra cada fallo porque
+    // un evento que agota los intentos es un pedido sin ticket.
+    logger.error(
+      `Evento ${job?.data?.eventType ?? 'desconocido'} falló (intento ${job?.attemptsMade ?? 0}): ${error.message}`,
+    );
+  });
+
   const relay = new PeriodicJob({
     name: 'outbox-relay',
     intervalMs: config.worker.outboxIntervalMs,
@@ -90,7 +129,9 @@ async function bootstrap(): Promise<void> {
   relay.start();
   aceptacion.start();
   logger.log(
-    `Worker activo — relay cada ${config.worker.outboxIntervalMs} ms, aceptación cada ${config.worker.acceptanceIntervalMs} ms.`,
+    `Worker activo — relay cada ${config.worker.outboxIntervalMs} ms, ` +
+      `aceptación cada ${config.worker.acceptanceIntervalMs} ms, ` +
+      `consumidor "${KITCHEN_CONSUMER}" escuchando ${Object.keys(handlers).length} tipos de evento.`,
   );
 
   let cerrando = false;
@@ -102,8 +143,12 @@ async function bootstrap(): Promise<void> {
     // que esté viva, y solo entonces se cierran cola, Redis y pool. Cerrarlos
     // antes abortaría una transacción a medias en cada despliegue.
     await Promise.all([relay.stop(), aceptacion.stop()]);
+    // `close()` del consumidor espera a que termine el job en curso: matarlo a
+    // mitad dejaría una transacción abortada y el evento por reintentar.
+    await consumer.close();
     await publisher.close();
     redis.disconnect();
+    consumerRedis.disconnect();
     await app.close();
     await stopTracing();
     logger.log('Worker detenido limpiamente.');

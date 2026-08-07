@@ -15,6 +15,7 @@ import { OrganizationModule } from './modules/organization/index.js';
 import { CatalogModule } from './modules/catalog/index.js';
 import { OrderingModule } from './modules/ordering/index.js';
 import { IntegrationsModule } from './modules/integrations/index.js';
+import { KitchenModule } from './modules/kitchen/index.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 
 /**
@@ -53,6 +54,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     CatalogModule,
     OrderingModule,
     IntegrationsModule,
+    KitchenModule,
     ObservabilityModule,
   ],
 })
