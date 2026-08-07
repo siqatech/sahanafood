@@ -14,6 +14,8 @@ import {
   boolean,
   timestamp,
   integer,
+  numeric,
+  doublePrecision,
   primaryKey,
   index,
 } from 'drizzle-orm/pg-core';
@@ -195,4 +197,188 @@ export const sessions = pgTable(
     rotatedAt: timestamp('rotated_at', { withTimezone: true }),
   },
   (t) => [index('idx_sessions_user').on(t.tenantId, t.userId)],
+);
+
+// --- Organization (módulo 03) ---
+
+export const companies = pgTable(
+  'org_companies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    legalName: text('legal_name').notNull(),
+    taxId: text('tax_id').notNull(),
+    address: text('address'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_companies_tenant').on(t.tenantId)],
+);
+
+export const brands = pgTable(
+  'org_brands',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    companyId: uuid('company_id').notNull(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    domain: text('domain'),
+    branding: jsonb('branding').notNull().default({}),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_brands_tenant').on(t.tenantId)],
+);
+
+export const locations = pgTable(
+  'org_locations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    companyId: uuid('company_id').notNull(),
+    name: text('name').notNull(),
+    address: text('address').notNull(),
+    lat: doublePrecision('lat'),
+    lng: doublePrecision('lng'),
+    timezone: text('timezone').notNull().default('America/Lima'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_locations_tenant').on(t.tenantId)],
+);
+
+export const kitchens = pgTable(
+  'org_kitchens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    locationId: uuid('location_id').notNull(),
+    name: text('name').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_kitchens_tenant').on(t.tenantId)],
+);
+
+/** Marca ⟷ Cocina: M:N (RN-ORG-01). Nunca anidar marca dentro de local. */
+export const brandKitchens = pgTable(
+  'org_brand_kitchens',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    kitchenId: uuid('kitchen_id').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.brandId, t.kitchenId] })],
+);
+
+export const stations = pgTable(
+  'org_stations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    kitchenId: uuid('kitchen_id').notNull(),
+    name: text('name').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_stations_kitchen').on(t.tenantId, t.kitchenId)],
+);
+
+export const warehouses = pgTable(
+  'org_warehouses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    locationId: uuid('location_id').notNull(),
+    name: text('name').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_warehouses_tenant').on(t.tenantId)],
+);
+
+/**
+ * Zona de cobertura. `deliveryFee` y `minOrder` son NUMERIC(14,4): Drizzle los
+ * entrega como string para no perder precisión, y se convierten a Money en el
+ * servicio. Nunca se leen como number (ADR-0006/0013).
+ */
+export const zones = pgTable(
+  'org_zones',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id'),
+    locationId: uuid('location_id').notNull(),
+    name: text('name').notNull(),
+    polygon: jsonb('polygon').notNull(),
+    minLng: doublePrecision('min_lng').notNull(),
+    minLat: doublePrecision('min_lat').notNull(),
+    maxLng: doublePrecision('max_lng').notNull(),
+    maxLat: doublePrecision('max_lat').notNull(),
+    deliveryFee: numeric('delivery_fee', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    minOrder: numeric('min_order', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    baseMinutes: integer('base_minutes').notNull().default(30),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_zones_tenant_brand').on(t.tenantId, t.brandId)],
+);
+
+export const schedules = pgTable(
+  'org_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id'),
+    locationId: uuid('location_id').notNull(),
+    channel: text('channel'),
+    weekly: jsonb('weekly').notNull().default([]),
+    exceptions: jsonb('exceptions').notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_schedules_location').on(t.tenantId, t.locationId)],
 );

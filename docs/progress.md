@@ -6,11 +6,12 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 |---|---|---|
 | Fase 0 — Investigación | Finalizada | Doc maestro v0.1 + revisión comité v0.2 + anexos C/D |
 | Fase 1 — Definición de producto | Propuesta | docs/00–07; validar con entrevistas (DP-08) |
-| Fase 2 — Arquitectura base | Propuesta | ADR-0001..0014; pendientes de F2: threat model STRIDE + fichas docs/repositories/ |
+| Fase 2 — Arquitectura base | Propuesta | ADR-0001..0015; pendientes de F2: threat model STRIDE + fichas docs/repositories/ |
 | ADR-0006 (stack) | **Aceptada** | DP-01 resuelto: la ejecución es en TypeScript/NestJS. Reversa solo si el equipo humano es de perfil PHP (§8) |
 | ADR-0013 (Money escala 4) | Aceptada | Representación interna de `Money` documentada e implementada |
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
-| **Fase 3 — Fundamentos** | **En ejecución** | Núcleo + identidad/tenancy/auditoría verificados contra Postgres real (87 pruebas en verde: 38 API + 49 dominio) |
+| ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
+| **Fase 3 — Fundamentos** | **En ejecución** | Núcleo, identidad, tenancy, auditoría y organización verificados contra Postgres real (**154 pruebas en verde**: 58 API + 96 dominio) |
 | Fases 4–9 | Pendiente | Backlog se genera al abrir cada fase (T4.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
@@ -28,8 +29,8 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | T3.09 | Dispositivos POS + PIN argon2 | Pendiente | `safeEqual()` (comparación en tiempo constante) ya disponible |
 | T3.10 | Módulo Audit (spec 17): append-only + interceptor | **Finalizada** | `recordAudit()` transaccional + `GET /audit` con `audit.read`; UPDATE/DELETE fallan en BD (probado). Interceptor automático llega con los módulos de F4 |
 | T3.11 | Outbox/inbox + relay (ADR-0007) | **Finalizada** | **Exactamente-una-vez** verificado bajo kill del relay |
-| T3.12 | Módulo Organization (spec 03) + zonas geography | Pendiente | — |
-| T3.13 | Harness de aislamiento por endpoint reutilizable | **En ejecución** | Fixture de 2 tenants aplicado a `/tenant` y `/audit`; falta extraerlo como helper genérico |
+| T3.12 | Módulo Organization (spec 03) + zonas de cobertura | **Finalizada** | Jerarquía completa con **FKs compuestas** (docs/09 §4); M:N marca⟷cocina; `GET /coverage` con **punto en frontera**; horario que cruza medianoche; semilla demo de aceptación |
+| T3.13 | Harness de aislamiento por endpoint reutilizable | **En ejecución** | Fixture de 2 tenants aplicado a `/tenant`, `/audit`, `/coverage` y `/organization`; falta extraerlo como helper genérico |
 | T3.14 | OTel + Prometheus + Sentry + dashboards | Pendiente | `trace_id` propagado extremo a extremo; falta exportador OTel |
 | T3.15 | CI/CD completo | **En ejecución** | Workflow GitHub Actions (static, domain, integration con Postgres, build, SCA) |
 | T3.16 | Terraform dev | Pendiente | — |
@@ -37,4 +38,4 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | T3.18 | Gate F3: criterios de salida + demo grabada | Pendiente | 3 gates duros ya en verde; faltan T3.07–T3.16 |
 
 **Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql`.
-**Próxima acción de Claude Code:** continuar el backlog F3 por T3.12 (Organization: jerarquía empresa/marca/local/cocina y zonas), que desbloquea los ámbitos reales de permisos, y T3.09 (dispositivos POS + PIN).
+**Próxima acción de Claude Code:** continuar el backlog F3 por T3.09 (dispositivos POS + PIN argon2) y T3.13 (extraer el harness de aislamiento), luego T3.14 (OTel) y T3.16 (Terraform) para cerrar el gate T3.18.

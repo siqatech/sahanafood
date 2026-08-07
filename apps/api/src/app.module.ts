@@ -11,6 +11,7 @@ import { HealthModule } from './modules/health/index.js';
 import { IdentityModule } from './modules/identity/index.js';
 import { TenancyModule } from './modules/tenancy/index.js';
 import { AuditModule } from './modules/audit/index.js';
+import { OrganizationModule } from './modules/organization/index.js';
 
 /**
  * Módulo raíz del monolito modular. Los módulos de negocio (tenancy, identity,
@@ -44,6 +45,7 @@ import { AuditModule } from './modules/audit/index.js';
     IdentityModule,
     TenancyModule,
     AuditModule,
+    OrganizationModule,
   ],
 })
 export class AppModule implements NestModule {

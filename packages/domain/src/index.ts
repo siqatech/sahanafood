@@ -27,3 +27,31 @@ export {
   type StateMachineDefinition,
   type TransitionMap,
 } from './state-machine/state-machine.js';
+
+export {
+  BOUNDARY_EPSILON,
+  boundingBox,
+  inBoundingBox,
+  isOnBoundary,
+  isPointInPolygon,
+  selectCoverageZone,
+  GeoError,
+  type Position,
+  type Ring,
+  type BoundingBox,
+  type CoverageZone,
+} from './geo/geo.js';
+
+export {
+  isOpenAt,
+  crossesMidnight,
+  toMinutes,
+  toLocalMoment,
+  ScheduleError,
+  type Schedule,
+  type WeeklySlot,
+  type TimeRange,
+  type ScheduleException,
+  type LocalMoment,
+  type Weekday,
+} from './schedule/schedule.js';
