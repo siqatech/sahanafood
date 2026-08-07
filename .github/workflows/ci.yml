@@ -60,7 +60,7 @@ jobs:
   # Gates de Fase 3: fuga de aislamiento ×1000, esquema RLS, exactamente-una-vez.
   # ---------------------------------------------------------------------------
   integration:
-    name: Integration (RLS · Schema · Outbox)
+    name: Integration (RLS · Schema · Outbox · Worker)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -76,9 +76,22 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # El relay del worker publica a BullMQ de verdad: sin Redis, la prueba
+      # que verifica que el evento SALE del outbox y LLEGA a la cola no puede
+      # ejecutarse, y ese es justo el eslabón que faltaba.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       DATABASE_URL: postgres://sahana_app:sahana_app_dev@localhost:5432/sahana
       MIGRATION_DATABASE_URL: postgres://sahana_migrator:sahana_migrator_dev@localhost:5432/sahana
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

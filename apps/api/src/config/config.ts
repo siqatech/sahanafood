@@ -18,6 +18,18 @@ const configSchema = z.object({
 
   redisUrl: z.string().url().default('redis://localhost:6379'),
 
+  /**
+   * Cadencia de los procesos de fondo. El relay va rápido porque de él depende
+   * que la cocina vea el pedido (SLO de docs/06: visible en KDS < 5 s); el
+   * barrido de aceptación va cada minuto porque sus plazos son de minutos y
+   * consultarlo más a menudo solo gasta conexiones.
+   */
+  worker: z.object({
+    outboxIntervalMs: z.coerce.number().int().positive().default(1_000),
+    acceptanceIntervalMs: z.coerce.number().int().positive().default(60_000),
+    outboxBatchSize: z.coerce.number().int().positive().max(1_000).default(100),
+  }),
+
   /** Colector OTLP. Sin él no se arranca el tracing (ver observability/tracing). */
   otelEndpoint: z.string().url().optional(),
 
@@ -46,6 +58,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseUrl: env.DATABASE_URL,
     migrationDatabaseUrl: env.MIGRATION_DATABASE_URL,
     redisUrl: env.REDIS_URL,
+    worker: {
+      outboxIntervalMs: env.WORKER_OUTBOX_INTERVAL_MS,
+      acceptanceIntervalMs: env.WORKER_ACCEPTANCE_INTERVAL_MS,
+      outboxBatchSize: env.WORKER_OUTBOX_BATCH_SIZE,
+    },
     otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
     credentialsMasterKey:
       env.CREDENTIALS_MASTER_KEY ??

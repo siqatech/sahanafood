@@ -65,3 +65,7 @@ check: ## Suite completa: lint + typecheck + fronteras + pruebas
 .PHONY: dev
 dev: up ## Levanta infra y arranca la API en modo watch
 	pnpm --filter @sahana/api dev
+
+.PHONY: worker
+worker: up ## Arranca el worker de fondo (relay de outbox + vencimientos)
+	pnpm --filter @sahana/api worker:dev

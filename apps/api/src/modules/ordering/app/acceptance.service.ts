@@ -9,6 +9,7 @@ import { enqueueEvent } from '../../../events/outbox.js';
 import { recordAudit } from '../../audit/index.js';
 import {
   OrderingService,
+  OrderInvalidTransitionError,
   SCHEDULED_RELEASE_MARGIN_MINUTES,
 } from './ordering.service.js';
 import {
@@ -193,23 +194,43 @@ export class AcceptanceService {
         // Se rechaza a través del orquestador, no con un UPDATE: así pasa por
         // la máquina de estados, deja timeline, evento de salida al canal y
         // auditoría, exactamente igual que si lo hubiera hecho una persona.
-        await this.ordering.applyTransition(tenantId, pedido.id, 'reject', {
-          actorType: 'system',
-          reason: AUTO_REJECT_REASON,
-        });
-        resultado.autoRejected++;
-        this.logger.warn(
-          `Pedido ${pedido.order_number} rechazado automáticamente tras ${Math.round(minutos)} min sin aceptar (${pedido.channel}).`,
-        );
+        try {
+          await this.ordering.applyTransition(tenantId, pedido.id, 'reject', {
+            actorType: 'system',
+            reason: AUTO_REJECT_REASON,
+          });
+          resultado.autoRejected++;
+          this.logger.warn(
+            `Pedido ${pedido.order_number} rechazado automáticamente tras ${Math.round(minutos)} min sin aceptar (${pedido.channel}).`,
+          );
+        } catch (error) {
+          if (error instanceof OrderInvalidTransitionError) {
+            // Alguien lo aceptó (o lo rechazó otro worker) entre la lectura y
+            // este momento. Con varias instancias del worker esto ocurre a
+            // diario: perder la carrera es normal, no un error.
+            this.logger.debug(
+              `El pedido ${pedido.order_number} ya no estaba pendiente al ir a rechazarlo.`,
+            );
+          } else {
+            throw error;
+          }
+        }
         continue;
       }
 
       if (minutos >= politica.alertAfterMinutes && !pedido.alerted) {
-        await withTenant(this.pool, tenantId, async (ctx) => {
-          await ctx.db
-            .update(schema.orders)
-            .set({ acceptanceAlertedAt: now })
-            .where(eq(schema.orders.id, pedido.id));
+        const avisado = await withTenant(this.pool, tenantId, async (ctx) => {
+          // La marca se pone con el UPDATE CONDICIONAL y el evento solo se
+          // emite si esta transacción fue la que la puso. Con dos instancias
+          // del worker, comprobar antes y escribir después dejaría a las dos
+          // creyendo que les toca avisar, y el equipo recibiría la misma
+          // alerta por duplicado.
+          const { rowCount } = await ctx.client.query(
+            `UPDATE ord_orders SET acceptance_alerted_at = $2
+              WHERE id = $1 AND acceptance_alerted_at IS NULL`,
+            [pedido.id, now],
+          );
+          if ((rowCount ?? 0) === 0) return false;
 
           await enqueueEvent(ctx, {
             aggregateType: 'order',
@@ -223,8 +244,9 @@ export class AcceptanceService {
               autoRejectAtMinutes: politica.autoRejectAfterMinutes,
             },
           });
+          return true;
         });
-        resultado.alerted++;
+        if (avisado) resultado.alerted++;
       }
     }
 

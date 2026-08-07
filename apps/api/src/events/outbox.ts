@@ -139,6 +139,23 @@ export async function relayOnce(
   });
 }
 
+/**
+ * Antigüedad, en segundos, del evento pendiente más viejo.
+ *
+ * Complementa al contador y responde otra pregunta: 500 eventos recién
+ * llegados es una ráfaga normal; 10 atascados desde hace una hora es un relay
+ * muerto. Sin esta serie, ambas situaciones se ven igual en el panel.
+ */
+export async function oldestPendingAgeSeconds(pool: Pool): Promise<number> {
+  return withSystem(pool, async ({ client }) => {
+    const { rows } = await client.query<{ edad: string | null }>(
+      `SELECT EXTRACT(EPOCH FROM (now() - min(occurred_at)))::text AS edad
+         FROM outbox WHERE published_at IS NULL`,
+    );
+    return Number(rows[0]?.edad ?? 0);
+  });
+}
+
 /** Cuenta de eventos pendientes de publicar (métrica de salud del relay). */
 export async function pendingCount(pool: Pool): Promise<number> {
   return withSystem(pool, async ({ client }) => {

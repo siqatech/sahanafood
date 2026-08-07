@@ -116,6 +116,41 @@ export const tenantLimitExceeded = new Counter({
   registers: [registry],
 });
 
+// ------------------------------------------------------------- Worker
+
+/**
+ * Salud de los procesos de fondo. Es lo único que distingue «no hay trabajo
+ * pendiente» de «el worker lleva horas muerto»: sin estas series, un worker
+ * caído se ve exactamente igual que uno ocioso hasta que la cocina pregunta
+ * por qué no entran pedidos.
+ *
+ * La alerta útil no es sobre los errores, es sobre la AUSENCIA: si
+ * `sahana_worker_runs_total` deja de crecer, el worker no está corriendo.
+ */
+export const workerRunsTotal = new Counter({
+  name: 'sahana_worker_runs_total',
+  help: 'Vueltas completadas por cada trabajo periódico',
+  labelNames: ['job', 'result'] as const, // ok | error
+  registers: [registry],
+});
+
+export const workerRunErrors = new Counter({
+  name: 'sahana_worker_run_errors_total',
+  help: 'Vueltas fallidas por trabajo',
+  labelNames: ['job'] as const,
+  registers: [registry],
+});
+
+export const workerRunDuration = new Histogram({
+  name: 'sahana_worker_run_duration_seconds',
+  help: 'Duración de cada vuelta del trabajo periódico',
+  labelNames: ['job'] as const,
+  // Hasta 60 s: una vuelta más larga que su intervalo es la señal de que hay
+  // que subir el intervalo o repartir el trabajo.
+  buckets: [0.01, 0.05, 0.1, 0.5, 1, 5, 15, 30, 60],
+  registers: [registry],
+});
+
 // ------------------------------------------------------- Integraciones
 
 /**

@@ -9,6 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "node --import tsx --watch src/main.ts",
     "start": "node dist/main.js",
+    "worker": "node dist/workers/main.js",
+    "worker:dev": "node --import tsx --watch src/workers/main.ts",
     "migrate": "node --import tsx src/database/migrate.ts",
     "seed": "node --import tsx src/database/seed.ts",
     "demo:tenant": "node --import tsx src/database/demo-tenant.ts",
