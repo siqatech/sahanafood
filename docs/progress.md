@@ -12,7 +12,7 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
 | **Fase 3 — Fundamentos** | **En ejecución** | Negocio y observabilidad completos, verificados contra Postgres real (**198 pruebas en verde**: 101 API + 97 dominio). Queda T3.16 (Terraform) y el gate T3.18 |
-| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.19 (totales, catálogo versionado con diff, pedidos con dedupe, modificación con control optimista, aceptación automática con vencimiento, bandeja de excepciones resoluble, simulador de marketplace con **prueba de caos de cero pérdida**, y **KDS con el ciclo de eventos cerrado**). **495 pruebas en verde** (201 dominio + 294 API). Siguiente: T4.17–T4.19 (caja, arqueo y descuentos con PIN) |
+| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.19 (totales, catálogo versionado con diff, pedidos con dedupe, modificación con control optimista, aceptación automática con vencimiento, bandeja de excepciones resoluble, simulador de marketplace con **prueba de caos de cero pérdida**, **KDS con el ciclo de eventos cerrado** y **caja con arqueo y descuentos con PIN**). **535 pruebas en verde** (214 dominio + 321 API). Siguiente: T4.20–T4.22 (POS PWA offline y sincronización) |
 | Fases 5–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
