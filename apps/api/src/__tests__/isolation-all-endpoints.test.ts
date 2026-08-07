@@ -8,6 +8,7 @@ import { createPool } from '../database/pool.js';
 import { withTenant } from '../database/rls.js';
 import { TenancyService } from '../modules/tenancy/index.js';
 import { seedDemoOrganization } from '../modules/organization/index.js';
+import { seedDemoCatalog } from '../modules/catalog/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -33,6 +34,7 @@ suite('Aislamiento — todos los endpoints', () => {
   let tokenB = '';
   let secretsOfB: string[] = [];
   let demoA: Awaited<ReturnType<typeof seedDemoOrganization>>;
+  let catA: Awaited<ReturnType<typeof seedDemoCatalog>>;
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -77,6 +79,19 @@ suite('Aislamiento — todos los endpoints', () => {
       seedDemoOrganization(ctx),
     );
 
+    catA = await withTenant(pool, a.tenantId, (ctx) =>
+      seedDemoCatalog(ctx, {
+        brandId: demoA.brandIds[0],
+        locationId: demoA.locationId,
+      }),
+    );
+    const catB = await withTenant(pool, b.tenantId, (ctx) =>
+      seedDemoCatalog(ctx, {
+        brandId: demoB.brandIds[0],
+        locationId: demoB.locationId,
+      }),
+    );
+
     // Todo lo que identifica al tenant B y jamás debe salir en la respuesta de A.
     secretsOfB = [
       b.tenantId,
@@ -93,6 +108,15 @@ suite('Aislamiento — todos los endpoints', () => {
       ...demoB.stationIds,
       'Aislamiento Tenant B SECRETO',
       'iso-b@sahana.test',
+      // Catálogo del tenant B: productos, categorías y modificadores.
+      catB.categoryId,
+      catB.polloId,
+      catB.soloPosId,
+      catB.comboId,
+      catB.groupTamanoId,
+      catB.groupExtrasId,
+      catB.optionGrandeId,
+      catB.optionQuesoId,
     ];
 
     const loginA = await request(app.getHttpServer())
@@ -221,6 +245,33 @@ suite('Aislamiento — todos los endpoints', () => {
       caseFor(
         'POST /devices/pairing-codes',
         (r) => r.post('/api/v1/devices/pairing-codes').send({}),
+        { expectedStatusForA: [201] },
+      ),
+    );
+  });
+
+  it('GET /catalog/resolved', async () => {
+    // Ambos tenants tienen catálogos con la MISMA estructura y nombres: si
+    // hubiera fuga, no se notaría por el contenido, solo por los ids.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /catalog/resolved', (r) =>
+        r.get(
+          `/api/v1/catalog/resolved?brand=${demoA.brandIds[0]}&channel=web`,
+        ),
+      ),
+    );
+  });
+
+  it('POST /catalog/products/:id/pause', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /catalog/products/:id/pause',
+        (r) =>
+          r
+            .post(`/api/v1/catalog/products/${catA.polloId}/pause`)
+            .send({ channels: ['rappi'] }),
         { expectedStatusForA: [201] },
       ),
     );

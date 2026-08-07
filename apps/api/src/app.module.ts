@@ -12,6 +12,7 @@ import { IdentityModule } from './modules/identity/index.js';
 import { TenancyModule } from './modules/tenancy/index.js';
 import { AuditModule } from './modules/audit/index.js';
 import { OrganizationModule } from './modules/organization/index.js';
+import { CatalogModule } from './modules/catalog/index.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 
 /**
@@ -47,6 +48,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     TenancyModule,
     AuditModule,
     OrganizationModule,
+    CatalogModule,
     ObservabilityModule,
   ],
 })

@@ -439,3 +439,145 @@ export const userPins = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
 );
+
+// --- Catalog (módulo 04) ---
+
+export const categories = pgTable(
+  'cat_categories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    name: text('name').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_categories_brand').on(t.tenantId, t.brandId)],
+);
+
+export const products = pgTable(
+  'cat_products',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    categoryId: uuid('category_id'),
+    sku: text('sku'),
+    name: text('name').notNull(),
+    description: text('description'),
+    imageUrl: text('image_url'),
+    allergens: jsonb('allergens').notNull().default([]),
+    prepMinutes: integer('prep_minutes').notNull().default(10),
+    isCombo: boolean('is_combo').notNull().default(false),
+    active: boolean('active').notNull().default(true),
+    rowVersion: integer('row_version').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_products_brand').on(t.tenantId, t.brandId)],
+);
+
+export const modifierGroups = pgTable(
+  'cat_modifier_groups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    name: text('name').notNull(),
+    minSelections: integer('min_selections').notNull().default(0),
+    maxSelections: integer('max_selections').notNull().default(1),
+    allowRepeat: boolean('allow_repeat').notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_modifier_groups_brand').on(t.tenantId, t.brandId)],
+);
+
+export const modifierOptions = pgTable(
+  'cat_modifier_options',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    groupId: uuid('group_id').notNull(),
+    name: text('name').notNull(),
+    /** NUMERIC(14,4); puede ser negativo (quitar ingrediente). */
+    priceDelta: numeric('price_delta', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    available: boolean('available').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [index('idx_modifier_options_group').on(t.tenantId, t.groupId)],
+);
+
+export const productModifierGroups = pgTable(
+  'cat_product_modifier_groups',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    productId: uuid('product_id').notNull(),
+    groupId: uuid('group_id').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.productId, t.groupId] })],
+);
+
+export const comboComponents = pgTable(
+  'cat_combo_components',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    comboId: uuid('combo_id').notNull(),
+    componentId: uuid('component_id').notNull(),
+    quantity: integer('quantity').notNull().default(1),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.comboId, t.componentId] })],
+);
+
+/** Precios por ámbito (RN-CAT-01). NUMERIC(14,4) leído como string. */
+export const prices = pgTable(
+  'cat_prices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    productId: uuid('product_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    channel: text('channel'),
+    locationId: uuid('location_id'),
+    price: numeric('price', { precision: 14, scale: 4 }).notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_prices_lookup').on(t.tenantId, t.productId)],
+);
+
+export const productPauses = pgTable(
+  'cat_product_pauses',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    productId: uuid('product_id').notNull(),
+    channel: text('channel').notNull().default('*'),
+    pausedAt: timestamp('paused_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    until: timestamp('until', { withTimezone: true }),
+    reason: text('reason'),
+    pausedBy: uuid('paused_by'),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.productId, t.channel] })],
+);

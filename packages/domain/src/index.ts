@@ -75,3 +75,13 @@ export {
   type ModifierOption,
   type ModifierSelection,
 } from './pricing/modifiers.js';
+
+export {
+  resolvePrice,
+  isSellableInChannel,
+  isPaused,
+  isAvailable,
+  type ScopedPrice,
+  type PriceQuery,
+  type ProductPause,
+} from './pricing/price-resolution.js';
