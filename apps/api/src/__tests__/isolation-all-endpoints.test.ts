@@ -47,6 +47,8 @@ suite('Aislamiento — todos los endpoints', () => {
   let almacenDeB = '';
   /** Comprobante del tenant B: A no debe poder leerlo, reenviarlo ni anularlo. */
   let documentoDeB = '';
+  /** Pedido del tenant B, para endpoints que operan sobre uno concreto. */
+  let pedidoDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -205,6 +207,39 @@ suite('Aislamiento — todos los endpoints', () => {
       lines: [{ productId: catA.comboId, quantity: 1 }],
     });
     pedidoDeA = pedido.id;
+
+    const pedidoB = await app.get(OrderingService).submit(b.tenantId, {
+      brandId: demoB.brandIds[0],
+      locationId: demoB.locationId,
+      channel: 'pos',
+      lines: [{ productId: catB.comboId, quantity: 1 }],
+    });
+    pedidoDeB = pedidoB.id;
+    secretsOfB.push(pedidoDeB);
+
+    // B necesita DATOS de analítica y mensajería: dos respuestas de ceros
+    // idénticas no demuestran aislamiento, solo que ambos tenants están
+    // vacíos. Con datos solo en B, cualquier fuga se ve.
+    await withTenant(pool, b.tenantId, async ({ client }) => {
+      await client.query(
+        `INSERT INTO ana_daily_sales
+           (tenant_id, business_date, brand_id, location_id, channel,
+            orders, gross_revenue)
+         VALUES ($1, current_date, $2, $3, 'pos', 7, 1234.5600)`,
+        [b.tenantId, demoB.brandIds[0], demoB.locationId],
+      );
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO wa_contacts (tenant_id, phone) VALUES ($1,'+51900000009')
+         RETURNING id`,
+        [b.tenantId],
+      );
+      await client.query(
+        `INSERT INTO wa_messages
+           (tenant_id, contact_id, order_id, direction, kind, template_name, status)
+         VALUES ($1,$2,$3,'outbound','template','pedido_confirmado','sent')`,
+        [b.tenantId, rows[0]!.id, pedidoDeB],
+      );
+    });
 
     const loginA = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -552,6 +587,44 @@ suite('Aislamiento — todos los endpoints', () => {
           r
             .post(`/api/v1/documents/${documentoDeB}/credit-note`)
             .send({ reason: 'Intento de anulación cruzada' }),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('GET /analytics/profitability', async () => {
+    // La rentabilidad de B es su información más sensible: dice qué marcas le
+    // funcionan y por qué canal.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /analytics/profitability', (r) =>
+        r.get('/api/v1/analytics/profitability'),
+      ),
+    );
+  });
+
+  it('GET /analytics/reconciliation', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /analytics/reconciliation', (r) =>
+        r.get('/api/v1/analytics/reconciliation'),
+      ),
+    );
+  });
+
+  it('GET /messaging/kpi', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /messaging/kpi', (r) => r.get('/api/v1/messaging/kpi')),
+    );
+  });
+
+  it('GET /messaging/orders/:id/stats del pedido de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /messaging/orders/:id/stats',
+        (r) => r.get(`/api/v1/messaging/orders/${pedidoDeB}/stats`),
         { expectedStatusForA: [404] },
       ),
     );

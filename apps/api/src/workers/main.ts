@@ -27,6 +27,14 @@ import {
   INVENTORY_CONSUMER,
 } from '../modules/inventory/index.js';
 import { BillingService } from '../modules/billing/index.js';
+import {
+  MessagingEventHandlers,
+  MESSAGING_CONSUMER,
+} from '../modules/messaging/index.js';
+import {
+  AnalyticsEventHandlers,
+  ANALYTICS_CONSUMER,
+} from '../modules/analytics/index.js';
 import { Worker } from 'bullmq';
 import {
   outboxPending,
@@ -104,6 +112,14 @@ async function bootstrap(): Promise<void> {
     {
       nombre: INVENTORY_CONSUMER,
       handlers: app.get(InventoryEventHandlers).handlers(),
+    },
+    {
+      nombre: MESSAGING_CONSUMER,
+      handlers: app.get(MessagingEventHandlers).handlers(),
+    },
+    {
+      nombre: ANALYTICS_CONSUMER,
+      handlers: app.get(AnalyticsEventHandlers).handlers(),
     },
   ];
 

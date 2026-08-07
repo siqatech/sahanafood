@@ -56,6 +56,11 @@ export const PERMISSIONS = [
   // Anular con nota de crédito NO es emitir. Un comprobante ya declarado se
   // revierte, y quien lo revierte responde ante SUNAT: se separa a propósito.
   'billing.void',
+  // Mensajería WhatsApp (F4 avisos, F5 bot)
+  'messaging.read',
+  // Registrar consentimiento y bajas toca datos personales (RN-T10): se
+  // separa de la lectura a propósito.
+  'messaging.manage',
   // Reportes
   'reports.read',
   'reports.export',
@@ -130,6 +135,11 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'billing.read',
       'billing.issue',
       'billing.void',
+      // Mensajería WhatsApp (F4 avisos, F5 bot)
+      'messaging.read',
+      // Registrar consentimiento y bajas toca datos personales (RN-T10): se
+      // separa de la lectura a propósito.
+      'messaging.manage',
       'reports.read',
       // Ve la salud de los canales y la bandeja de excepciones, pero no toca
       // credenciales: gestionar conexiones queda en propietario/administrador.

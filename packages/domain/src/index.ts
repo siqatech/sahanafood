@@ -181,3 +181,22 @@ export {
   type DeferredCheck,
   type DeferredStatus,
 } from './billing/deferred.js';
+
+// --- Mensajería WhatsApp (spec 12, RN-WA-01/02/04) ---
+export {
+  isWindowOpen,
+  decideSend,
+  checkMessageBudget,
+  isNotifiable,
+  MessagingError,
+  SERVICE_WINDOW_HOURS,
+  DEFAULT_MESSAGE_BUDGET,
+  NOTIFIABLE_ORDER_STATES,
+  STATE_TEMPLATES,
+  type ContactState,
+  type MessageKind,
+  type SendDecision,
+  type MessageBudget,
+  type BudgetStatus,
+  type NotifiableOrderState,
+} from './messaging/whatsapp-window.js';

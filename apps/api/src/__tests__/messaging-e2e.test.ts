@@ -1,0 +1,450 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { Test } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { AppModule } from '../app.module.js';
+import { configureApp, NEST_APP_OPTIONS } from '../bootstrap.js';
+import { createPool } from '../database/pool.js';
+import { withTenant } from '../database/rls.js';
+import { TenancyService } from '../modules/tenancy/index.js';
+import { seedDemoOrganization } from '../modules/organization/index.js';
+import { seedDemoCatalog } from '../modules/catalog/index.js';
+import { OrderingService } from '../modules/ordering/index.js';
+import {
+  MessagingService,
+  MessagingEventHandlers,
+  MESSAGING_CONSUMER,
+  WhatsAppSimulatorProvider,
+  WA_REJECTION_CODES,
+} from '../modules/messaging/index.js';
+import { consumeEvent } from '../events/consumer.js';
+import { relayOnce } from '../events/outbox.js';
+import { seedPlans } from '../database/seed.js';
+import { INTEGRATION_DB, deleteTenants } from './helpers.js';
+
+/**
+ * Notificaciones por WhatsApp (spec 12, T4.28).
+ *
+ * Las cuatro pruebas que pide la spec, y ninguna es decorativa:
+ *
+ * · **Ventana expirada → usa plantilla.** Dentro de la ventana el texto libre
+ *   es gratis; fuera, Meta lo descarta sin avisar y el cliente se queda sin
+ *   saber que su comida salió.
+ * · **Opt-out respetado**, con cualquier antigüedad y en cualquier estado.
+ * · **Dedupe del webhook**, porque Meta entrega at-least-once y un reintento
+ *   suyo reabriría una ventana ya cerrada.
+ * · **WhatsApp caído → el PEDIDO SIGUE.** Es la regla que gobierna el módulo
+ *   entero.
+ */
+const suite = INTEGRATION_DB ? describe : describe.skip;
+
+suite('WhatsApp — notificaciones de estado', () => {
+  let app: INestApplication;
+  const pool = createPool(INTEGRATION_DB!, { max: 20 });
+  const created: string[] = [];
+
+  let tenantA = '';
+  let tokenA = '';
+  let brandId = '';
+  let org: Awaited<ReturnType<typeof seedDemoOrganization>>;
+  let cat: Awaited<ReturnType<typeof seedDemoCatalog>>;
+  let ordering: OrderingService;
+  let messaging: MessagingService;
+  let wa: WhatsAppSimulatorProvider;
+  let handlers: Record<string, unknown>;
+
+  const TELEFONO = '+51987654321';
+
+  beforeAll(async () => {
+    process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
+    process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-0123456789';
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleRef.createNestApplication(NEST_APP_OPTIONS);
+    configureApp(app);
+    await app.init();
+    ordering = app.get(OrderingService);
+    messaging = app.get(MessagingService);
+    wa = app.get(WhatsAppSimulatorProvider);
+    handlers = app.get(MessagingEventHandlers).handlers() as Record<
+      string,
+      unknown
+    >;
+
+    await seedPlans(pool);
+    const a = await app.get(TenancyService).provisionTenant({
+      name: 'WhatsApp Tenant',
+      planCode: 'growth',
+      owner: {
+        email: 'wa-a@sahana.test',
+        password: 'password-wa-a-1',
+        fullName: 'Dueño WhatsApp',
+      },
+    });
+    tenantA = a.tenantId;
+    created.push(tenantA);
+
+    org = await withTenant(pool, tenantA, (ctx) => seedDemoOrganization(ctx));
+    brandId = org.brandIds[0]!;
+    cat = await withTenant(pool, tenantA, (ctx) =>
+      seedDemoCatalog(ctx, { brandId, locationId: org.locationId }),
+    );
+
+    const login = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'wa-a@sahana.test', password: 'password-wa-a-1' })
+      .expect(201);
+    tokenA = login.body.accessToken;
+  });
+
+  beforeEach(async () => {
+    wa.configure({ down: false, unreachableNumbers: [] });
+    wa.reset();
+    // Cada prueba parte de un contacto limpio: el opt-out es persistente a
+    // propósito y arrastrarlo entre pruebas escondería fallos.
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(`DELETE FROM wa_contacts`),
+    );
+  });
+
+  afterAll(async () => {
+    await app?.close();
+    await deleteTenants(pool, created);
+    await pool.end();
+  });
+
+  const http = () => request(app.getHttpServer());
+  const auth = (r: request.Test) => r.set('authorization', `Bearer ${tokenA}`);
+
+  const pedirConTelefono = async (telefono = TELEFONO): Promise<string> => {
+    const pedido = await ordering.submit(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'whatsapp',
+      customerName: 'Ana Quispe',
+      customerPhone: telefono,
+      lines: [
+        {
+          productId: cat.polloId,
+          quantity: 1,
+          modifierOptionIds: [cat.optionGrandeId],
+        },
+      ],
+    });
+    return pedido.id;
+  };
+
+  const mensajesDe = async (orderId: string) =>
+    withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        kind: string | null;
+        template_name: string | null;
+        status: string;
+        error_code: string | null;
+      }>(
+        `SELECT kind, template_name, status, error_code FROM wa_messages
+          WHERE order_id = $1 AND direction = 'outbound'
+          ORDER BY occurred_at`,
+        [orderId],
+      );
+      return rows;
+    });
+
+  // -------------------------------------------------------------------------
+
+  it('VENTANA EXPIRADA → usa plantilla aprobada', async () => {
+    // Fuera de ventana el texto libre no llega: Meta lo descarta y el cliente
+    // se queda sin saber que su comida salió.
+    const orderId = await pedirConTelefono();
+    const r = await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+
+    expect(r.sent).toBe(true);
+    expect(r.kind).toBe('template');
+    expect(wa.sent[0]!.templateName).toBe('pedido_confirmado');
+  });
+
+  it('ventana ABIERTA → texto libre, que es gratis', async () => {
+    // Usar plantilla dentro de ventana es pagar por nada, en cada pedido y en
+    // cada estado.
+    const orderId = await pedirConTelefono();
+    await messaging.receiveInbound(tenantA, {
+      providerMessageId: 'wamid.entrante-1',
+      from: TELEFONO,
+      body: '¿Cuánto falta?',
+      receivedAt: new Date(),
+    });
+
+    const r = await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+    expect(r.kind).toBe('freeform');
+    expect(wa.sent[0]!.body).toContain('#');
+  });
+
+  it('OPT-OUT respetado incluso con la ventana abierta', async () => {
+    // Un contacto que se dio de baja hace cinco minutos tiene la ventana
+    // abierta; preguntar primero por la ventana daría permiso para escribirle.
+    const orderId = await pedirConTelefono();
+    await messaging.receiveInbound(tenantA, {
+      providerMessageId: 'wamid.entrante-2',
+      from: TELEFONO,
+      body: 'hola',
+      receivedAt: new Date(),
+    });
+    await messaging.recordConsent(tenantA, {
+      phone: TELEFONO,
+      action: 'revoked',
+      source: 'panel',
+      consentText: 'El cliente pidió no recibir más mensajes por teléfono.',
+    });
+
+    const r = await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+    expect(r.sent).toBe(false);
+    expect(r.reason).toMatch(/no recibir/);
+    expect(wa.sent).toHaveLength(0);
+  });
+
+  it('responder «BAJA» por WhatsApp da de baja EN EL ACTO', async () => {
+    // No se pone en una cola ni se manda a un panel: la persona ya dijo que no.
+    await messaging.receiveInbound(tenantA, {
+      providerMessageId: 'wamid.baja-1',
+      from: TELEFONO,
+      body: 'BAJA',
+      receivedAt: new Date(),
+    });
+
+    const orderId = await pedirConTelefono();
+    const r = await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+    expect(r.sent).toBe(false);
+
+    // Y queda registrado con el texto exacto, que es lo que exige RN-T10.
+    const { rows } = await withTenant(pool, tenantA, ({ client }) =>
+      client.query<{ action: string; consent_text: string }>(
+        `SELECT action, consent_text FROM wa_consents ORDER BY occurred_at DESC LIMIT 1`,
+      ),
+    );
+    expect(rows[0]?.action).toBe('revoked');
+    expect(rows[0]?.consent_text).toBe('BAJA');
+  });
+
+  it('DEDUPE del webhook: el mismo message_id no cuenta dos veces', async () => {
+    // Meta entrega at-least-once. Sin dedupe, un reintento suyo reabriría una
+    // ventana ya cerrada y contaría como un mensaje más en el KPI de costo.
+    const primera = await messaging.receiveInbound(tenantA, {
+      providerMessageId: 'wamid.repetido',
+      from: TELEFONO,
+      body: 'hola',
+      receivedAt: new Date(),
+    });
+    const segunda = await messaging.receiveInbound(tenantA, {
+      providerMessageId: 'wamid.repetido',
+      from: TELEFONO,
+      body: 'hola',
+      receivedAt: new Date(),
+    });
+
+    expect(primera.duplicate).toBe(false);
+    expect(segunda.duplicate).toBe(true);
+
+    const { rows } = await withTenant(pool, tenantA, ({ client }) =>
+      client.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM wa_messages WHERE direction = 'inbound'`,
+      ),
+    );
+    expect(Number(rows[0]!.n)).toBe(1);
+  });
+
+  it('WHATSAPP CAÍDO → el pedido sigue su curso', async () => {
+    // La regla que gobierna el módulo entero: la comida sale igual aunque el
+    // aviso no llegue.
+    wa.configure({ down: true });
+    const orderId = await pedirConTelefono();
+
+    const r = await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+    expect(r.sent).toBe(false);
+
+    // El pedido se acepta sin enterarse de nada.
+    await ordering.applyTransition(tenantA, orderId, 'accept', {
+      actorType: 'system',
+    });
+    expect((await ordering.getSummary(tenantA, orderId)).status).toBe(
+      'accepted',
+    );
+
+    // Y el fallo queda registrado para el panel, no se pierde.
+    const mensajes = await mensajesDe(orderId);
+    expect(mensajes[0]?.status).toBe('failed');
+  });
+
+  it('un número sin WhatsApp se registra como rechazo, no como avería', async () => {
+    // Un teléfono válido no implica una cuenta: el cliente dejó su fijo.
+    const fijo = '+5114567890';
+    wa.configure({ unreachableNumbers: [fijo] });
+    const orderId = await pedirConTelefono(fijo);
+
+    const r = await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+    expect(r.sent).toBe(false);
+
+    const mensajes = await mensajesDe(orderId);
+    expect(mensajes[0]?.error_code).toBe(
+      WA_REJECTION_CODES.RECIPIENT_NOT_ON_WHATSAPP,
+    );
+  });
+
+  it('un pedido SIN teléfono no es un error: es lo normal en mostrador', async () => {
+    const pedido = await ordering.submit(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'pos',
+      lines: [
+        {
+          productId: cat.polloId,
+          quantity: 1,
+          modifierOptionIds: [cat.optionGrandeId],
+        },
+      ],
+    });
+    const r = await messaging.notifyOrderState(tenantA, pedido.id, 'accepted');
+    expect(r.sent).toBe(false);
+    expect(r.reason).toMatch(/teléfono/);
+  });
+
+  it('solo se notifican los estados que le importan al cliente', async () => {
+    // Notificar las doce transiciones multiplica el costo por cuatro sin decir
+    // nada útil: nadie necesita saber que pasó de «empacado» a «despachado».
+    const orderId = await pedirConTelefono();
+    for (const estado of ['received', 'ready', 'packed']) {
+      const r = await messaging.notifyOrderState(tenantA, orderId, estado);
+      expect(r.sent).toBe(false);
+    }
+    expect(wa.sent).toHaveLength(0);
+  });
+
+  it('el MISMO aviso no se manda dos veces aunque el evento llegue repetido', async () => {
+    // Garantía de la BASE, no del código: un evento entregado dos veces no le
+    // manda al cliente dos veces «tu pedido está en camino», ni se lo cobra
+    // dos veces al tenant.
+    const orderId = await pedirConTelefono();
+    await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+    await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+
+    const mensajes = await mensajesDe(orderId);
+    expect(
+      mensajes.filter((m) => m.template_name === 'pedido_confirmado'),
+    ).toHaveLength(1);
+  });
+
+  it('el aviso llega por el camino REAL de eventos', async () => {
+    // Lo que se prueba es que el evento LLEGA: ese es el eslabón que se rompe.
+    const orderId = await pedirConTelefono();
+    await ordering.applyTransition(tenantA, orderId, 'accept', {
+      actorType: 'system',
+    });
+
+    for (let vuelta = 0; vuelta < 4; vuelta++) {
+      const entregados: Array<Record<string, unknown>> = [];
+      await relayOnce(
+        pool,
+        async (evento) => {
+          entregados.push({
+            eventId: evento.id,
+            tenantId: evento.tenantId,
+            aggregateId: evento.aggregateId,
+            eventType: evento.eventType,
+            payload: evento.payload,
+            traceId: evento.traceId,
+          });
+        },
+        200,
+      );
+      if (entregados.length === 0) break;
+      for (const mensaje of entregados) {
+        await consumeEvent(
+          { pool, consumer: MESSAGING_CONSUMER, handlers: handlers as never },
+          mensaje as never,
+        );
+      }
+    }
+
+    expect(wa.sent.some((m) => m.templateName === 'pedido_confirmado')).toBe(
+      true,
+    );
+  });
+
+  it('el KPI de mensajes por pedido cuenta lo que se cobra', async () => {
+    // A partir del cambio de precios de Meta cada mensaje de servicio se
+    // cobra: esta media dice si el canal gana o pierde dinero.
+    const orderId = await pedirConTelefono();
+    await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+    await messaging.notifyOrderState(tenantA, orderId, 'dispatched');
+
+    const stats = await messaging.statsForOrder(tenantA, orderId);
+    expect(stats.messages).toBe(2);
+    expect(stats.budget.status).toBe('ok');
+
+    const res = await auth(http().get('/api/v1/messaging/kpi')).expect(200);
+    expect(res.body.orders).toBeGreaterThanOrEqual(1);
+    expect(res.body.average).toBeGreaterThan(0);
+  });
+
+  it('POST /messaging/consents exige el TEXTO EXACTO aceptado (RN-T10)', async () => {
+    // Un `accepts_marketing` booleano no demuestra qué aceptó esa persona.
+    await auth(
+      http().post('/api/v1/messaging/consents').send({
+        phone: TELEFONO,
+        action: 'granted',
+        source: 'checkout_web',
+      }),
+    ).expect(422);
+
+    await auth(
+      http().post('/api/v1/messaging/consents').send({
+        phone: TELEFONO,
+        action: 'granted',
+        source: 'checkout_web',
+        consentText:
+          'Acepto recibir mensajes sobre el estado de mis pedidos por WhatsApp.',
+      }),
+    ).expect(201);
+
+    const { rows } = await withTenant(pool, tenantA, ({ client }) =>
+      client.query<{ consent_text: string; source: string }>(
+        `SELECT consent_text, source FROM wa_consents ORDER BY occurred_at DESC LIMIT 1`,
+      ),
+    );
+    expect(rows[0]?.consent_text).toMatch(/Acepto recibir mensajes/);
+    expect(rows[0]?.source).toBe('checkout_web');
+  });
+
+  it('rechaza teléfonos que no están en E.164', async () => {
+    await auth(
+      http().post('/api/v1/messaging/consents').send({
+        phone: '987654321',
+        action: 'granted',
+        source: 'panel',
+        consentText: 'Acepto recibir mensajes sobre el estado de mis pedidos.',
+      }),
+    ).expect(422);
+  });
+
+  it('el registro de consentimiento es APPEND-ONLY en la base', async () => {
+    // Un registro de consentimiento que se puede editar no demuestra nada.
+    await messaging.recordConsent(tenantA, {
+      phone: TELEFONO,
+      action: 'granted',
+      source: 'panel',
+      consentText: 'Acepto recibir mensajes sobre el estado de mis pedidos.',
+    });
+
+    await expect(
+      withTenant(pool, tenantA, ({ client }) =>
+        client.query(`UPDATE wa_consents SET action = 'revoked'`),
+      ),
+    ).rejects.toThrow(/permiso|permission/i);
+    await expect(
+      withTenant(pool, tenantA, ({ client }) =>
+        client.query(`DELETE FROM wa_consents`),
+      ),
+    ).rejects.toThrow(/permiso|permission/i);
+  });
+});
