@@ -78,6 +78,19 @@ export default tseslint.config(
     },
   },
   {
+    /**
+     * El agente de impresión corre como servicio en la mini PC del local, no
+     * en la nube: no hay stack de observabilidad detrás, y su stdout es
+     * literalmente lo que captura systemd (o el servicio de Windows) y lo que
+     * lee la persona que va a arreglar la impresora. Aquí `console.log` ES el
+     * log, no un resto de depuración.
+     */
+    files: ['apps/print-agent/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     // Los tests pueden usar console y helpers laxos.
     files: ['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**'],
     rules: {
