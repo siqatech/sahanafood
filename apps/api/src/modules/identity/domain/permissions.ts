@@ -29,6 +29,8 @@ export const PERMISSIONS = [
   'orders.create',
   'orders.transition',
   'orders.cancel',
+  // Cancelar un pedido YA en preparación: hay costo de insumos (RN-ORD-06).
+  'orders.cancel_in_progress',
   'orders.discount',
   // Caja (F4)
   'cash.open',
@@ -96,6 +98,7 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'orders.create',
       'orders.transition',
       'orders.cancel',
+      'orders.cancel_in_progress',
       'orders.discount',
       'cash.open',
       'cash.close',

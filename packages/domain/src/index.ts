@@ -85,3 +85,18 @@ export {
   type PriceQuery,
   type ProductPause,
 } from './pricing/price-resolution.js';
+
+export {
+  ORDER_STATES,
+  ORDER_EVENTS,
+  orderStateMachine,
+  transition as transitionOrder,
+  canCancel,
+  canModify,
+  cancellationHasCost,
+  cancellationNeedsElevatedPermission,
+  isFinalState,
+  allowedEvents,
+  type OrderState,
+  type OrderEvent,
+} from './ordering/order-state.js';

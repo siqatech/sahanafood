@@ -250,6 +250,22 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /orders', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /orders', (r) => r.get('/api/v1/orders')),
+    );
+  });
+
+  it('GET /orders/exceptions', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /orders/exceptions', (r) =>
+        r.get('/api/v1/orders/exceptions'),
+      ),
+    );
+  });
+
   it('GET /catalog/resolved', async () => {
     // Ambos tenants tienen catálogos con la MISMA estructura y nombres: si
     // hubiera fuga, no se notaría por el contenido, solo por los ids.

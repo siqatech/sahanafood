@@ -12,7 +12,7 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
 | **Fase 3 — Fundamentos** | **En ejecución** | Negocio y observabilidad completos, verificados contra Postgres real (**198 pruebas en verde**: 101 API + 97 dominio). Queda T3.16 (Terraform) y el gate T3.18 |
-| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.05 (cálculo de totales, catálogo con precios por canal y pausas). **283 pruebas en verde** (166 dominio + 117 API). Siguiente: T4.07 máquina de estados del pedido |
+| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.05, T4.07–T4.09 (totales, catálogo, máquina de estados y alta de pedidos con dedupe). **333 pruebas en verde** (191 dominio + 142 API). Siguiente: T4.14 simulador de marketplace + T4.15 caos de ingesta |
 | Fases 5–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
@@ -38,5 +38,23 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | T3.17 | Onboarding tenant demo < 60 s | **Finalizada** | Script mide **50 ms** (gate < 60 s) |
 | T3.18 | Gate F3: criterios de salida + demo grabada | **Propuesta** | Evaluación completa en `docs/31-gate-fase-3.md`: **apto con excepciones** (T3.16 y demo grabada, ambas con dueño humano) |
 
-**Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql`.
-**Próxima acción de Claude Code:** esperar aprobación del gate F3 (`docs/31`) y del backlog F4; al aprobarse, comenzar por T4.01–T4.04 (catálogo y cálculo de totales).
+## Fase 4 — Backlog (estado por tarea)
+
+Backlog completo (32 tareas) en `specs/phases/phase-4-operacion.md`. Aquí solo el estado.
+
+| ID | Tarea | Estado | Evidencia |
+|---|---|---|---|
+| T4.00 | Backlog de la fase | **Finalizada** | `specs/phases/phase-4-operacion.md` |
+| T4.01 | Entidades de catálogo (spec 04) | **Finalizada** | Migración `0008_catalog.sql`; jerarquía categoría→producto→grupo→opción con FKs compuestas |
+| T4.02 | Modificadores y combos en `@sahana/domain` | **Finalizada** | `validateAndPriceModifiers` con códigos de error estables; definición de grupo validada |
+| T4.03 | Precios por canal y sucursal | **Finalizada** | `resolvePrice` por especificidad ((canal,sucursal) > canal > base); índice único con `COALESCE` |
+| T4.04 | Cálculo de totales (RN-T01..T05) | **Finalizada** | Redondeo half-up solo en el total; IGV extraído hacia atrás; propina fuera de base imponible; **100 % de ramas** |
+| T4.05 | Disponibilidad y pausas de producto | **Finalizada** | `POST /catalog/products/:id/pause` emite `catalog.availability_changed` por outbox; pausas caducadas se levantan solas |
+| T4.06 | Publicación versionada del catálogo | Pendiente | — |
+| **T4.07** | **Máquina de estados de pedido** | **Finalizada** | 12 estados × 13 eventos: **las 156 combinaciones** probadas (transicionan o lanzan); BFS de alcanzabilidad; sin callejones sin salida |
+| T4.08 | `OrderingService.submit()` + `ord_*` con snapshot inmutable | **Finalizada** | Migración `0009_ordering.sql`; la línea copia nombre y precio (no referencia a `cat_prices`); timeline append-only verificado en BD |
+| T4.09 | Idempotencia y dedupe (ADR-0010) | **Finalizada** | **Dedupe concurrente en verde**: dos `submit()` simultáneos con el mismo `external_ref` → 1 pedido (garantía del índice único, no del código) |
+| T4.10–T4.32 | Resto del backlog | Pendiente | — |
+
+**Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql` · resolver PA-01/02/03 (`docs/22-risks.md`).
+**Próxima acción de Claude Code:** T4.14 (simulador de marketplace) + T4.15 (prueba de caos de ingesta), que juntas verifican el criterio de aceptación más duro de la fase: cero pérdida de pedidos.

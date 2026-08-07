@@ -5,6 +5,7 @@ import {
   type ExceptionFilter,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { ModifierError, PricingError, MoneyError } from '@sahana/domain';
 import { DomainError } from './errors.js';
 
 /**
@@ -42,6 +43,27 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         instance: req.originalUrl,
         traceId,
         ...exception.extra,
+      };
+    } else if (
+      exception instanceof ModifierError ||
+      exception instanceof PricingError ||
+      exception instanceof MoneyError
+    ) {
+      // El dominio compartido no conoce HTTP —y no debe—, así que sus errores
+      // se traducen aquí. Son fallos de ENTRADA del cliente (un modificador
+      // obligatorio sin elegir, una cantidad inválida): degradarlos a 500
+      // dejaría al usuario sin saber qué corregir.
+      problem = {
+        type: 'https://errors.sahana.food/validation',
+        title: 'Datos inválidos',
+        status: 422,
+        detail: exception.message,
+        instance: req.originalUrl,
+        traceId,
+        ...('code' in exception ? { code: exception.code } : {}),
+        ...('groupId' in exception && exception.groupId !== undefined
+          ? { groupId: exception.groupId }
+          : {}),
       };
     } else if (exception instanceof HttpException) {
       const status = exception.getStatus();

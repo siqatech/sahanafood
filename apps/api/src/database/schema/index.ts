@@ -581,3 +581,129 @@ export const productPauses = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.productId, t.channel] })],
 );
+
+// --- Ordering (módulo 05, spec canónica) ---
+
+export const orders = pgTable(
+  'ord_orders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    locationId: uuid('location_id').notNull(),
+    orderNumber: integer('order_number').notNull(),
+    channel: text('channel').notNull(),
+    externalRef: text('external_ref'),
+    status: text('status').notNull().default('received'),
+    customerId: uuid('customer_id'),
+    customerName: text('customer_name'),
+    customerPhone: text('customer_phone'),
+    deliveryAddress: text('delivery_address'),
+    deliveryLat: doublePrecision('delivery_lat'),
+    deliveryLng: doublePrecision('delivery_lng'),
+    zoneId: uuid('zone_id'),
+    subtotal: numeric('subtotal', { precision: 14, scale: 4 }).notNull(),
+    discountTotal: numeric('discount_total', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    deliveryFee: numeric('delivery_fee', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    tip: numeric('tip', { precision: 14, scale: 4 }).notNull().default('0'),
+    total: numeric('total', { precision: 14, scale: 4 }).notNull(),
+    taxableBase: numeric('taxable_base', { precision: 14, scale: 4 }).notNull(),
+    tax: numeric('tax', { precision: 14, scale: 4 }).notNull(),
+    taxRateBps: integer('tax_rate_bps').notNull().default(1800),
+    currency: text('currency').notNull().default('PEN'),
+    commissionEstimated: numeric('commission_estimated', {
+      precision: 14,
+      scale: 4,
+    })
+      .notNull()
+      .default('0'),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+    promisedAt: timestamp('promised_at', { withTimezone: true }),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    cancelReason: text('cancel_reason'),
+    notes: text('notes'),
+    rowVersion: integer('row_version').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_orders_status').on(t.tenantId, t.status, t.createdAt)],
+);
+
+export const orderLines = pgTable(
+  'ord_order_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    orderId: uuid('order_id').notNull(),
+    productId: uuid('product_id'),
+    /** Snapshot: no se referencia el catálogo, se copia (RN-ORD-02). */
+    productName: text('product_name').notNull(),
+    quantity: integer('quantity').notNull(),
+    unitPrice: numeric('unit_price', { precision: 14, scale: 4 }).notNull(),
+    modifiersTotal: numeric('modifiers_total', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    discount: numeric('discount', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    lineTotal: numeric('line_total', { precision: 14, scale: 4 }).notNull(),
+    modifiers: jsonb('modifiers').notNull().default([]),
+    isAdjustment: boolean('is_adjustment').notNull().default(false),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_order_lines_order').on(t.tenantId, t.orderId)],
+);
+
+export const orderEvents = pgTable(
+  'ord_order_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    orderId: uuid('order_id').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    event: text('event').notNull(),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status').notNull(),
+    actorType: text('actor_type').notNull().default('system'),
+    actorId: text('actor_id'),
+    reason: text('reason'),
+    traceId: text('trace_id'),
+    data: jsonb('data').notNull().default({}),
+  },
+  (t) => [
+    index('idx_order_events_order').on(t.tenantId, t.orderId, t.occurredAt),
+  ],
+);
+
+export const orderCounters = pgTable('ord_counters', {
+  tenantId: uuid('tenant_id').primaryKey(),
+  nextNumber: integer('next_number').notNull().default(1),
+});
+
+export const idempotencyKeys = pgTable(
+  'ord_idempotency_keys',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    key: text('key').notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    orderId: uuid('order_id'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.key] })],
+);
