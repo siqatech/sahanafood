@@ -22,6 +22,10 @@ import {
   KITCHEN_CONSUMER,
   type DomainEventMessage,
 } from '../modules/kitchen/index.js';
+import {
+  InventoryEventHandlers,
+  INVENTORY_CONSUMER,
+} from '../modules/inventory/index.js';
 import { Worker } from 'bullmq';
 import {
   outboxPending,
@@ -69,21 +73,51 @@ async function bootstrap(): Promise<void> {
   const redis = createRedis(config.redisUrl);
   const publisher = createQueuePublisher(redis);
 
-  // Consumidor de eventos de dominio. Es lo que hace que cocina se entere de
-  // los pedidos: sin él, `order.accepted` sería un evento que nadie escucha.
+  // Consumidores de eventos de dominio. Es lo que hace que cocina y el
+  // inventario se enteren de los pedidos: sin ellos, `order.accepted` sería un
+  // evento que nadie escucha.
   // Conexión propia porque BullMQ bloquea la suya esperando trabajo, y
   // compartirla con el publicador dejaría al relay esperando su turno.
   const consumerRedis = createRedis(config.redisUrl);
-  const handlers = app.get(KitchenEventHandlers).handlers();
+
+  /**
+   * Cada módulo es un CONSUMIDOR con su propio nombre en `inbox`, y todos ven
+   * el mismo mensaje.
+   *
+   * Un único mapa evento→handler no serviría: cocina e inventario escuchan
+   * los dos `order.accepted`, y el segundo pisaría al primero sin que nada
+   * avisara. Tampoco sirve levantar dos Workers de BullMQ sobre la misma cola:
+   * se repartirían los trabajos en vez de duplicarlos, y la mitad de los
+   * pedidos no llegaría a cocina.
+   *
+   * Al ir cada uno en su propia transacción con su propia marca de `inbox`, un
+   * fallo del inventario no deshace el ticket de cocina: el reintento vuelve a
+   * pasar por los dos y el que ya estaba hecho responde `skipped`.
+   */
+  const consumidores = [
+    {
+      nombre: KITCHEN_CONSUMER,
+      handlers: app.get(KitchenEventHandlers).handlers(),
+    },
+    {
+      nombre: INVENTORY_CONSUMER,
+      handlers: app.get(InventoryEventHandlers).handlers(),
+    },
+  ];
+
   const consumer = new Worker<DomainEventMessage>(
     DOMAIN_EVENTS_QUEUE,
     async (job) => {
-      const resultado = await consumeEvent(
-        { pool, consumer: KITCHEN_CONSUMER, handlers },
-        job.data,
-      );
-      if (resultado === 'processed') {
-        logger.debug(`Evento aplicado: ${job.data.eventType}`);
+      for (const { nombre, handlers } of consumidores) {
+        const resultado = await consumeEvent(
+          { pool, consumer: nombre, handlers },
+          job.data,
+        );
+        if (resultado === 'processed') {
+          logger.debug(
+            `Evento aplicado por "${nombre}": ${job.data.eventType}`,
+          );
+        }
       }
     },
     { connection: consumerRedis, concurrency: 4 },
@@ -138,7 +172,7 @@ async function bootstrap(): Promise<void> {
   logger.log(
     `Worker activo — relay cada ${config.worker.outboxIntervalMs} ms, ` +
       `aceptación cada ${config.worker.acceptanceIntervalMs} ms, ` +
-      `consumidor "${KITCHEN_CONSUMER}" escuchando ${Object.keys(handlers).length} tipos de evento.`,
+      `consumidores [${consumidores.map((c) => c.nombre).join(', ')}] escuchando eventos de dominio.`,
   );
 
   let cerrando = false;

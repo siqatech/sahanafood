@@ -133,3 +133,30 @@ export {
   type SyncItemStatus,
   type SyncQueueOptions,
 } from './offline/sync-queue.js';
+
+// --- Inventario: recetas y consumo (spec 08, RN-INV-01/03/05, RN-CAT-04) ---
+export {
+  Quantity,
+  QuantityError,
+  sumQuantities,
+  QUANTITY_SCALE,
+  UNITS,
+  type Unit,
+} from './inventory/quantity.js';
+
+export {
+  explodeRecipe,
+  calculateConsumption,
+  reverseConsumption,
+  assertValidRecipe,
+  recipeBook,
+  RecipeError,
+  MAX_RECIPE_DEPTH,
+  type Recipe,
+  type RecipeLine,
+  type RecipeBook,
+  type RecipeComponentKind,
+  type ConsumptionEntry,
+  type ConsumptionResult,
+  type OrderLineForConsumption,
+} from './inventory/recipe.js';

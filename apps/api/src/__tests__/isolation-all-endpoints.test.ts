@@ -42,6 +42,9 @@ suite('Aislamiento — todos los endpoints', () => {
   let catA: Awaited<ReturnType<typeof seedDemoCatalog>>;
   /** Pedido del tenant A, para probar endpoints que operan sobre uno concreto. */
   let pedidoDeA = '';
+  /** Insumo y almacén del tenant B: A no debe poder leerlos ni ajustarlos. */
+  let insumoDeB = '';
+  let almacenDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -99,6 +102,23 @@ suite('Aislamiento — todos los endpoints', () => {
       }),
     );
 
+    // Inventario de B, con stock real: sin stock, un endpoint que devuelve
+    // vacío parecería aislado aunque no lo estuviera.
+    insumoDeB = await withTenant(pool, b.tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO inv_items (tenant_id, name, unit, unit_cost)
+         VALUES ($1,'Insumo SECRETO de B','g',0.05) RETURNING id`,
+        [b.tenantId],
+      );
+      await client.query(
+        `INSERT INTO inv_stock (tenant_id, warehouse_id, item_id, quantity)
+         VALUES ($1,$2,$3,4321)`,
+        [b.tenantId, demoB.warehouseId, rows[0]!.id],
+      );
+      return rows[0]!.id;
+    });
+    almacenDeB = demoB.warehouseId;
+
     // Conexiones de integración: el token de webhook de B identifica su canal y
     // permitiría dirigirle pedidos, así que cuenta como secreto suyo.
     const connections = app.get(ConnectionService);
@@ -127,6 +147,8 @@ suite('Aislamiento — todos los endpoints', () => {
       demoB.locationId,
       demoB.kitchenId,
       demoB.warehouseId,
+      insumoDeB,
+      'Insumo SECRETO de B',
       demoB.zoneIds[0],
       demoB.zoneIds[1],
       demoB.scheduleId,
@@ -417,6 +439,45 @@ suite('Aislamiento — todos los endpoints', () => {
       app,
       caseFor('GET /kitchen/load', (r) =>
         r.get(`/api/v1/kitchen/load?kitchen=${demoA.kitchenId}`),
+      ),
+    );
+  });
+
+  it('GET /inventory/stock', async () => {
+    // El stock de B revelaría qué insumos maneja y en qué volumen: es
+    // información de negocio, no un dato técnico.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /inventory/stock', (r) => r.get('/api/v1/inventory/stock')),
+    );
+  });
+
+  it('GET /inventory/stock filtrando por el almacén de B', async () => {
+    // El caso que de verdad importa: A pide EXPLÍCITAMENTE el almacén ajeno.
+    // Debe volver vacío, nunca el stock de B.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /inventory/stock?warehouse=<B>', (r) =>
+        r.get(`/api/v1/inventory/stock?warehouse=${almacenDeB}`),
+      ),
+    );
+  });
+
+  it('POST /inventory/movements sobre el almacén de B', async () => {
+    // Ajustar el inventario de otro tenant sería peor que leerlo: no filtra
+    // datos, los corrompe.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /inventory/movements',
+        (r) =>
+          r.post('/api/v1/inventory/movements').send({
+            warehouseId: almacenDeB,
+            itemId: insumoDeB,
+            quantity: '-1.0000',
+            reason: 'Intento de ajuste cruzado',
+          }),
+        { expectedStatusForA: [404] },
       ),
     );
   });

@@ -695,7 +695,17 @@ export class OrderingService {
         aggregateType: 'order',
         aggregateId: orderId,
         eventType: `order.${siguiente}`,
-        payload: { orderId, from: actual.status, to: siguiente },
+        // El MOTIVO viaja en el evento, no solo en auditoría. Sin él, quien
+        // reacciona a una cancelación no puede explicar por qué: la merma de
+        // inventario quedaría registrada como «sin motivo» y el aviso al
+        // cliente no podría decirle nada. Auditoría se lee después; el evento
+        // se consume ahora.
+        payload: {
+          orderId,
+          from: actual.status,
+          to: siguiente,
+          ...(options.reason !== undefined ? { reason: options.reason } : {}),
+        },
         ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
       });
 
