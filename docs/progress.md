@@ -12,7 +12,8 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
 | **Fase 3 — Fundamentos** | **En ejecución** | Negocio y observabilidad completos, verificados contra Postgres real (**198 pruebas en verde**: 101 API + 97 dominio). Queda T3.16 (Terraform) y el gate T3.18 |
-| Fases 4–9 | Pendiente | Backlog se genera al abrir cada fase (T4.00) |
+| **Fase 4 — Operación principal** | **Backlog propuesto** | T4.00 completado: 32 tareas derivadas de las specs en `specs/phases/phase-4-operacion.md`. **Pendiente de aprobación** antes de codificar |
+| Fases 5–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
 
@@ -33,9 +34,9 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | T3.13 | Harness de aislamiento por endpoint reutilizable | **Finalizada** | `assertEndpointIsolation` recorre la respuesta entera buscando cualquier dato del tenant ajeno; aplicado a los 12 endpoints; incluye prueba del propio detector |
 | T3.14 | OTel + Prometheus + dashboards | **Finalizada** | Trazas OTLP, `/metrics` Prometheus con métricas de negocio, y el **gate demostrado**: el `trace_id` sobrevive el salto request→outbox→worker |
 | T3.15 | CI/CD completo | **En ejecución** | Workflow GitHub Actions (static, domain, integration con Postgres, build, SCA) |
-| T3.16 | Terraform dev | Pendiente | — |
+| T3.16 | Terraform dev | **No entregada** | Definible pero **no verificable sin credenciales cloud**; entregar IaC nunca ejecutada es el artefacto que más caro sale al fallar. Dueño: propietario (docs/31 §3.1) |
 | T3.17 | Onboarding tenant demo < 60 s | **Finalizada** | Script mide **50 ms** (gate < 60 s) |
-| T3.18 | Gate F3: criterios de salida + demo grabada | Pendiente | 3 gates duros ya en verde; faltan T3.07–T3.16 |
+| T3.18 | Gate F3: criterios de salida + demo grabada | **Propuesta** | Evaluación completa en `docs/31-gate-fase-3.md`: **apto con excepciones** (T3.16 y demo grabada, ambas con dueño humano) |
 
 **Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql`.
-**Próxima acción de Claude Code:** T3.16 (Terraform dev; **no verificable sin credenciales cloud**) y el gate de salida T3.18.
+**Próxima acción de Claude Code:** esperar aprobación del gate F3 (`docs/31`) y del backlog F4; al aprobarse, comenzar por T4.01–T4.04 (catálogo y cálculo de totales).
