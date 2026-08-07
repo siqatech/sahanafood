@@ -24,6 +24,7 @@ import {
 import { recordAudit } from '../../audit/index.js';
 import { enqueueEvent } from '../../../events/outbox.js';
 import { CatalogService } from '../../catalog/index.js';
+import { resolveAcceptancePolicy } from './acceptance-policy.js';
 import { OrganizationService } from '../../organization/index.js';
 
 /**
@@ -281,13 +282,27 @@ export class OrderingService {
     // 7) Estado inicial: programado o recibido (RN-ORD-05).
     const esProgramado =
       input.scheduledAt !== undefined && input.scheduledAt > new Date();
-    const estadoInicial: OrderState = esProgramado ? 'scheduled' : 'received';
 
     const prepMinutes = Math.max(
       ...domainLines.map((l) => porId.get(l.productId)?.prepMinutes ?? 10),
     );
 
     return withTenant(this.pool, tenantId, async (ctx) => {
+      // La política se lee DENTRO de la transacción para que un pedido con
+      // aceptación automática nazca ya aceptado (RN-ORD-04). Aceptarlo después,
+      // en otra transacción, dejaría una ventana en la que existe `received` sin
+      // que nadie lo esté mirando — y si el proceso muere en esa ventana, el
+      // pedido se queda esperando a una persona que no sabe que existe.
+      const politica = esProgramado
+        ? { autoAccept: false }
+        : await resolveAcceptancePolicy(ctx, input.brandId, input.channel);
+
+      const estadoInicial: OrderState = esProgramado
+        ? 'scheduled'
+        : politica.autoAccept
+          ? 'accepted'
+          : 'received';
+
       const orderNumber = await this.nextOrderNumber(ctx);
 
       const [order] = await ctx.db
@@ -320,6 +335,11 @@ export class OrderingService {
           promisedAt: esProgramado
             ? (input.scheduledAt ?? null)
             : new Date(Date.now() + prepMinutes * 60_000),
+          // Se copia con el resto del snapshot: ajustar mañana el prep_time del
+          // producto no debe mover la ventana de liberación de un programado de
+          // ayer (RN-ORD-05).
+          prepMinutes,
+          ...(estadoInicial === 'accepted' ? { acceptedAt: new Date() } : {}),
           notes: input.notes ?? null,
         })
         .returning({
@@ -349,11 +369,14 @@ export class OrderingService {
         })),
       );
 
+      // El timeline refleja lo ocurrido, no el resultado: un pedido que nace
+      // aceptado se recibió Y se aceptó, y quien reconstruya el caso mañana
+      // tiene que poder ver que la aceptación fue automática y no de alguien.
       await this.appendEvent(ctx, {
         orderId,
         event: 'submit',
         fromStatus: null,
-        toStatus: estadoInicial,
+        toStatus: esProgramado ? 'scheduled' : 'received',
         ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
         ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
         data: {
@@ -361,6 +384,18 @@ export class OrderingService {
           externalRef: input.externalRef ?? null,
         },
       });
+
+      if (estadoInicial === 'accepted') {
+        await this.appendEvent(ctx, {
+          orderId,
+          event: 'accept',
+          fromStatus: 'received',
+          toStatus: 'accepted',
+          actorType: 'system',
+          reason: 'Aceptación automática por política del canal (RN-ORD-04).',
+          ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        });
+      }
 
       if (input.idempotencyKey) {
         await ctx.db
@@ -377,7 +412,11 @@ export class OrderingService {
       await enqueueEvent(ctx, {
         aggregateType: 'order',
         aggregateId: orderId,
-        eventType: esProgramado ? 'order.scheduled' : 'order.received',
+        eventType: esProgramado
+          ? 'order.scheduled'
+          : estadoInicial === 'accepted'
+            ? 'order.accepted'
+            : 'order.received',
         payload: {
           orderId,
           orderNumber,

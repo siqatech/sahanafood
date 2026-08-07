@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { OrderingService } from './app/ordering.service.js';
+import { AcceptanceService } from './app/acceptance.service.js';
 import { OrderingController } from './api/ordering.controller.js';
+import { AcceptanceController } from './api/acceptance.controller.js';
 import { CatalogModule } from '../catalog/index.js';
 import { OrganizationModule } from '../organization/index.js';
 
@@ -10,8 +12,8 @@ import { OrganizationModule } from '../organization/index.js';
  */
 @Module({
   imports: [CatalogModule, OrganizationModule],
-  controllers: [OrderingController],
-  providers: [OrderingService],
-  exports: [OrderingService],
+  controllers: [OrderingController, AcceptanceController],
+  providers: [OrderingService, AcceptanceService],
+  exports: [OrderingService, AcceptanceService],
 })
 export class OrderingModule {}

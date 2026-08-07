@@ -628,6 +628,10 @@ export const orders = pgTable(
     cancelReason: text('cancel_reason'),
     notes: text('notes'),
     rowVersion: integer('row_version').notNull().default(1),
+    acceptanceAlertedAt: timestamp('acceptance_alerted_at', {
+      withTimezone: true,
+    }),
+    prepMinutes: integer('prep_minutes').notNull().default(15),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -687,6 +691,30 @@ export const orderEvents = pgTable(
   (t) => [
     index('idx_order_events_order').on(t.tenantId, t.orderId, t.occurredAt),
   ],
+);
+
+export const acceptancePolicies = pgTable(
+  'ord_acceptance_policies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    /** NULL = todas las marcas. */
+    brandId: uuid('brand_id'),
+    /** NULL = todos los canales. */
+    channel: text('channel'),
+    autoAccept: boolean('auto_accept').notNull().default(false),
+    alertAfterMinutes: integer('alert_after_minutes').notNull().default(5),
+    autoRejectAfterMinutes: integer('auto_reject_after_minutes')
+      .notNull()
+      .default(10),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_acceptance_policies_tenant').on(t.tenantId)],
 );
 
 export const orderCounters = pgTable('ord_counters', {

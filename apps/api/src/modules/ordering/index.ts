@@ -21,3 +21,13 @@ export {
   type SubmitLineInput,
   type OrderSummary,
 } from './app/ordering.service.js';
+export {
+  AcceptanceService,
+  AUTO_REJECT_REASON,
+  type SweepResult,
+} from './app/acceptance.service.js';
+export {
+  DEFAULT_ACCEPTANCE_POLICY,
+  resolveAcceptancePolicy,
+  type AcceptancePolicy,
+} from './app/acceptance-policy.js';

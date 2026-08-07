@@ -338,6 +338,15 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /ordering/acceptance-policies', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /ordering/acceptance-policies', (r) =>
+        r.get('/api/v1/ordering/acceptance-policies'),
+      ),
+    );
+  });
+
   it('GET /catalog/resolved', async () => {
     // Ambos tenants tienen catálogos con la MISMA estructura y nombres: si
     // hubiera fuga, no se notaría por el contenido, solo por los ids.
