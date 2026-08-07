@@ -74,6 +74,34 @@ function collectStrings(value: unknown, acc: string[] = []): string[] {
 }
 
 /**
+ * Quita el `instance` de un Problem Details antes de buscar fugas.
+ *
+ * Por RFC 9457, `instance` ES la URI de la petición: si alguien pide
+ * `/documents/<id-ajeno>`, la respuesta de error lleva ese id porque lo puso
+ * quien pregunta, no porque el servidor se lo haya revelado. Contarlo como
+ * fuga obligaría a devolver errores sin contexto en TODOS los endpoints con
+ * `:id` — y a perder el dato que hace útil un 404 al depurar.
+ *
+ * Lo que sí sigue vigilado es todo lo demás del cuerpo, incluido el `detail`:
+ * ahí un id ajeno sí sería el servidor hablando de más.
+ */
+function sinEcoDeLaPeticion(body: unknown): unknown {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return body;
+  }
+  const objeto = body as Record<string, unknown>;
+  // Solo se aplica a Problem Details, reconocible por `type` + `status`.
+  if (
+    typeof objeto['type'] !== 'string' ||
+    typeof objeto['status'] !== 'number'
+  ) {
+    return body;
+  }
+  const { instance: _instance, ...resto } = objeto;
+  return resto;
+}
+
+/**
  * Ejecuta las comprobaciones de aislamiento sobre un endpoint.
  * Lanza con un mensaje explícito si alguna falla.
  */
@@ -114,7 +142,7 @@ export async function assertEndpointIsolation(
     `${testCase.name}: el tenant propietario debería obtener ${okStatuses.join('/')}, obtuvo ${asA.status}`,
   ).toContain(asA.status);
 
-  const haystack = collectStrings(asA.body);
+  const haystack = collectStrings(sinEcoDeLaPeticion(asA.body));
   const leaked = testCase.secretsOfB.filter((secret) =>
     haystack.some((s) => s === secret || s.includes(secret)),
   );

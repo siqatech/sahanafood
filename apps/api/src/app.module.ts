@@ -17,6 +17,7 @@ import { OrderingModule } from './modules/ordering/index.js';
 import { IntegrationsModule } from './modules/integrations/index.js';
 import { KitchenModule } from './modules/kitchen/index.js';
 import { InventoryModule } from './modules/inventory/index.js';
+import { BillingModule } from './modules/billing/index.js';
 import { CashModule } from './modules/cash/index.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 
@@ -58,6 +59,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     IntegrationsModule,
     KitchenModule,
     InventoryModule,
+    BillingModule,
     CashModule,
     ObservabilityModule,
   ],

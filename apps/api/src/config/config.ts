@@ -27,6 +27,9 @@ const configSchema = z.object({
   worker: z.object({
     outboxIntervalMs: z.coerce.number().int().positive().default(1_000),
     acceptanceIntervalMs: z.coerce.number().int().positive().default(60_000),
+    // La cola de facturación va cada 30 s: un compromiso entre no machacar al
+    // OSE y no gastar un plazo que SUNAT cuenta en horas (RN-BIL-03).
+    billingIntervalMs: z.coerce.number().int().positive().default(30_000),
     outboxBatchSize: z.coerce.number().int().positive().max(1_000).default(100),
   }),
 
@@ -61,6 +64,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     worker: {
       outboxIntervalMs: env.WORKER_OUTBOX_INTERVAL_MS,
       acceptanceIntervalMs: env.WORKER_ACCEPTANCE_INTERVAL_MS,
+      billingIntervalMs: env.WORKER_BILLING_INTERVAL_MS,
       outboxBatchSize: env.WORKER_OUTBOX_BATCH_SIZE,
     },
     otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,

@@ -45,6 +45,8 @@ suite('Aislamiento — todos los endpoints', () => {
   /** Insumo y almacén del tenant B: A no debe poder leerlos ni ajustarlos. */
   let insumoDeB = '';
   let almacenDeB = '';
+  /** Comprobante del tenant B: A no debe poder leerlo, reenviarlo ni anularlo. */
+  let documentoDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -119,6 +121,29 @@ suite('Aislamiento — todos los endpoints', () => {
     });
     almacenDeB = demoB.warehouseId;
 
+    // Comprobante emitido de B, con su serie y su correlativo: si algún día se
+    // filtrara, el tenant A vería la facturación de un competidor.
+    documentoDeB = await withTenant(pool, b.tenantId, async ({ client }) => {
+      await client.query(
+        `INSERT INTO bil_series (tenant_id, company_id, series, doc_type)
+         VALUES ($1,$2,'B900','boleta')`,
+        [b.tenantId, demoB.companyId],
+      );
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO bil_documents
+           (tenant_id, company_id, doc_type, status,
+            series_id, series, correlative, number,
+            subtotal, taxable_base, tax, total, customer_name)
+         SELECT $1, $2, 'boleta', 'accepted', s.id, 'B900', 7, 'B900-00000007',
+                '84.7458','84.7458','15.2542','100.0000','Cliente SECRETO de B'
+           FROM bil_series s
+          WHERE s.tenant_id = $1 AND s.series = 'B900'
+         RETURNING id`,
+        [b.tenantId, demoB.companyId],
+      );
+      return rows[0]!.id;
+    });
+
     // Conexiones de integración: el token de webhook de B identifica su canal y
     // permitiría dirigirle pedidos, así que cuenta como secreto suyo.
     const connections = app.get(ConnectionService);
@@ -149,6 +174,9 @@ suite('Aislamiento — todos los endpoints', () => {
       demoB.warehouseId,
       insumoDeB,
       'Insumo SECRETO de B',
+      documentoDeB,
+      'B900-00000007',
+      'Cliente SECRETO de B',
       demoB.zoneIds[0],
       demoB.zoneIds[1],
       demoB.scheduleId,
@@ -477,6 +505,53 @@ suite('Aislamiento — todos los endpoints', () => {
             quantity: '-1.0000',
             reason: 'Intento de ajuste cruzado',
           }),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('GET /documents', async () => {
+    // Los comprobantes de B llevan su RUC, sus importes y sus correlativos:
+    // es lo más sensible que guarda el sistema.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /documents', (r) => r.get('/api/v1/documents')),
+    );
+  });
+
+  it('GET /documents/:id de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /documents/:id',
+        (r) => r.get(`/api/v1/documents/${documentoDeB}`),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('POST /documents/:id/retry sobre el comprobante de B', async () => {
+    // Reenviar el comprobante de otro tenant no filtra datos: los DECLARA a
+    // SUNAT en su nombre.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /documents/:id/retry',
+        (r) => r.post(`/api/v1/documents/${documentoDeB}/retry`),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('POST /documents/:id/credit-note sobre el comprobante de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /documents/:id/credit-note',
+        (r) =>
+          r
+            .post(`/api/v1/documents/${documentoDeB}/credit-note`)
+            .send({ reason: 'Intento de anulación cruzada' }),
         { expectedStatusForA: [404] },
       ),
     );

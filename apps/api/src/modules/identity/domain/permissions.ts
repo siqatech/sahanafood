@@ -49,6 +49,13 @@ export const PERMISSIONS = [
   // Inventario (F4/F6)
   'inventory.read',
   'inventory.adjust',
+  // Facturación electrónica (F4)
+  'billing.read',
+  // Emitir y reenviar un comprobante: lo hace el cajero al cobrar.
+  'billing.issue',
+  // Anular con nota de crédito NO es emitir. Un comprobante ya declarado se
+  // revierte, y quien lo revierte responde ante SUNAT: se separa a propósito.
+  'billing.void',
   // Reportes
   'reports.read',
   'reports.export',
@@ -120,6 +127,9 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'delivery.assign',
       'inventory.read',
       'inventory.adjust',
+      'billing.read',
+      'billing.issue',
+      'billing.void',
       'reports.read',
       // Ve la salud de los canales y la bandeja de excepciones, pero no toca
       // credenciales: gestionar conexiones queda en propietario/administrador.
@@ -138,6 +148,10 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'cash.open',
       'cash.close',
       'cash.read',
+      // Emite el comprobante al cobrar. Anular NO: una nota de crédito la
+      // autoriza un supervisor, igual que un descuento sobre el umbral.
+      'billing.read',
+      'billing.issue',
     ],
   },
   {
@@ -169,6 +183,7 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
     permissions: [
       'orders.read',
       'cash.read',
+      'billing.read',
       'reports.read',
       'reports.export',
       'audit.read',

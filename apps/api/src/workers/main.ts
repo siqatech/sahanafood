@@ -26,6 +26,7 @@ import {
   InventoryEventHandlers,
   INVENTORY_CONSUMER,
 } from '../modules/inventory/index.js';
+import { BillingService } from '../modules/billing/index.js';
 import { Worker } from 'bullmq';
 import {
   outboxPending,
@@ -69,6 +70,7 @@ async function bootstrap(): Promise<void> {
   const config = app.get<AppConfig>(CONFIG);
   const pool = app.get<Pool>(PG_POOL);
   const acceptance = app.get(AcceptanceService);
+  const billing = app.get(BillingService);
 
   const redis = createRedis(config.redisUrl);
   const publisher = createQueuePublisher(redis);
@@ -167,11 +169,39 @@ async function bootstrap(): Promise<void> {
     },
   });
 
+  /**
+   * Cola de facturación diferida (RN-BIL-03).
+   *
+   * Una venta sin internet deja su comprobante en cola, y SUNAT da un plazo
+   * desde la fecha de emisión. Sin esta vuelta, ese comprobante se queda ahí
+   * hasta que alguien pulse «reintentar» a mano — y el plazo corre igual.
+   *
+   * Cada 30 s: es un compromiso entre no machacar al OSE y no perder tiempo de
+   * un plazo que se cuenta en horas.
+   */
+  const facturacion = new PeriodicJob({
+    name: 'billing-queue',
+    intervalMs: config.worker.billingIntervalMs,
+    // Desfasado de los otros dos para no arrancar los tres a la vez y pelearse
+    // por las conexiones del pool justo en el arranque.
+    initialDelayMs: 10_000,
+    run: async () => {
+      const r = await billing.processQueueAllTenants();
+      if (r.processed > 0 || r.expiring > 0) {
+        logger.log(
+          `Cola de facturación: ${r.accepted}/${r.processed} aceptados, ${r.expiring} cerca del plazo.`,
+        );
+      }
+    },
+  });
+
   relay.start();
   aceptacion.start();
+  facturacion.start();
   logger.log(
     `Worker activo — relay cada ${config.worker.outboxIntervalMs} ms, ` +
       `aceptación cada ${config.worker.acceptanceIntervalMs} ms, ` +
+      `facturación cada ${config.worker.billingIntervalMs} ms, ` +
       `consumidores [${consumidores.map((c) => c.nombre).join(', ')}] escuchando eventos de dominio.`,
   );
 
@@ -183,7 +213,7 @@ async function bootstrap(): Promise<void> {
     // El orden importa: primero se dejan de programar vueltas y se espera a la
     // que esté viva, y solo entonces se cierran cola, Redis y pool. Cerrarlos
     // antes abortaría una transacción a medias en cada despliegue.
-    await Promise.all([relay.stop(), aceptacion.stop()]);
+    await Promise.all([relay.stop(), aceptacion.stop(), facturacion.stop()]);
     // `close()` del consumidor espera a que termine el job en curso: matarlo a
     // mitad dejaría una transacción abortada y el evento por reintentar.
     await consumer.close();

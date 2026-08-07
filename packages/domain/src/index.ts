@@ -160,3 +160,24 @@ export {
   type ConsumptionResult,
   type OrderLineForConsumption,
 } from './inventory/recipe.js';
+
+// --- Facturación electrónica (spec 10, RN-BIL-01/03, ADR-0003) ---
+export {
+  resolveDocumentType,
+  assertValidIdentity,
+  assertValidSeries,
+  formatDocumentNumber,
+  BillingError,
+  type DocumentType,
+  type CustomerDocType,
+  type CustomerIdentity,
+} from './billing/document-type.js';
+
+export {
+  checkDeferredIssuance,
+  deferredQueueOrder,
+  DEFAULT_DEFERRAL_POLICY,
+  type DeferralPolicy,
+  type DeferredCheck,
+  type DeferredStatus,
+} from './billing/deferred.js';
