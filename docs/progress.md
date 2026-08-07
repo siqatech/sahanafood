@@ -12,7 +12,7 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
 | **Fase 3 — Fundamentos** | **En ejecución** | Negocio y observabilidad completos, verificados contra Postgres real (**198 pruebas en verde**: 101 API + 97 dominio). Queda T3.16 (Terraform) y el gate T3.18 |
-| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.05, T4.07–T4.15 (salvo T4.06) (totales, catálogo, pedidos con dedupe, modificación con control optimista, aceptación automática con vencimiento, bandeja de excepciones resoluble, simulador de marketplace y **prueba de caos con cero pérdida**). **450 pruebas en verde** (191 dominio + 259 API). Siguiente: T4.06 (publicación versionada del catálogo) y T4.16 (KDS) |
+| **Fase 4 — Operación principal** | **En ejecución** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.15 (totales, catálogo, pedidos con dedupe, modificación con control optimista, aceptación automática con vencimiento, bandeja de excepciones resoluble, simulador de marketplace y **prueba de caos con cero pérdida**). catálogo versionado con diff). **477 pruebas en verde** (201 dominio + 276 API). Siguiente: T4.16 (KDS) y T4.17–T4.19 (caja y arqueo) |
 | Fases 5–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
@@ -50,7 +50,7 @@ Backlog completo (32 tareas) en `specs/phases/phase-4-operacion.md`. Aquí solo 
 | T4.03 | Precios por canal y sucursal | **Finalizada** | `resolvePrice` por especificidad ((canal,sucursal) > canal > base); índice único con `COALESCE` |
 | T4.04 | Cálculo de totales (RN-T01..T05) | **Finalizada** | Redondeo half-up solo en el total; IGV extraído hacia atrás; propina fuera de base imponible; **100 % de ramas** |
 | T4.05 | Disponibilidad y pausas de producto | **Finalizada** | `POST /catalog/products/:id/pause` emite `catalog.availability_changed` por outbox; pausas caducadas se levantan solas |
-| T4.06 | Publicación versionada del catálogo | Pendiente | — |
+| **T4.06** | **Publicación versionada del catálogo** | **Finalizada** | Versión **inmutable** (UPDATE/DELETE revocados en BD) y descargable por (marca, canal), con correlativo propio; republicar sin cambios reutiliza la versión existente en vez de duplicarla; **diff entre versiones** calculado en `@sahana/domain` (property test: aplicarlo reconstruye siempre el destino) para que el POS sincronice sin bajarse el catálogo entero; **publicar no bloquea ventas**, verificado con 12 pedidos y 3 publicaciones concurrentes |
 | **T4.07** | **Máquina de estados de pedido** | **Finalizada** | 12 estados × 13 eventos: **las 156 combinaciones** probadas (transicionan o lanzan); BFS de alcanzabilidad; sin callejones sin salida |
 | T4.08 | `OrderingService.submit()` + `ord_*` con snapshot inmutable | **Finalizada** | Migración `0009_ordering.sql`; la línea copia nombre y precio (no referencia a `cat_prices`); timeline append-only verificado en BD |
 | T4.09 | Idempotencia y dedupe (ADR-0010) | **Finalizada** | **Dedupe concurrente en verde**: dos `submit()` simultáneos con el mismo `external_ref` → 1 pedido (garantía del índice único, no del código) |
@@ -65,4 +65,4 @@ Backlog completo (32 tareas) en `specs/phases/phase-4-operacion.md`. Aquí solo 
 **Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql` · resolver PA-01/02/03 (`docs/22-risks.md`) · **definir `CREDENTIALS_MASTER_KEY` en cada entorno** (sin ella no arranca en producción, y rotarla obliga a recifrar).
 **Deuda saldada:** el worker (`apps/api/src/workers/main.ts`, `make worker`) ya dispara el relay del outbox y el barrido de aceptación. Verificado de dos formas: pruebas que ejecutan el mismo `PeriodicJob` de producción contra **BullMQ y Postgres reales** (el evento sale del outbox y llega a la cola), y arranque del proceso completo con apagado limpio ante SIGTERM.
 
-**Próxima acción de Claude Code:** T4.06 (publicación versionada del catálogo) y T4.16 (KDS).
+**Próxima acción de Claude Code:** T4.16 (KDS: el pedido por fin visible en cocina) y T4.17–T4.19 (sesiones de caja, arqueo y descuentos con PIN).

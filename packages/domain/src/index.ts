@@ -100,3 +100,15 @@ export {
   type OrderState,
   type OrderEvent,
 } from './ordering/order-state.js';
+
+// --- Catálogo versionado (spec 04) ---
+export {
+  diffCatalogVersions,
+  applyCatalogDiff,
+  CatalogDiffError,
+  type CatalogSnapshot,
+  type CatalogSnapshotProduct,
+  type CatalogVersionDiff,
+  type ChangedProduct,
+  type FieldChange,
+} from './catalog/version-diff.js';

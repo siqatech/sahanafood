@@ -6,4 +6,9 @@ export {
   type ResolvedProduct,
   type ResolvedModifierGroup,
 } from './app/catalog.service.js';
+export {
+  CatalogPublicationService,
+  type PublishedVersion,
+  type PublishedVersionWithSnapshot,
+} from './app/catalog-publication.service.js';
 export { seedDemoCatalog, type DemoCatalog } from './app/demo-seed.js';

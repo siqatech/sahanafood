@@ -360,6 +360,29 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /catalog/versions', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /catalog/versions', (r) =>
+        r.get(`/api/v1/catalog/versions?brand=${demoA.brandIds[0]}&channel=web`),
+      ),
+    );
+  });
+
+  it('POST /catalog/publish', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /catalog/publish',
+        (r) =>
+          r
+            .post('/api/v1/catalog/publish')
+            .send({ brandId: demoA.brandIds[0], channel: 'web' }),
+        { expectedStatusForA: [201] },
+      ),
+    );
+  });
+
   it('POST /catalog/products/:id/pause', async () => {
     await assertEndpointIsolation(
       app,

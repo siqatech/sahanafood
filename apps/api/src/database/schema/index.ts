@@ -693,6 +693,28 @@ export const orderEvents = pgTable(
   ],
 );
 
+export const catalogVersions = pgTable(
+  'cat_catalog_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    channel: text('channel').notNull(),
+    version: integer('version').notNull(),
+    snapshot: jsonb('snapshot').notNull(),
+    checksum: text('checksum').notNull(),
+    productCount: integer('product_count').notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    publishedBy: uuid('published_by'),
+    notes: text('notes'),
+  },
+  (t) => [
+    index('idx_catalog_versions_ultima').on(t.tenantId, t.brandId, t.channel),
+  ],
+);
+
 export const acceptancePolicies = pgTable(
   'ord_acceptance_policies',
   {
