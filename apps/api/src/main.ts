@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { VersioningType } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
-import { ProblemDetailsFilter } from './common/problem-details.filter.js';
 import { loadConfig } from './config/config.js';
+import { startTracing, stopTracing } from './observability/tracing.js';
+import { configureApp } from './bootstrap.js';
 
 /**
  * Punto de entrada de la API. Versionado `/api/v1`, logs estructurados,
@@ -12,15 +12,25 @@ import { loadConfig } from './config/config.js';
  */
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
+
+  // El tracing se inicia ANTES de construir la app: las instrumentaciones
+  // automáticas parchean los módulos al cargarse, y si la app ya está montada
+  // llegan tarde.
+  startTracing({
+    serviceName: 'sahana-api',
+    endpoint: config.otelEndpoint,
+  });
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   app.useLogger(app.get(Logger));
-  app.setGlobalPrefix('api');
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-  app.useGlobalFilters(new ProblemDetailsFilter());
+  configureApp(app);
   app.enableShutdownHooks();
 
   await app.listen(config.apiPort);
 }
+
+process.on('SIGTERM', () => {
+  void stopTracing();
+});
 
 void bootstrap();

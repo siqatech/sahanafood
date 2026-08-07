@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Test } from '@nestjs/testing';
-import { VersioningType, type INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../app.module.js';
-import { ProblemDetailsFilter } from '../common/problem-details.filter.js';
+import { configureApp } from '../bootstrap.js';
 import { createPool } from '../database/pool.js';
 import { withTenant } from '../database/rls.js';
 import * as schema from '../database/schema/index.js';
@@ -43,9 +43,7 @@ suite('Organization e2e', () => {
       imports: [AppModule],
     }).compile();
     app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-    app.useGlobalFilters(new ProblemDetailsFilter());
+    configureApp(app);
     await app.init();
 
     await seedPlans(pool);

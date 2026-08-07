@@ -1,6 +1,11 @@
 import type { Pool } from 'pg';
 import { withSystem, type TenantContext } from '../database/rls.js';
 import * as schema from '../database/schema/index.js';
+import {
+  outboxPublished,
+  outboxRelayErrors,
+} from '../observability/metrics.js';
+import { withSpan, currentTraceId } from '../observability/tracing.js';
 
 /**
  * Productor y relay del patrón Outbox/Inbox (ADR-0007).
@@ -21,6 +26,12 @@ export interface DomainEventInput {
   aggregateId: string;
   eventType: string;
   payload: Record<string, unknown>;
+  /**
+   * Correlación con la petición que originó el evento. Si se omite, se toma la
+   * traza activa. Es lo que permite seguir el camino request → outbox → worker
+   * a través de la cola, donde la propagación automática de contexto no llega.
+   */
+  traceId?: string;
 }
 
 export interface OutboxRecord {
@@ -32,6 +43,8 @@ export interface OutboxRecord {
   payload: Record<string, unknown>;
   occurredAt: Date;
   attempts: number;
+  /** Traza de la petición que lo originó; el consumidor la reanuda. */
+  traceId: string | null;
 }
 
 /** Inserta un evento en el outbox dentro de la transacción de negocio. */
@@ -45,6 +58,7 @@ export async function enqueueEvent(
     aggregateId: event.aggregateId,
     eventType: event.eventType,
     payload: event.payload,
+    traceId: event.traceId ?? currentTraceId() ?? null,
   });
 }
 
@@ -72,8 +86,10 @@ export async function relayOnce(
       payload: Record<string, unknown>;
       occurred_at: Date;
       attempts: number;
+      trace_id: string | null;
     }>(
-      `SELECT id, tenant_id, aggregate_type, aggregate_id, event_type, payload, occurred_at, attempts
+      `SELECT id, tenant_id, aggregate_type, aggregate_id, event_type, payload,
+              occurred_at, attempts, trace_id
          FROM outbox
         WHERE published_at IS NULL
         ORDER BY occurred_at
@@ -92,10 +108,28 @@ export async function relayOnce(
         payload: row.payload,
         occurredAt: row.occurred_at,
         attempts: row.attempts,
+        traceId: row.trace_id,
       };
       // Si `publish` lanza, la transacción hace rollback: published_at sigue
       // NULL y el evento se reintenta en la siguiente vuelta.
-      await publish(record);
+      // El span enlaza con la petición original vía trace_id: así el salto por
+      // la cola queda visible en la traza (gate T3.14).
+      try {
+        await withSpan(
+          `outbox.publish ${record.eventType}`,
+          {
+            'sahana.event.id': record.id,
+            'sahana.event.type': record.eventType,
+            'sahana.aggregate.id': record.aggregateId,
+            'sahana.origin.trace_id': record.traceId ?? 'sin-traza',
+          },
+          () => publish(record),
+        );
+      } catch (error) {
+        outboxRelayErrors.inc();
+        throw error;
+      }
+      outboxPublished.inc({ event_type: record.eventType });
       await client.query(
         'UPDATE outbox SET published_at = now(), attempts = attempts + 1 WHERE id = $1',
         [row.id],

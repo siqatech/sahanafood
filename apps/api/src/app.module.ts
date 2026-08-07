@@ -12,6 +12,7 @@ import { IdentityModule } from './modules/identity/index.js';
 import { TenancyModule } from './modules/tenancy/index.js';
 import { AuditModule } from './modules/audit/index.js';
 import { OrganizationModule } from './modules/organization/index.js';
+import { ObservabilityModule } from './observability/observability.module.js';
 
 /**
  * Módulo raíz del monolito modular. Los módulos de negocio (tenancy, identity,
@@ -46,6 +47,7 @@ import { OrganizationModule } from './modules/organization/index.js';
     TenancyModule,
     AuditModule,
     OrganizationModule,
+    ObservabilityModule,
   ],
 })
 export class AppModule implements NestModule {

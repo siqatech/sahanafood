@@ -99,6 +99,7 @@ export const outbox = pgTable(
       .defaultNow(),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     attempts: integer('attempts').notNull().default(0),
+    traceId: text('trace_id'),
   },
   (t) => [index('idx_outbox_tenant').on(t.tenantId, t.occurredAt)],
 );

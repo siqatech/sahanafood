@@ -19,6 +19,13 @@ make demo-tenant             # onboarding de tenant demo (< 60 s)
 make dev                     # API en http://localhost:3000  (GET /api/v1/health)
 ```
 
+Observabilidad:
+
+```bash
+curl localhost:3000/metrics            # métricas Prometheus (fuera de /api, sin versionar)
+# Trazas: exporta OTEL_EXPORTER_OTLP_ENDPOINT para activarlas; sin él no se arranca el SDK.
+```
+
 Calidad y pruebas:
 
 ```bash

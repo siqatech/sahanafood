@@ -18,6 +18,9 @@ const configSchema = z.object({
 
   redisUrl: z.string().url().default('redis://localhost:6379'),
 
+  /** Colector OTLP. Sin él no se arranca el tracing (ver observability/tracing). */
+  otelEndpoint: z.string().url().optional(),
+
   jwt: z.object({
     accessSecret: z.string().min(16),
     refreshSecret: z.string().min(16),
@@ -36,6 +39,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseUrl: env.DATABASE_URL,
     migrationDatabaseUrl: env.MIGRATION_DATABASE_URL,
     redisUrl: env.REDIS_URL,
+    otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
     jwt: {
       accessSecret: env.JWT_ACCESS_SECRET ?? 'dev-only-access-secret-change-me',
       refreshSecret:
