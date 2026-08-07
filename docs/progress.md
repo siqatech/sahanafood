@@ -11,7 +11,7 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0013 (Money escala 4) | Aceptada | Representación interna de `Money` documentada e implementada |
 | ADR-0014 (escapes acotados de RLS) | Aceptada | Patrón para relay de outbox y resolución de login sin romper el aislamiento |
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
-| **Fase 3 — Fundamentos** | **En ejecución** | Núcleo, identidad, tenancy, auditoría y organización verificados contra Postgres real (**154 pruebas en verde**: 58 API + 96 dominio) |
+| **Fase 3 — Fundamentos** | **En ejecución** | Todos los módulos de negocio de F3 completos y verificados contra Postgres real (**174 pruebas en verde**: 77 API + 97 dominio). Queda infraestructura: T3.13, T3.14, T3.16, T3.18 |
 | Fases 4–9 | Pendiente | Backlog se genera al abrir cada fase (T4.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
@@ -26,7 +26,7 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | T3.06 | Test de esquema: tenant_id + RLS en toda tabla de negocio | **Finalizada** | Suite `schema-rls` en verde; falla si una tabla nueva no cumple |
 | T3.07 | Módulo Tenancy (spec 01) | **Finalizada** | `GET /tenant`, `/limits`, `/flags`; límites con cerrojo `FOR UPDATE` (429); suspensión bloquea login sin borrar datos |
 | T3.08 | Módulo Identity (spec 02): JWT + roles con ámbito | **Finalizada** | argon2id, refresh rotativo con **revocación de familia por reuso** (RN-IDN-02), guard `@RequirePermission` global, matriz permiso×rol testeada |
-| T3.09 | Dispositivos POS + PIN argon2 | Pendiente | `safeEqual()` (comparación en tiempo constante) ya disponible |
+| T3.09 | Dispositivos POS + PIN argon2 | **Finalizada** | Emparejamiento con código de un solo uso (garantizado por BD), token de dispositivo revocable, PIN argon2id con **bloqueo 5/15 min que persiste** y cambio obligatorio al primer uso |
 | T3.10 | Módulo Audit (spec 17): append-only + interceptor | **Finalizada** | `recordAudit()` transaccional + `GET /audit` con `audit.read`; UPDATE/DELETE fallan en BD (probado). Interceptor automático llega con los módulos de F4 |
 | T3.11 | Outbox/inbox + relay (ADR-0007) | **Finalizada** | **Exactamente-una-vez** verificado bajo kill del relay |
 | T3.12 | Módulo Organization (spec 03) + zonas de cobertura | **Finalizada** | Jerarquía completa con **FKs compuestas** (docs/09 §4); M:N marca⟷cocina; `GET /coverage` con **punto en frontera**; horario que cruza medianoche; semilla demo de aceptación |
@@ -38,4 +38,4 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | T3.18 | Gate F3: criterios de salida + demo grabada | Pendiente | 3 gates duros ya en verde; faltan T3.07–T3.16 |
 
 **Próximas acciones humanas:** confirmar DP-01 (equipo ejecutor) · agendar entrevistas DP-08 · revisar diffs de `infra/migrations/*.sql`.
-**Próxima acción de Claude Code:** continuar el backlog F3 por T3.09 (dispositivos POS + PIN argon2) y T3.13 (extraer el harness de aislamiento), luego T3.14 (OTel) y T3.16 (Terraform) para cerrar el gate T3.18.
+**Próxima acción de Claude Code:** cerrar F3 con T3.13 (extraer el harness de aislamiento como helper genérico), T3.14 (OTel + Sentry) y T3.16 (Terraform dev), y luego el gate T3.18.

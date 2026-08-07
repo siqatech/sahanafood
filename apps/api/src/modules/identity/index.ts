@@ -14,6 +14,16 @@ export {
 } from './app/auth.service.js';
 export { RequirePermissionGuard } from './api/require-permission.guard.js';
 export {
+  DeviceService,
+  MAX_PIN_ATTEMPTS,
+  PIN_LOCK_MINUTES,
+  PAIRING_CODE_TTL_MINUTES,
+  PinLockedError,
+  InvalidPinError,
+  PinMustChangeError,
+  type PairedDevice,
+} from './app/device.service.js';
+export {
   seedSystemRoles,
   createOwnerUser,
 } from './app/provisioning.service.js';

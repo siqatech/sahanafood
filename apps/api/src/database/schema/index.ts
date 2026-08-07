@@ -382,3 +382,59 @@ export const schedules = pgTable(
   },
   (t) => [index('idx_schedules_location').on(t.tenantId, t.locationId)],
 );
+
+// --- Dispositivos POS y PIN (módulo 02, RN-IDN-03/04) ---
+
+export const pairingCodes = pgTable(
+  'idn_pairing_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    codeHash: text('code_hash').notNull(),
+    locationId: uuid('location_id'),
+    createdBy: uuid('created_by'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    deviceId: uuid('device_id'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_pairing_tenant').on(t.tenantId)],
+);
+
+export const devices = pgTable(
+  'idn_devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    locationId: uuid('location_id'),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    status: text('status').notNull().default('active'),
+    pairedAt: timestamp('paired_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedBy: uuid('revoked_by'),
+  },
+  (t) => [index('idx_devices_tenant').on(t.tenantId, t.status)],
+);
+
+/** PIN de operador. El bloqueo vive en BD para sobrevivir a reinicios. */
+export const userPins = pgTable(
+  'idn_user_pins',
+  {
+    tenantId: uuid('tenant_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    pinHash: text('pin_hash').notNull(),
+    mustChange: boolean('must_change').notNull().default(true),
+    failedAttempts: integer('failed_attempts').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
+);
