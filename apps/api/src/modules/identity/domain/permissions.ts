@@ -31,6 +31,10 @@ export const PERMISSIONS = [
   'orders.cancel',
   // Cancelar un pedido YA en preparación: hay costo de insumos (RN-ORD-06).
   'orders.cancel_in_progress',
+  'orders.modify',
+  // Vaciar la bandeja de excepciones cambia el importe que se cobrará: no es
+  // una lectura, es una decisión de negocio (RN-ORD-10).
+  'orders.review_exceptions',
   'orders.discount',
   // Caja (F4)
   'cash.open',
@@ -104,6 +108,8 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'orders.transition',
       'orders.cancel',
       'orders.cancel_in_progress',
+      'orders.modify',
+      'orders.review_exceptions',
       'orders.discount',
       'cash.open',
       'cash.close',
@@ -128,6 +134,7 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'orders.read',
       'orders.create',
       'orders.transition',
+      'orders.modify',
       'cash.open',
       'cash.close',
       'cash.read',

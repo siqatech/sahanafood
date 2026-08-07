@@ -24,6 +24,30 @@ interface ProblemDetails {
   [k: string]: unknown;
 }
 
+/**
+ * Campos que define RFC 9457 y que una extensión no puede redefinir. La lista
+ * incluye `traceId` porque es nuestro anclaje para correlacionar con los logs:
+ * si un error lo sobrescribiera, el problema reportado dejaría de encontrarse.
+ */
+const RESERVED_FIELDS = new Set([
+  'type',
+  'title',
+  'status',
+  'detail',
+  'instance',
+  'traceId',
+]);
+
+function omitReservedFields(
+  extra: Record<string, unknown>,
+): Record<string, unknown> {
+  const salida: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(extra)) {
+    if (!RESERVED_FIELDS.has(k)) salida[k] = v;
+  }
+  return salida;
+}
+
 @Catch()
 export class ProblemDetailsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
@@ -42,7 +66,13 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         detail: exception.detail,
         instance: req.originalUrl,
         traceId,
-        ...exception.extra,
+        ...(exception.code !== undefined ? { code: exception.code } : {}),
+        // Las extensiones van DESPUÉS pero SIN poder pisar los campos base.
+        // Un error que traiga `{ status: 'preparing' }` como dato de negocio
+        // convertiría `problem.status` en una cadena, y `res.status(...)` con
+        // una cadena deja la petición sin responder hasta que el cliente se
+        // rinde: un 409 se transforma en un cuelgue de 30 s.
+        ...omitReservedFields(exception.extra),
       };
     } else if (
       exception instanceof ModifierError ||
@@ -93,9 +123,20 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       };
     }
 
+    // Defensa en profundidad: pase lo que pase, esta petición se responde. Un
+    // código no numérico haría que Express no enviara nada y el cliente
+    // esperaría hasta su propio timeout; es mejor un 500 honesto que un
+    // cuelgue, que además consume una conexión mientras dura.
+    const status =
+      Number.isInteger(problem.status) &&
+      problem.status >= 100 &&
+      problem.status <= 599
+        ? problem.status
+        : 500;
+
     res
-      .status(problem.status)
+      .status(status)
       .setHeader('content-type', 'application/problem+json')
-      .json(problem);
+      .json({ ...problem, status });
   }
 }

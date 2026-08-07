@@ -4,6 +4,7 @@ import {
   Get,
   Headers,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -48,6 +49,17 @@ const submitSchema = z.object({
 
 const reasonSchema = z.object({
   reason: z.string().min(3, 'Indica el motivo.'),
+});
+
+const modifySchema = z.object({
+  lines: z.array(lineSchema).min(1, 'El pedido necesita al menos una línea.'),
+  reason: z.string().max(500).optional(),
+});
+
+const resolveMappingSchema = z.object({
+  lines: z
+    .array(lineSchema)
+    .min(1, 'Indica a qué productos nuestros corresponde el pedido.'),
 });
 
 function parse<T>(schema: z.ZodType<T>, body: unknown): T {
@@ -126,6 +138,57 @@ export class OrderingController {
     @Param('id') id: string,
   ): Promise<unknown[]> {
     return this.ordering.getTimeline(req.auth!.tid, id);
+  }
+
+  /**
+   * Modifica el pedido antes de que entre en cocina (RN-ORD-07).
+   *
+   * `If-Match` lleva el `rowVersion` que el cliente leyó. Es obligatorio a
+   * propósito: sin él, dos personas editando el mismo pedido a la vez producen
+   * una pérdida silenciosa de líneas, y en un mostrador con prisa eso pasa a
+   * diario.
+   */
+  @Patch(':id')
+  @RequirePermission('orders.modify')
+  modify(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Headers('if-match') ifMatch?: string,
+  ): Promise<OrderSummary> {
+    const version = Number(ifMatch);
+    if (!ifMatch || !Number.isInteger(version) || version < 1) {
+      throw new ValidationError(
+        'Falta la cabecera If-Match con la versión del pedido (campo rowVersion).',
+      );
+    }
+    const dto = parse(modifySchema, body);
+    return this.ordering.modify(req.auth!.tid, id, {
+      lines: dto.lines,
+      expectedVersion: version,
+      ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
+      actorId: req.auth!.sub,
+      ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
+    });
+  }
+
+  /**
+   * Resuelve el mapeo de un pedido apartado y lo devuelve al flujo (RN-ORD-10).
+   * Es la salida de la bandeja de excepciones que NO es un rechazo.
+   */
+  @Post(':id/resolve-mapping')
+  @RequirePermission('orders.review_exceptions')
+  resolveMapping(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<OrderSummary> {
+    const dto = parse(resolveMappingSchema, body);
+    return this.ordering.resolveMapping(req.auth!.tid, id, {
+      lines: dto.lines,
+      actorId: req.auth!.sub,
+      ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
+    });
   }
 
   @Post(':id/accept')

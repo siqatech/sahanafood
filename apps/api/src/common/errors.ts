@@ -9,6 +9,13 @@ export abstract class DomainError extends Error {
   abstract readonly type: string;
   /** Título legible y estable (no varía con la instancia). */
   abstract readonly title: string;
+  /**
+   * Código corto y estable para que el cliente decida SIN leer el texto
+   * (`ORDER_OUT_OF_COVERAGE`, `ORDER_BELOW_MINIMUM`...). El `title` y el
+   * `detail` están para personas y pueden reescribirse o traducirse; el código
+   * es contrato. Ver el catálogo en spec 05 §9.
+   */
+  readonly code?: string;
 
   constructor(
     readonly detail: string,

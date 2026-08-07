@@ -13,6 +13,7 @@ import {
   ConnectionService,
   SIMULATOR_PROVIDER,
 } from '../modules/integrations/index.js';
+import { OrderingService } from '../modules/ordering/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -39,6 +40,8 @@ suite('Aislamiento — todos los endpoints', () => {
   let secretsOfB: string[] = [];
   let demoA: Awaited<ReturnType<typeof seedDemoOrganization>>;
   let catA: Awaited<ReturnType<typeof seedDemoCatalog>>;
+  /** Pedido del tenant A, para probar endpoints que operan sobre uno concreto. */
+  let pedidoDeA = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -144,6 +147,14 @@ suite('Aislamiento — todos los endpoints', () => {
       conexionB.webhookToken,
       'secreto-de-firma-del-tenant-b-iso',
     ];
+
+    const pedido = await app.get(OrderingService).submit(a.tenantId, {
+      brandId: demoA.brandIds[0],
+      locationId: demoA.locationId,
+      channel: 'pos',
+      lines: [{ productId: catA.comboId, quantity: 1 }],
+    });
+    pedidoDeA = pedido.id;
 
     const loginA = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -280,6 +291,23 @@ suite('Aislamiento — todos los endpoints', () => {
     await assertEndpointIsolation(
       app,
       caseFor('GET /orders', (r) => r.get('/api/v1/orders')),
+    );
+  });
+
+  it('PATCH /orders/:id (pedido de A)', async () => {
+    // El pedido pertenece a A: para B no existe. Se comprueba además que la
+    // respuesta a B no revele NADA del pedido ajeno, ni siquiera su versión.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'PATCH /orders/:id',
+        (r) =>
+          r
+            .patch(`/api/v1/orders/${pedidoDeA}`)
+            .set('if-match', '1')
+            .send({ lines: [{ productId: catA.comboId, quantity: 1 }] }),
+        { expectedStatusForA: [200] },
+      ),
     );
   });
 

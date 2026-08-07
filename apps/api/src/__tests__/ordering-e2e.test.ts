@@ -7,6 +7,7 @@ import { AppModule } from '../app.module.js';
 import { configureApp } from '../bootstrap.js';
 import { createPool } from '../database/pool.js';
 import { withTenant } from '../database/rls.js';
+import * as schema from '../database/schema/index.js';
 import { TenancyService } from '../modules/tenancy/index.js';
 import { seedDemoOrganization } from '../modules/organization/index.js';
 import { seedDemoCatalog } from '../modules/catalog/index.js';
@@ -546,6 +547,285 @@ suite('Ordering e2e', () => {
         .send(pedidoBase({ scheduledAt: ayer.toISOString() })),
     ).expect(201);
     expect(res.body.status).toBe('received');
+  });
+
+  // --------------------------- Marca no producida en el local (RN-ORD-09)
+
+  it('rechaza un pedido de una marca que ninguna cocina del local produce', async () => {
+    // Caso real: se da de alta una marca nueva y se olvida asociarla a cocina.
+    // Sin esta validación el pedido entraría, no llegaría a ninguna pantalla y
+    // se descubriría cuando el cliente reclamase.
+    const huerfana = await withTenant(pool, tenantA, async (ctx) => {
+      const [b] = await ctx.db
+        .insert(schema.brands)
+        .values({
+          tenantId: tenantA,
+          companyId: org.companyId,
+          name: 'Marca sin cocina',
+          slug: 'marca-sin-cocina',
+        })
+        .returning({ id: schema.brands.id });
+      return b!.id;
+    });
+
+    const res = await auth(
+      http()
+        .post('/api/v1/orders')
+        .send(pedidoBase({ brandId: huerfana })),
+    ).expect(409);
+    expect(res.body.code).toBe('ORDER_BRAND_NOT_SERVED');
+  });
+
+  it('cada error de negocio trae su código estable (spec 05 §9)', async () => {
+    // El cliente decide por el `code`, no por el texto: el título y el detalle
+    // están para personas y pueden reescribirse o traducirse sin avisar.
+    const fuera = await auth(
+      http()
+        .post('/api/v1/orders')
+        .send(
+          pedidoBase({
+            delivery: { address: 'Muy lejos', lat: -12.9, lng: -76.5 },
+          }),
+        ),
+    ).expect(409);
+    expect(fuera.body.code).toBe('ORDER_OUT_OF_COVERAGE');
+
+    const noDisponible = await auth(
+      http()
+        .post('/api/v1/orders')
+        .send(
+          pedidoBase({
+            channel: 'web',
+            lines: [{ productId: cat.soloPosId, quantity: 1 }],
+          }),
+        ),
+    ).expect(422);
+    expect(noDisponible.body.code).toBe('ORDER_PRODUCT_UNAVAILABLE');
+  });
+
+  // ------------------------------------ Modificación del pedido (RN-ORD-07)
+
+  it('modificar NO reescribe las líneas confirmadas: añade líneas de ajuste', async () => {
+    const creado = await auth(
+      http().post('/api/v1/orders').send(pedidoBase()),
+    ).expect(201);
+
+    const modificado = await auth(
+      http()
+        .patch(`/api/v1/orders/${creado.body.id}`)
+        .set('if-match', String(creado.body.rowVersion))
+        .send({
+          reason: 'El cliente añadió una bebida',
+          lines: [
+            {
+              productId: cat.polloId,
+              quantity: 2,
+              modifierOptionIds: [cat.optionGrandeId],
+            },
+          ],
+        }),
+    ).expect(200);
+
+    // Pollo grande (35) × 2 = 70.
+    expect(modificado.body.total.minorUnits).toBe(
+      Money.parse('70.00').minorUnits,
+    );
+    expect(modificado.body.rowVersion).toBe(creado.body.rowVersion + 1);
+
+    const lineas = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        is_adjustment: boolean;
+        quantity: number;
+      }>(
+        'SELECT is_adjustment, quantity FROM ord_order_lines WHERE order_id = $1 ORDER BY created_at',
+        [creado.body.id],
+      );
+      return rows;
+    });
+
+    // La línea original SIGUE ahí, marcada como sustituida: es la única prueba
+    // de qué se pidió primero, y el comprobante ya emitido se apoya en ella.
+    expect(lineas).toHaveLength(2);
+    expect(lineas.filter((l) => l.is_adjustment)).toHaveLength(1);
+    expect(lineas.find((l) => !l.is_adjustment)?.quantity).toBe(2);
+  });
+
+  it('una versión desactualizada en If-Match se rechaza con 409', async () => {
+    const creado = await auth(
+      http().post('/api/v1/orders').send(pedidoBase()),
+    ).expect(201);
+
+    // Dos personas leyeron la misma versión; la primera modifica...
+    await auth(
+      http()
+        .patch(`/api/v1/orders/${creado.body.id}`)
+        .set('if-match', String(creado.body.rowVersion))
+        .send({ lines: [{ productId: cat.comboId, quantity: 1 }] }),
+    ).expect(200);
+
+    // ...y la segunda llega con la versión vieja: se le dice que recargue en
+    // vez de dejar que pise el cambio ajeno en silencio.
+    const conflicto = await auth(
+      http()
+        .patch(`/api/v1/orders/${creado.body.id}`)
+        .set('if-match', String(creado.body.rowVersion))
+        .send({ lines: [{ productId: cat.comboId, quantity: 5 }] }),
+    ).expect(409);
+    expect(conflicto.body.code).toBe('ORDER_VERSION_CONFLICT');
+    expect(conflicto.body.currentVersion).toBe(creado.body.rowVersion + 1);
+  });
+
+  it('sin cabecera If-Match no se modifica nada', async () => {
+    const creado = await auth(
+      http().post('/api/v1/orders').send(pedidoBase()),
+    ).expect(201);
+    await auth(
+      http()
+        .patch(`/api/v1/orders/${creado.body.id}`)
+        .send({ lines: [{ productId: cat.comboId, quantity: 1 }] }),
+    ).expect(422);
+  });
+
+  it('un pedido ya en cocina no se modifica (RN-ORD-07)', async () => {
+    const creado = await auth(
+      http().post('/api/v1/orders').send(pedidoBase()),
+    ).expect(201);
+    await ordering.applyTransition(tenantA, creado.body.id, 'accept', {
+      actorType: 'system',
+    });
+    const enCocina = await ordering.applyTransition(
+      tenantA,
+      creado.body.id,
+      'start_preparing',
+      { actorType: 'system' },
+    );
+
+    const res = await auth(
+      http()
+        .patch(`/api/v1/orders/${creado.body.id}`)
+        .set('if-match', String(enCocina.rowVersion))
+        .send({ lines: [{ productId: cat.comboId, quantity: 1 }] }),
+    ).expect(409);
+    expect(res.body.code).toBe('ORDER_NOT_MODIFIABLE');
+    // El estado del pedido viaja como extensión, sin pisar el `status` de
+    // Problem Details, que es el código HTTP.
+    expect(res.body.status).toBe(409);
+    expect(res.body.orderStatus).toBe('preparing');
+  });
+
+  it('la modificación queda en el timeline sin cambiar el estado', async () => {
+    const creado = await auth(
+      http().post('/api/v1/orders').send(pedidoBase()),
+    ).expect(201);
+    await auth(
+      http()
+        .patch(`/api/v1/orders/${creado.body.id}`)
+        .set('if-match', String(creado.body.rowVersion))
+        .send({ lines: [{ productId: cat.comboId, quantity: 3 }] }),
+    ).expect(200);
+
+    const timeline = await ordering.getTimeline(tenantA, creado.body.id);
+    const modificacion = timeline.find((e) => e.event === 'modify');
+    expect(modificacion).toBeTruthy();
+    expect(modificacion!.fromStatus).toBe('received');
+    expect(modificacion!.toStatus).toBe('received');
+  });
+
+  // ------------------- Resolver la bandeja de excepciones (RN-ORD-10, §7)
+
+  it('resolver el mapeo devuelve el pedido apartado al flujo con su importe', async () => {
+    // Un pedido apartado por la ingesta: sin líneas y con importes en cero,
+    // porque no se sabía qué se había pedido.
+    const apartado = await ordering.submitForReview(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'rappi',
+      externalRef: `RESOLVE-${Date.now()}`,
+      reason: 'SKU externo sin mapear: XYZ-123',
+      rawPayload: { items: [{ sku: 'XYZ-123', qty: 1 }] },
+    });
+    expect(apartado.status).toBe('needs_review');
+    expect(apartado.total.minorUnits).toBe(0);
+
+    const resuelto = await auth(
+      http()
+        .post(`/api/v1/orders/${apartado.id}/resolve-mapping`)
+        .send({ lines: [{ productId: cat.comboId, quantity: 1 }] }),
+    ).expect(201);
+
+    expect(resuelto.body.status).toBe('received');
+    expect(resuelto.body.total.minorUnits).toBe(Money.parse('38.00').minorUnits);
+
+    // Y ya no está en la bandeja.
+    const bandeja = await ordering.listExceptions(tenantA);
+    expect(bandeja.some((o) => o.id === apartado.id)).toBe(false);
+
+    // El timeline conserva por qué se apartó y cómo se resolvió.
+    const timeline = await ordering.getTimeline(tenantA, apartado.id);
+    expect(timeline.map((e) => e.event)).toEqual([
+      'mapping_failed',
+      'mapping_resolved',
+    ]);
+  });
+
+  it('resolver dos veces el mismo pedido se rechaza con 409', async () => {
+    const apartado = await ordering.submitForReview(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'rappi',
+      externalRef: `RESOLVE-2-${Date.now()}`,
+      reason: 'SKU sin mapear',
+      rawPayload: {},
+    });
+    const cuerpo = { lines: [{ productId: cat.comboId, quantity: 1 }] };
+
+    await auth(
+      http()
+        .post(`/api/v1/orders/${apartado.id}/resolve-mapping`)
+        .send(cuerpo),
+    ).expect(201);
+
+    // El segundo supervisor llega tarde: se le dice que ya está resuelto en vez
+    // de duplicarle las líneas.
+    const segundo = await auth(
+      http()
+        .post(`/api/v1/orders/${apartado.id}/resolve-mapping`)
+        .send(cuerpo),
+    ).expect(409);
+    expect(segundo.body.code).toBe('ORDER_INVALID_TRANSITION');
+  });
+
+  it('no se resuelve el mapeo de un pedido que nunca estuvo en revisión', async () => {
+    const normal = await auth(
+      http().post('/api/v1/orders').send(pedidoBase()),
+    ).expect(201);
+    await auth(
+      http()
+        .post(`/api/v1/orders/${normal.body.id}/resolve-mapping`)
+        .send({ lines: [{ productId: cat.comboId, quantity: 1 }] }),
+    ).expect(409);
+  });
+
+  it('resolver con un producto no vendible en ese canal falla y no toca el pedido', async () => {
+    const apartado = await ordering.submitForReview(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'web',
+      externalRef: `RESOLVE-3-${Date.now()}`,
+      reason: 'SKU sin mapear',
+      rawPayload: {},
+    });
+
+    await auth(
+      http()
+        .post(`/api/v1/orders/${apartado.id}/resolve-mapping`)
+        .send({ lines: [{ productId: cat.soloPosId, quantity: 1 }] }),
+    ).expect(422);
+
+    // Sigue en la bandeja: un intento fallido no puede sacarlo de ahí.
+    const sigue = await ordering.getSummary(tenantA, apartado.id);
+    expect(sigue.status).toBe('needs_review');
+    expect(sigue.total.minorUnits).toBe(0);
   });
 
   // ------------------------------------------------------------ Consultas

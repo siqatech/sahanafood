@@ -6,6 +6,7 @@ import {
   Money,
   calculateOrderTotals,
   transitionOrder,
+  canModify as canModifyOrder,
   cancellationNeedsElevatedPermission,
   InvalidTransitionError,
   type OrderEvent,
@@ -44,30 +45,71 @@ export class OrderInvalidTransitionError extends DomainError {
   readonly status = 409;
   readonly type = 'https://errors.sahana.food/order-invalid-transition';
   readonly title = 'Transición de pedido inválida';
+  readonly code = 'ORDER_INVALID_TRANSITION';
 }
 
 export class OrderOutOfCoverageError extends DomainError {
   readonly status = 409;
   readonly type = 'https://errors.sahana.food/order-out-of-coverage';
   readonly title = 'Fuera de zona de cobertura';
+  readonly code = 'ORDER_OUT_OF_COVERAGE';
 }
 
 export class OrderProductUnavailableError extends DomainError {
   readonly status = 422;
   readonly type = 'https://errors.sahana.food/order-product-unavailable';
   readonly title = 'Producto no disponible';
+  readonly code = 'ORDER_PRODUCT_UNAVAILABLE';
 }
 
 export class OrderBelowMinimumError extends DomainError {
   readonly status = 422;
   readonly type = 'https://errors.sahana.food/order-below-minimum';
   readonly title = 'Pedido por debajo del mínimo';
+  readonly code = 'ORDER_BELOW_MINIMUM';
+}
+
+/**
+ * La marca no se produce en el local destino (RN-ORD-09, RN-ORG-01).
+ *
+ * Es el error que aparece cuando alguien da de alta una marca nueva y se olvida
+ * de asociarla a una cocina: sin esta validación el pedido entraría, llegaría a
+ * la cocina de nadie y se descubriría cuando el cliente reclamase. La spec 05
+ * §9 no lo cataloga; se añade aquí con código propio y queda anotado en
+ * `docs/22-risks.md`.
+ */
+export class OrderBrandNotServedError extends DomainError {
+  readonly status = 409;
+  readonly type = 'https://errors.sahana.food/order-brand-not-served';
+  readonly title = 'La marca no se produce en este local';
+  readonly code = 'ORDER_BRAND_NOT_SERVED';
 }
 
 export class IdempotencyPayloadMismatchError extends DomainError {
   readonly status = 422;
   readonly type = 'https://errors.sahana.food/idempotency-payload-mismatch';
   readonly title = 'La clave de idempotencia se reutilizó con otro contenido';
+  readonly code = 'IDEMPOTENCY_PAYLOAD_MISMATCH';
+}
+
+/**
+ * El pedido cambió entre que el cliente lo leyó y que intentó modificarlo
+ * (RN-ORD-07). Aceptar la modificación a ciegas pisaría el cambio de otro
+ * —típicamente el cajero y el supervisor tocando el mismo pedido a la vez—.
+ */
+export class OrderVersionConflictError extends DomainError {
+  readonly status = 409;
+  readonly type = 'https://errors.sahana.food/order-version-conflict';
+  readonly title = 'El pedido cambió mientras lo editabas';
+  readonly code = 'ORDER_VERSION_CONFLICT';
+}
+
+/** Se intentó modificar un pedido que ya está en cocina (RN-ORD-07). */
+export class OrderNotModifiableError extends DomainError {
+  readonly status = 409;
+  readonly type = 'https://errors.sahana.food/order-not-modifiable';
+  readonly title = 'El pedido ya no admite modificación';
+  readonly code = 'ORDER_NOT_MODIFIABLE';
 }
 
 // ------------------------------------------------------------------- Tipos
@@ -115,6 +157,12 @@ export interface OrderSummary {
   tax: ReturnType<Money['toJSON']>;
   promisedAt: string | null;
   createdAt: string;
+  /**
+   * Versión de la fila. El cliente la devuelve como `If-Match` al modificar
+   * (RN-ORD-07); sin exponerla no habría forma de detectar ediciones
+   * simultáneas.
+   */
+  rowVersion: number;
   /** true si la petición se resolvió por dedupe/idempotencia (RN-ORD-03). */
   deduplicated?: boolean;
 }
@@ -185,47 +233,13 @@ export class OrderingService {
       }
     }
 
-    // 3) Resolver catálogo y precios para el canal (RN-ORD-09).
-    const catalogo = await this.catalog.getResolvedCatalog(tenantId, {
-      brandId: input.brandId,
-      channel: input.channel,
-      locationId: input.locationId,
-    });
-    const porId = new Map(catalogo.products.map((p) => [p.id, p]));
+    // 3) La marca tiene que producirse en el local destino (RN-ORD-09).
+    await this.assertBrandServedAt(tenantId, input.brandId, input.locationId);
 
-    const domainLines: OrderLineInput[] = input.lines.map((line, index) => {
-      const producto = porId.get(line.productId);
-      if (!producto) {
-        // No distingue entre «no existe», «sin precio en el canal» y «pausado»:
-        // desde fuera son el mismo hecho — no se puede vender ahora aquí.
-        throw new OrderProductUnavailableError(
-          `El producto ${line.productId} no está disponible en el canal ${input.channel}.`,
-          { productId: line.productId },
-        );
-      }
+    // 4) Resolver catálogo y precios para el canal (RN-ORD-09).
+    const { domainLines, porId } = await this.resolveLines(tenantId, input);
 
-      const seleccionados = new Set(line.modifierOptionIds ?? []);
-      const selections = producto.modifierGroups
-        .map((group) => ({
-          groupId: group.id,
-          optionIds: group.options
-            .filter((o) => seleccionados.has(o.id))
-            .map((o) => o.id),
-        }))
-        .filter((s) => s.optionIds.length > 0);
-
-      return {
-        lineId: `l${index}`,
-        productId: producto.id,
-        productName: producto.name,
-        unitPriceMinor: producto.price.minorUnits,
-        quantity: line.quantity,
-        modifierGroups: producto.modifierGroups,
-        modifierSelections: selections,
-      };
-    });
-
-    // 4) Cobertura y mínimo de la zona, si es delivery (RN-ORD-09).
+    // 5) Cobertura y mínimo de la zona, si es delivery (RN-ORD-09).
     let zoneId: string | null = null;
     let deliveryFeeMinor = 0;
     let minOrderMinor = 0;
@@ -245,7 +259,7 @@ export class OrderingService {
       minOrderMinor = cobertura.minOrder.minorUnits;
     }
 
-    // 5) Totales: SIEMPRE en el dominio compartido, nunca aquí ni en SQL.
+    // 6) Totales: SIEMPRE en el dominio compartido, nunca aquí ni en SQL.
     const totals = calculateOrderTotals({
       lines: domainLines,
       deliveryFeeMinor,
@@ -264,7 +278,7 @@ export class OrderingService {
       );
     }
 
-    // 6) Estado inicial: programado o recibido (RN-ORD-05).
+    // 7) Estado inicial: programado o recibido (RN-ORD-05).
     const esProgramado =
       input.scheduledAt !== undefined && input.scheduledAt > new Date();
     const estadoInicial: OrderState = esProgramado ? 'scheduled' : 'received';
@@ -375,18 +389,11 @@ export class OrderingService {
         ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
       });
 
-      return {
-        id: orderId,
-        orderNumber,
-        status: estadoInicial,
-        channel: input.channel,
-        brandId: input.brandId,
-        locationId: input.locationId,
-        total: totals.total.toJSON(),
-        tax: totals.tax.toJSON(),
-        promisedAt: null,
-        createdAt: order!.createdAt.toISOString(),
-      };
+      // Se relee en vez de componer el resumen a mano: la fila recién escrita
+      // es la fuente de verdad y así no hay dos formas de construir el mismo
+      // objeto que puedan divergir (la anterior devolvía promisedAt en null
+      // aunque acababa de calcularlo).
+      return this.getSummary(tenantId, orderId, ctx);
     });
   }
 
@@ -485,18 +492,7 @@ export class OrderingService {
         ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
       });
 
-      return {
-        id: orderId,
-        orderNumber,
-        status: 'needs_review' as OrderState,
-        channel: input.channel,
-        brandId: input.brandId,
-        locationId: input.locationId,
-        total: Money.zero().toJSON(),
-        tax: Money.zero().toJSON(),
-        promisedAt: null,
-        createdAt: order!.createdAt.toISOString(),
-      };
+      return this.getSummary(tenantId, orderId, ctx);
     });
   }
 
@@ -731,7 +727,443 @@ export class OrderingService {
       : withTenant(this.pool, tenantId, fetch);
   }
 
+  // --------------------------------------------- Modificación (RN-ORD-07)
+
+  /**
+   * Modifica un pedido antes de que entre en cocina.
+   *
+   * Dos reglas que no son negociables y que explican la forma del método:
+   *
+   * 1. **Nunca se reescribe una línea confirmada.** Se marcan las anteriores
+   *    como sustituidas añadiendo LÍNEAS DE AJUSTE (`is_adjustment`). El motivo
+   *    no es purismo: el comprobante electrónico ya emitido y el consumo de
+   *    stock se calculan sobre lo que hubo en cada momento, y reescribir la
+   *    línea original destruiría la única prueba de qué se pidió primero.
+   * 2. **Control optimista con `If-Match` sobre `row_version`.** Sin él, el
+   *    cajero y el supervisor editando a la vez producen la última escritura
+   *    gana, en silencio, con una línea perdida.
+   */
+  async modify(
+    tenantId: string,
+    orderId: string,
+    input: {
+      lines: SubmitLineInput[];
+      expectedVersion: number;
+      reason?: string | undefined;
+      actorId?: string | undefined;
+      traceId?: string | undefined;
+    },
+  ): Promise<OrderSummary> {
+    // Se leen fuera de la transacción de escritura los datos que hacen falta
+    // para resolver el catálogo; la comprobación de versión se repite DENTRO
+    // con cerrojo, que es la que manda.
+    const cabecera = await this.loadHeader(tenantId, orderId);
+
+    if (!canModifyOrder(cabecera.status)) {
+      throw new OrderNotModifiableError(
+        `Un pedido en estado "${cabecera.status}" ya no se puede modificar: está en producción o cerrado.`,
+        { orderStatus: cabecera.status },
+      );
+    }
+
+    const { domainLines, porId } = await this.resolveLines(tenantId, {
+      brandId: cabecera.brandId,
+      locationId: cabecera.locationId,
+      channel: cabecera.channel,
+      lines: input.lines,
+    });
+
+    const totals = calculateOrderTotals({
+      lines: domainLines,
+      deliveryFeeMinor: Money.parse(cabecera.deliveryFee).minorUnits,
+      tipMinor: Money.parse(cabecera.tip).minorUnits,
+    });
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        row_version: number;
+        status: OrderState;
+      }>(
+        'SELECT row_version, status FROM ord_orders WHERE id = $1 FOR UPDATE',
+        [orderId],
+      );
+      const actual = rows[0];
+      if (!actual) throw new NotFoundError('Pedido no encontrado.');
+
+      if (actual.row_version !== input.expectedVersion) {
+        throw new OrderVersionConflictError(
+          `El pedido va por la versión ${actual.row_version} y enviaste ${input.expectedVersion}. Vuelve a cargarlo.`,
+          { currentVersion: actual.row_version },
+        );
+      }
+      // Se repite dentro del cerrojo: entre la lectura y esta transacción el
+      // pedido pudo entrar en cocina.
+      if (!canModifyOrder(actual.status)) {
+        throw new OrderNotModifiableError(
+          `Un pedido en estado "${actual.status}" ya no se puede modificar.`,
+          { orderStatus: actual.status },
+        );
+      }
+
+      // Las líneas vigentes se marcan como ajuste: quedan en la tabla como
+      // historia, y el estado actual del pedido son las que NO son ajuste.
+      await ctx.db
+        .update(schema.orderLines)
+        .set({ isAdjustment: true })
+        .where(
+          and(
+            eq(schema.orderLines.orderId, orderId),
+            eq(schema.orderLines.isAdjustment, false),
+          ),
+        );
+
+      await ctx.db.insert(schema.orderLines).values(
+        totals.lines.map((line, i) => ({
+          tenantId,
+          orderId,
+          productId: line.productId,
+          productName: line.productName,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice.toDecimalString(),
+          modifiersTotal: line.modifiersPerUnit.toDecimalString(),
+          discount: line.discount.toDecimalString(),
+          lineTotal: line.total.toDecimalString(),
+          modifiers: this.snapshotModifiers(
+            domainLines[i]!,
+            porId.get(line.productId),
+          ),
+          notes: input.lines[i]?.notes ?? null,
+        })),
+      );
+
+      await ctx.db
+        .update(schema.orders)
+        .set({
+          subtotal: totals.subtotal.toDecimalString(),
+          discountTotal: totals.orderDiscount.toDecimalString(),
+          total: totals.total.toDecimalString(),
+          taxableBase: totals.taxableBase.toDecimalString(),
+          tax: totals.tax.toDecimalString(),
+          rowVersion: actual.row_version + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.orders.id, orderId));
+
+      // El timeline registra la modificación sin cambiar de estado: el pedido
+      // sigue donde estaba, pero su contenido no es el mismo.
+      await this.appendEvent(ctx, {
+        orderId,
+        event: 'modify',
+        fromStatus: actual.status,
+        toStatus: actual.status,
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        data: { total: totals.total.toJSON(), lineas: totals.lines.length },
+      });
+
+      await enqueueEvent(ctx, {
+        aggregateType: 'order',
+        aggregateId: orderId,
+        eventType: 'order.modified',
+        payload: { orderId, total: totals.total.toJSON() },
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+      });
+
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        action: 'order.modified',
+        resourceType: 'order',
+        resourceId: orderId,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        data: { fromVersion: actual.row_version },
+      });
+
+      return this.getSummary(tenantId, orderId, ctx);
+    });
+  }
+
+  // ------------------------------------ Bandeja de excepciones (RN-ORD-10)
+
+  /**
+   * Resuelve a mano el mapeo de un pedido apartado y lo devuelve al flujo
+   * normal (spec 05 §7 `POST /orders/:id/resolve-mapping`).
+   *
+   * Es la única salida de `needs_review` que no es un rechazo, y por tanto la
+   * pieza que hace que apartar un pedido sea de verdad recuperable y no un
+   * cementerio con mejor nombre. Quien resuelve indica qué productos nuestros
+   * corresponden a lo que pidió el cliente; a partir de ahí el pedido se
+   * recalcula con el catálogo vigente y sigue su curso.
+   */
+  async resolveMapping(
+    tenantId: string,
+    orderId: string,
+    input: {
+      lines: SubmitLineInput[];
+      actorId?: string | undefined;
+      traceId?: string | undefined;
+    },
+  ): Promise<OrderSummary> {
+    const cabecera = await this.loadHeader(tenantId, orderId);
+    if (cabecera.status !== 'needs_review') {
+      throw new OrderInvalidTransitionError(
+        `Solo se resuelve el mapeo de un pedido en revisión; este está en "${cabecera.status}".`,
+        { from: cabecera.status, event: 'mapping_resolved' },
+      );
+    }
+
+    await this.assertBrandServedAt(
+      tenantId,
+      cabecera.brandId,
+      cabecera.locationId,
+    );
+
+    const { domainLines, porId } = await this.resolveLines(tenantId, {
+      brandId: cabecera.brandId,
+      locationId: cabecera.locationId,
+      channel: cabecera.channel,
+      lines: input.lines,
+    });
+
+    // El envío y la propina del pedido apartado eran cero (no se sabían); si el
+    // pedido traía dirección, se recalcula la cobertura ahora que sí hay
+    // líneas y por tanto importe con el que comparar el mínimo.
+    let deliveryFeeMinor = 0;
+    let zoneId: string | null = null;
+    if (cabecera.deliveryLat !== null && cabecera.deliveryLng !== null) {
+      const cobertura = await this.organization.findCoverage(
+        tenantId,
+        [cabecera.deliveryLng, cabecera.deliveryLat],
+        cabecera.brandId,
+      );
+      if (!cobertura) {
+        throw new OrderOutOfCoverageError(
+          'La dirección del pedido sigue fuera de la zona de reparto: hay que rechazarlo, no resolverlo.',
+        );
+      }
+      zoneId = cobertura.zoneId;
+      deliveryFeeMinor = cobertura.deliveryFee.minorUnits;
+    }
+
+    const totals = calculateOrderTotals({ lines: domainLines, deliveryFeeMinor });
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        status: OrderState;
+        row_version: number;
+      }>(
+        'SELECT status, row_version FROM ord_orders WHERE id = $1 FOR UPDATE',
+        [orderId],
+      );
+      const actual = rows[0];
+      if (!actual) throw new NotFoundError('Pedido no encontrado.');
+      if (actual.status !== 'needs_review') {
+        // Otro supervisor lo resolvió mientras tanto.
+        throw new OrderInvalidTransitionError(
+          `El pedido ya no está en revisión (está en "${actual.status}").`,
+          { from: actual.status, event: 'mapping_resolved' },
+        );
+      }
+
+      const siguiente = transitionOrder('needs_review', 'mapping_resolved');
+
+      // El pedido apartado no tenía líneas: aquí nacen por primera vez.
+      await ctx.db.insert(schema.orderLines).values(
+        totals.lines.map((line, i) => ({
+          tenantId,
+          orderId,
+          productId: line.productId,
+          productName: line.productName,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice.toDecimalString(),
+          modifiersTotal: line.modifiersPerUnit.toDecimalString(),
+          discount: line.discount.toDecimalString(),
+          lineTotal: line.total.toDecimalString(),
+          modifiers: this.snapshotModifiers(
+            domainLines[i]!,
+            porId.get(line.productId),
+          ),
+          notes: input.lines[i]?.notes ?? null,
+        })),
+      );
+
+      await ctx.db
+        .update(schema.orders)
+        .set({
+          status: siguiente,
+          zoneId,
+          subtotal: totals.subtotal.toDecimalString(),
+          discountTotal: totals.orderDiscount.toDecimalString(),
+          deliveryFee: totals.deliveryFee.toDecimalString(),
+          total: totals.total.toDecimalString(),
+          taxableBase: totals.taxableBase.toDecimalString(),
+          tax: totals.tax.toDecimalString(),
+          rowVersion: actual.row_version + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.orders.id, orderId));
+
+      await this.appendEvent(ctx, {
+        orderId,
+        event: 'mapping_resolved',
+        fromStatus: 'needs_review',
+        toStatus: siguiente,
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        data: { total: totals.total.toJSON() },
+      });
+
+      await enqueueEvent(ctx, {
+        aggregateType: 'order',
+        aggregateId: orderId,
+        eventType: 'order.received',
+        payload: { orderId, total: totals.total.toJSON(), resolved: true },
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+      });
+
+      // Resolver una excepción cambia el importe que se cobrará: va a
+      // auditoría igual que un descuento manual.
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        action: 'order.mapping_resolved',
+        resourceType: 'order',
+        resourceId: orderId,
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        data: { total: totals.total.toJSON(), lineas: totals.lines.length },
+      });
+
+      return this.getSummary(tenantId, orderId, ctx);
+    });
+  }
+
   // ------------------------------------------------------------- Internos
+
+  /**
+   * Comprueba que la marca se produce en alguna cocina activa del local
+   * (RN-ORD-09). Se hace ANTES de resolver precios porque es más barato y
+   * porque un fallo aquí no es del cliente, es de configuración: cuanto antes
+   * salte, antes se arregla.
+   */
+  private async assertBrandServedAt(
+    tenantId: string,
+    brandId: string,
+    locationId: string,
+  ): Promise<void> {
+    const cocinas = await this.organization.kitchensForBrand(tenantId, brandId);
+    if (!cocinas.some((k) => k.locationId === locationId)) {
+      throw new OrderBrandNotServedError(
+        'Esta marca no está asignada a ninguna cocina activa del local indicado.',
+        { brandId, locationId },
+      );
+    }
+  }
+
+  /**
+   * Traduce líneas de entrada a líneas de dominio resolviendo precio,
+   * disponibilidad y modificadores del canal. Compartido por `submit`,
+   * `modify` y `resolveMapping`: si cada uno resolviera precios a su manera,
+   * modificar un pedido podría cobrarlo con reglas distintas a crearlo.
+   */
+  private async resolveLines(
+    tenantId: string,
+    input: {
+      brandId: string;
+      locationId: string;
+      channel: string;
+      lines: SubmitLineInput[];
+    },
+  ): Promise<{
+    domainLines: OrderLineInput[];
+    porId: Map<
+      string,
+      Awaited<
+        ReturnType<CatalogService['getResolvedCatalog']>
+      >['products'][number]
+    >;
+  }> {
+    const catalogo = await this.catalog.getResolvedCatalog(tenantId, {
+      brandId: input.brandId,
+      channel: input.channel,
+      locationId: input.locationId,
+    });
+    const porId = new Map(catalogo.products.map((p) => [p.id, p]));
+
+    const domainLines: OrderLineInput[] = input.lines.map((line, index) => {
+      const producto = porId.get(line.productId);
+      if (!producto) {
+        // No distingue entre «no existe», «sin precio en el canal» y «pausado»:
+        // desde fuera son el mismo hecho — no se puede vender ahora aquí.
+        throw new OrderProductUnavailableError(
+          `El producto ${line.productId} no está disponible en el canal ${input.channel}.`,
+          { productId: line.productId },
+        );
+      }
+
+      const seleccionados = new Set(line.modifierOptionIds ?? []);
+      const selections = producto.modifierGroups
+        .map((group) => ({
+          groupId: group.id,
+          optionIds: group.options
+            .filter((o) => seleccionados.has(o.id))
+            .map((o) => o.id),
+        }))
+        .filter((s) => s.optionIds.length > 0);
+
+      return {
+        lineId: `l${index}`,
+        productId: producto.id,
+        productName: producto.name,
+        unitPriceMinor: producto.price.minorUnits,
+        quantity: line.quantity,
+        modifierGroups: producto.modifierGroups,
+        modifierSelections: selections,
+      };
+    });
+
+    return { domainLines, porId };
+  }
+
+  /** Cabecera del pedido: lo mínimo para poder recalcularlo. */
+  private async loadHeader(
+    tenantId: string,
+    orderId: string,
+  ): Promise<{
+    status: OrderState;
+    brandId: string;
+    locationId: string;
+    channel: string;
+    deliveryFee: string;
+    tip: string;
+    deliveryLat: number | null;
+    deliveryLng: number | null;
+    rowVersion: number;
+  }> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const rows = await ctx.db
+        .select()
+        .from(schema.orders)
+        .where(eq(schema.orders.id, orderId))
+        .limit(1);
+      const row = rows[0];
+      if (!row) throw new NotFoundError('Pedido no encontrado.');
+      return {
+        status: row.status as OrderState,
+        brandId: row.brandId,
+        locationId: row.locationId,
+        channel: row.channel,
+        deliveryFee: row.deliveryFee,
+        tip: row.tip,
+        deliveryLat: row.deliveryLat,
+        deliveryLng: row.deliveryLng,
+        rowVersion: row.rowVersion,
+      };
+    });
+  }
 
   private toSummary(row: typeof schema.orders.$inferSelect): OrderSummary {
     return {
@@ -745,6 +1177,7 @@ export class OrderingService {
       tax: Money.parse(row.tax).toJSON(),
       promisedAt: row.promisedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
+      rowVersion: row.rowVersion,
     };
   }
 
