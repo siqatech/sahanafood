@@ -87,15 +87,17 @@ export function buildKitchenTicket(
     // Los modificadores van sangrados y en negrita: «sin cebolla» es
     // exactamente lo que se pasa por alto cuando la línea es uniforme.
     if (linea.modifiersText) {
-      t.bold(true).line(`   > ${linea.modifiersText}`).bold(false);
+      t.bold(true).wrapped(`> ${linea.modifiersText}`, '   ').bold(false);
     }
-    if (linea.notes) t.line(`   * ${linea.notes}`);
+    if (linea.notes) t.wrapped(`* ${linea.notes}`, '   ');
     t.line();
   }
 
   if (data.notes) {
     t.separator('-').bold(true).line('NOTA DEL PEDIDO').bold(false);
-    t.line(data.notes);
+    // «tocar el timbre dos veces, es la puerta verde» no cabe en una línea, y
+    // dejar que la impresora la parta la corta a mitad de palabra.
+    t.wrapped(data.notes);
   }
 
   t.separator('=').align('center').line(data.printedAt).cut();

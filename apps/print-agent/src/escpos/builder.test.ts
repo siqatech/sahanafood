@@ -116,4 +116,59 @@ describe('Constructor ESC/POS', () => {
     expect(ticket.toString('latin1')).toContain('SAHANA');
     expect(ticket.toString('latin1')).toContain('S/ 38.00');
   });
+
+  describe('wrapped()', () => {
+    const lineasDe = (b: Buffer): string[] =>
+      b.toString('latin1').split('\r\n').filter(Boolean);
+
+    it('parte por palabras, sin cortar ninguna a la mitad', () => {
+      // La impresora parte sola al desbordar, pero por donde le toca: «tocar
+      // el timbre dos veces» sale cortado a mitad de palabra.
+      const t = new EscPosBuilder({ width: 20 });
+      t.wrapped('tocar el timbre dos veces, es la puerta verde');
+      const lineas = lineasDe(t.build());
+
+      expect(lineas.every((l) => l.length <= 20)).toBe(true);
+      expect(lineas.join(' ')).toBe(
+        'tocar el timbre dos veces, es la puerta verde',
+      );
+    });
+
+    it('sangra también las líneas de continuación', () => {
+      // Una segunda línea pegada al margen izquierdo se lee como un plato más
+      // en vez de como la continuación de un modificador.
+      const t = new EscPosBuilder({ width: 16 });
+      t.wrapped('> sin cebolla ni tomate', '   ');
+      const lineas = lineasDe(t.build());
+
+      expect(lineas.length).toBeGreaterThan(1);
+      expect(lineas.every((l) => l.startsWith('   '))).toBe(true);
+      expect(lineas.every((l) => l.length <= 16)).toBe(true);
+    });
+
+    it('una palabra más larga que la línea se parte a lo bruto, no se pierde', () => {
+      // Una URL o un código de barras: preferible partido que ausente.
+      const t = new EscPosBuilder({ width: 10 });
+      t.wrapped('ABCDEFGHIJKLMNOPQRSTUVWXY');
+      const lineas = lineasDe(t.build());
+
+      expect(lineas.join('')).toBe('ABCDEFGHIJKLMNOPQRSTUVWXY');
+      expect(lineas.every((l) => l.length <= 10)).toBe(true);
+    });
+
+    it('no emite nada con texto vacío', () => {
+      const t = new EscPosBuilder({ width: 20 });
+      expect(t.wrapped('   ').build()).toHaveLength(0);
+    });
+
+    it('respeta el ancho con acentos, que ocupan un byte más al codificar', () => {
+      // Contar bytes en vez de caracteres desalinearía cualquier línea en
+      // español, que en un menú peruano es casi cualquiera.
+      const t = new EscPosBuilder({ width: 12 });
+      t.wrapped('Ración ñandú pequeñísimo');
+      for (const linea of lineasDe(t.build())) {
+        expect([...linea].length).toBeLessThanOrEqual(12);
+      }
+    });
+  });
 });

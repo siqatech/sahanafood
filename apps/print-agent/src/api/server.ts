@@ -5,10 +5,18 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { z } from 'zod';
 import type { PrintQueue } from '../queue/print-queue.js';
 import type { PrintDispatcher } from '../queue/dispatcher.js';
 import { buildKitchenTicket, buildPrecheck } from '../templates/tickets.js';
+import {
+  parseComanda,
+  parsePrecuenta,
+  parsePrueba,
+  DatosInvalidosError,
+} from './validation.js';
+import { buildTestPage } from '../templates/test-page.js';
+import { scanForPrinters, localPrefixes } from '../discovery/scan.js';
+import type { PrinterSpec } from '../config.js';
 
 /**
  * API local del agente (ADR-0008).
@@ -25,56 +33,14 @@ import { buildKitchenTicket, buildPrecheck } from '../templates/tickets.js';
  *    cualquiera.
  */
 
-const lineaComandaSchema = z.object({
-  quantity: z.number().int().positive(),
-  productName: z.string().min(1),
-  modifiersText: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-const comandaSchema = z.object({
-  jobId: z.string().min(1).optional(),
-  printer: z.string().min(1),
-  orderNumber: z.number().int().positive(),
-  brandName: z.string().min(1),
-  stationName: z.string().min(1),
-  channel: z.string().min(1),
-  promisedAt: z.string().optional(),
-  customerName: z.string().optional(),
-  lines: z.array(lineaComandaSchema).min(1),
-  notes: z.string().optional(),
-});
-
-const precuentaSchema = z.object({
-  jobId: z.string().min(1).optional(),
-  printer: z.string().min(1),
-  orderNumber: z.number().int().positive(),
-  brandName: z.string().min(1),
-  locationName: z.string().min(1),
-  lines: z
-    .array(
-      z.object({
-        quantity: z.number().int().positive(),
-        productName: z.string().min(1),
-        // Ya formateado: el agente NO calcula dinero, solo lo imprime.
-        lineTotal: z.string().min(1),
-      }),
-    )
-    .min(1),
-  subtotal: z.string().min(1),
-  discount: z.string().optional(),
-  deliveryFee: z.string().optional(),
-  tip: z.string().optional(),
-  total: z.string().min(1),
-  taxLabel: z.string().min(1),
-  tax: z.string().min(1),
-});
-
 export interface AgentServerOptions {
   queue: PrintQueue;
   dispatcher: PrintDispatcher;
   /** Token que la PWA obtuvo al emparejarse. */
   pairingToken: string;
+  /** Impresoras configuradas, para la página de prueba y el asistente. */
+  printers?: PrinterSpec[];
+  agentVersion?: string;
   ticketWidth?: number;
   /** Reloj inyectable para poder probar el sello de hora. */
   now?: () => Date;
@@ -150,7 +116,7 @@ export function createAgentServer(options: AgentServerOptions): Server {
         }
 
         if (req.method === 'POST' && url.pathname === '/print/kitchen') {
-          const dto = comandaSchema.parse(await leerCuerpo(req));
+          const dto = parseComanda(await leerCuerpo(req));
           const jobId = dto.jobId ?? randomUUID();
           const job = await options.queue.enqueue({
             id: jobId,
@@ -170,7 +136,7 @@ export function createAgentServer(options: AgentServerOptions): Server {
         }
 
         if (req.method === 'POST' && url.pathname === '/print/precheck') {
-          const dto = precuentaSchema.parse(await leerCuerpo(req));
+          const dto = parsePrecuenta(await leerCuerpo(req));
           const jobId = dto.jobId ?? randomUUID();
           const job = await options.queue.enqueue({
             id: jobId,
@@ -218,12 +184,61 @@ export function createAgentServer(options: AgentServerOptions): Server {
           });
         }
 
+        // Página de prueba: es el entregable real de la instalación. «El
+        // servicio arrancó» no prueba nada — el agente arranca igual con la
+        // impresora apagada. Lo que cierra la instalación es un papel.
+        if (req.method === 'POST' && url.pathname === '/printers/test') {
+          const dto = parsePrueba(await leerCuerpo(req));
+          const impresora = (options.printers ?? []).find(
+            (p) => p.name === dto.printer,
+          );
+          if (!impresora) {
+            return responder(res, 404, {
+              error: `No hay ninguna impresora configurada con el nombre "${dto.printer}".`,
+              configuradas: (options.printers ?? []).map((p) => p.name),
+            });
+          }
+          const job = await options.queue.enqueue({
+            id: dto.jobId ?? randomUUID(),
+            printer: impresora.name,
+            kind: 'test_page',
+            reference: 'prueba',
+            payload: buildTestPage(
+              {
+                printerName: impresora.name,
+                target: impresora.target,
+                agentVersion: options.agentVersion ?? 'desconocida',
+                printedAt: selloDeHora(),
+              },
+              { width: options.ticketWidth },
+            ),
+          });
+          despacharEnSegundoPlano();
+          return responder(res, 202, { jobId: job.id });
+        }
+
+        // Asistente de instalación: la IP de una térmica no está escrita en
+        // ninguna parte, y pedírsela a quien monta el local es pedir demasiado.
+        if (req.method === 'GET' && url.pathname === '/printers/discover') {
+          const prefijo = url.searchParams.get('prefix');
+          const prefijos = prefijo ? [prefijo] : localPrefixes();
+          const halladas = (
+            await Promise.all(
+              prefijos.map((p) => scanForPrinters({ prefix: p })),
+            )
+          ).flat();
+          return responder(res, 200, {
+            scannedPrefixes: prefijos,
+            printers: halladas,
+          });
+        }
+
         return responder(res, 404, { error: 'Ruta desconocida.' });
       } catch (error) {
-        if (error instanceof z.ZodError) {
+        if (error instanceof DatosInvalidosError) {
           return responder(res, 422, {
             error: 'Datos de impresión inválidos.',
-            issues: error.issues.map((i) => i.message),
+            issues: error.issues,
           });
         }
         return responder(res, 500, {

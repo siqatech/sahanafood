@@ -155,10 +155,6 @@ importers:
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.9)
 
   apps/print-agent:
-    dependencies:
-      zod:
-        specifier: ^3.24.1
-        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

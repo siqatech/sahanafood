@@ -2,7 +2,7 @@
   "name": "@sahana/print-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Agente local de impresión ESC/POS (ADR-0008). Un navegador no habla con impresoras térmicas: este servicio sí, y sin internet.",
+  "description": "Agente local de impresi\u00f3n ESC/POS (ADR-0008). Un navegador no habla con impresoras t\u00e9rmicas: este servicio s\u00ed, y sin internet.",
   "type": "module",
   "main": "./dist/main.js",
   "scripts": {
@@ -10,10 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "node --import tsx --watch src/main.ts",
     "start": "node dist/main.js",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "zod": "^3.24.1"
+    "test": "vitest run",
+    "doctor": "node --import tsx src/main.ts doctor"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

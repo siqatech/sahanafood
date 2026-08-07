@@ -1,0 +1,57 @@
+[Unit]
+Description=Agente de impresión de Sahana Food (ESC/POS local)
+Documentation=https://github.com/siqatech/sahanafood/blob/main/apps/print-agent/README.md
+# La red local basta: el agente NO necesita internet, y esperar a que haya
+# conectividad retrasaría el arranque justo en el escenario que existe para
+# cubrir (el local abre con el internet caído).
+After=network.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+EnvironmentFile=@ENV_FILE@
+ExecStart=/usr/bin/env node @PREFIX@/dist/main.js
+WorkingDirectory=@PREFIX@
+
+# Un corte de luz reinicia la máquina y el local tiene que volver a imprimir
+# sin que nadie toque nada. `always` y no `on-failure`: si el proceso muere de
+# cualquier forma, tiene que volver.
+Restart=always
+RestartSec=5
+
+# Sin límite de reinicios: un local no tiene a nadie que rearranque servicios,
+# y un agente que se rinde tras 5 intentos deja la cocina sin comandas el resto
+# del día.
+StartLimitIntervalSec=0
+
+# El registro va al journal: es lo que pide soporte cuando algo va mal.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sahana-print-agent
+
+# --- Endurecimiento ---------------------------------------------------------
+# El agente solo necesita leer su dist, escribir su cola y abrir sockets. Todo
+# lo demás se le quita: corre en una máquina de local, en la misma red que las
+# tablets, y es el componente con más superficie física expuesta del sistema.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=@DATA_DIR@
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# AF_UNIX para el journal; INET para hablar con la impresora de red y escuchar
+# en localhost.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Las impresoras USB se ven como dispositivos de carácter: sin esto, un
+# `file:/dev/usb/lp0` fallaría con un permiso denegado difícil de diagnosticar.
+DeviceAllow=char-usb* rw
+DeviceAllow=char-lp rw
+
+[Install]
+WantedBy=multi-user.target

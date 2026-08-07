@@ -96,6 +96,46 @@ export class EscPosBuilder {
     return this.line(char.repeat(this.width));
   }
 
+  /**
+   * Texto largo partido por palabras al ancho del papel.
+   *
+   * La impresora parte sola cuando se pasa del ancho, pero lo hace por donde
+   * le toca: una nota como «tocar el timbre dos veces, es la puerta verde»
+   * sale cortada a mitad de palabra. Y en una comanda a doble alto el punto de
+   * corte real ni siquiera coincide con el que calculamos, así que el ticket
+   * queda descuadrado sin que nada avise.
+   *
+   * Una palabra más larga que la línea (una URL, un código) se parte a lo
+   * bruto: es preferible a perderla.
+   *
+   * `indent` se aplica también a las líneas de continuación. Importa: los
+   * modificadores van sangrados para no confundirse con un producto, y una
+   * segunda línea pegada al margen izquierdo se lee como un plato más.
+   */
+  wrapped(value: string, indent = ''): this {
+    const util = Math.max(1, this.width - [...indent].length);
+    const palabras = value.split(/\s+/).filter(Boolean);
+    let actual = '';
+
+    const volcar = (): void => {
+      if (actual) this.line(indent + actual);
+      actual = '';
+    };
+
+    for (let palabra of palabras) {
+      while ([...palabra].length > util) {
+        volcar();
+        this.line(indent + [...palabra].slice(0, util).join(''));
+        palabra = [...palabra].slice(util).join('');
+      }
+      const candidato = actual ? `${actual} ${palabra}` : palabra;
+      if ([...candidato].length > util) volcar();
+      actual = actual && [...candidato].length <= util ? candidato : palabra;
+    }
+    volcar();
+    return this;
+  }
+
   /** Texto centrado sin depender del comando de alineación de la impresora. */
   centered(value: string): this {
     const chars = [...value];

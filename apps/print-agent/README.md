@@ -23,6 +23,14 @@ No conoce el tenant ni habla con la API de Sahana: recibe bytes que imprimir de
 la PWA que tiene delante. Es deliberado — un componente instalado en máquinas
 ajenas no debe llevar credenciales de nube.
 
+**No tiene ninguna dependencia de ejecución.** Es lo que hace que instalarlo sea
+copiar una carpeta. Con una sola dependencia deja de serlo: `node_modules` en un
+monorepo pnpm son enlaces al almacén, así que haría falta un bundler, o bajar
+paquetes de npm dentro del local, o distribuir un tarball aplanado — tres piezas
+más que pueden fallar donde menos podemos ir a arreglarlas. La validación de
+peticiones está escrita a mano por eso (`src/api/validation.ts`), y hay una
+prueba que impide reintroducir un import externo sin darse cuenta.
+
 ## Configuración
 
 Todo por variables de entorno: quien instala es la persona que monta el local,
@@ -64,6 +72,8 @@ tiempo constante.
 | `POST` | `/print/precheck` | Encola una precuenta. `202` con el `jobId` |
 | `GET` | `/jobs` | Estado de la cola (sin los bytes del ticket) |
 | `POST` | `/jobs/:id/reprint` | Reimprime creando un trabajo **nuevo** |
+| `POST` | `/printers/test` | Página de prueba. Es lo que cierra una instalación |
+| `GET` | `/printers/discover` | Escanea la red buscando térmicas en el puerto 9100 |
 
 El `jobId` lo pone quien llama y sirve de clave de idempotencia: pulsar
 «imprimir» dos veces porque la primera pareció no responder no saca dos
@@ -91,9 +101,10 @@ cerrada.
 ## Desarrollo
 
 ```bash
-pnpm --filter @sahana/print-agent test        # 72 pruebas
+pnpm --filter @sahana/print-agent test        # 117 pruebas
 pnpm --filter @sahana/print-agent typecheck
 AGENT_TOKEN=token-de-desarrollo-largo pnpm --filter @sahana/print-agent dev
+AGENT_TOKEN=token-de-desarrollo-largo pnpm --filter @sahana/print-agent doctor
 ```
 
 Los tickets se prueban comparando la **secuencia exacta de bytes**: es la única
@@ -101,9 +112,26 @@ forma de saber que están bien formados sin la impresora delante. Un `init`
 olvidado hace que el siguiente ticket herede la negrita del anterior, y cortar
 sin avanzar papel se lleva las últimas líneas.
 
+## Instalación
+
+Ver [`install/README.md`](install/README.md). Resumen:
+
+```bash
+pnpm --filter @sahana/print-agent build
+sudo apps/print-agent/install/install.sh --token <TOKEN> --printers "cocina=net:192.168.1.50:9100"
+```
+
+El instalador valida todo antes de tocar nada, diagnostica, arranca el servicio
+y **termina imprimiendo una página de prueba**: «el servicio arrancó» no prueba
+nada — arranca igual con la impresora apagada. Lo que cierra la instalación es
+un papel en la mano.
+
 ## Pendiente
 
-- **Instalador y auto-actualización firmada** (T4.24).
+- **Auto-actualización firmada** (ADR-0008). Hoy actualizar es volver a
+  ejecutar el instalador con el `dist/` nuevo, que ya es idempotente.
+- **Ejecución del instalador sobre hardware real** (entregable humano según las
+  notas de `specs/phases/phase-4-operacion.md`), y `install.ps1` en Windows.
 - **USB nativo en Windows.** En Linux se cubre con `file:/dev/usb/lp0`; en
   Windows hace falta un binding nativo. Una impresora configurada con un
   transporte no disponible queda en `UnavailablePrinter`: el trabajo espera en
