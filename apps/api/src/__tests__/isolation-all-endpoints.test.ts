@@ -347,6 +347,29 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /cash-sessions', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /cash-sessions', (r) => r.get('/api/v1/cash-sessions')),
+    );
+  });
+
+  it('POST /cash-sessions', async () => {
+    // Cada tenant abre en SU local; si el endpoint no filtrara, A vería la
+    // sesión de B o podría abrir caja en un local ajeno.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /cash-sessions',
+        (r) =>
+          r
+            .post('/api/v1/cash-sessions')
+            .send({ locationId: demoA.locationId, openingFloatMinor: 0 }),
+        { expectedStatusForA: [201] },
+      ),
+    );
+  });
+
   it('GET /kitchen/queue', async () => {
     await assertEndpointIsolation(
       app,

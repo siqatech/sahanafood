@@ -876,3 +876,52 @@ export const kitchenTicketLines = pgTable(
   },
   (t) => [index('idx_ticket_lines_ticket').on(t.tenantId, t.ticketId)],
 );
+
+// --- Caja (módulo 06) ---
+
+export const cashSessions = pgTable(
+  'cash_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    locationId: uuid('location_id').notNull(),
+    deviceId: uuid('device_id'),
+    openedBy: uuid('opened_by').notNull(),
+    closedBy: uuid('closed_by'),
+    status: text('status').notNull().default('open'),
+    openingFloat: numeric('opening_float', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    declaredCash: numeric('declared_cash', { precision: 14, scale: 4 }),
+    expectedCash: numeric('expected_cash', { precision: 14, scale: 4 }),
+    difference: numeric('difference', { precision: 14, scale: 4 }),
+    differenceReason: text('difference_reason'),
+    approvedBy: uuid('approved_by'),
+    openedAt: timestamp('opened_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    notes: text('notes'),
+  },
+  (t) => [index('idx_cash_sessions_local').on(t.tenantId, t.locationId)],
+);
+
+export const cashMovements = pgTable(
+  'cash_movements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    sessionId: uuid('session_id').notNull(),
+    kind: text('kind').notNull(),
+    method: text('method').notNull().default('cash'),
+    amount: numeric('amount', { precision: 14, scale: 4 }).notNull(),
+    orderId: uuid('order_id'),
+    actorId: uuid('actor_id'),
+    reason: text('reason'),
+    traceId: text('trace_id'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_cash_movements_sesion').on(t.tenantId, t.sessionId)],
+);

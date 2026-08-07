@@ -15,6 +15,7 @@ export {
   OrderBrandNotServedError,
   OrderVersionConflictError,
   OrderNotModifiableError,
+  DiscountRequiresApprovalError,
   IdempotencyPayloadMismatchError,
   SCHEDULED_RELEASE_MARGIN_MINUTES,
   type SubmitOrderInput,

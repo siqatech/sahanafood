@@ -17,6 +17,7 @@ import {
 } from '../../../common/authz.js';
 import { ValidationError } from '../../../common/errors.js';
 import { OrderingService, type OrderSummary } from '../app/ordering.service.js';
+import { DeviceService } from '../../identity/index.js';
 
 /** API de pedidos (spec 05 §7). */
 
@@ -56,6 +57,18 @@ const modifySchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+const discountSchema = z
+  .object({
+    amountMinor: z.number().int().positive().optional(),
+    bps: z.number().int().positive().max(10_000).optional(),
+    reason: z.string().min(3, 'Todo descuento exige motivo.'),
+    supervisorId: z.string().uuid().optional(),
+    supervisorPin: z.string().min(4).max(12).optional(),
+  })
+  .refine((v) => Boolean(v.amountMinor) !== Boolean(v.bps), {
+    message: 'Indica amountMinor O bps (exactamente uno de los dos).',
+  });
+
 const resolveMappingSchema = z.object({
   lines: z
     .array(lineSchema)
@@ -75,7 +88,50 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T {
 
 @Controller({ path: 'orders', version: '1' })
 export class OrderingController {
-  constructor(private readonly ordering: OrderingService) {}
+  constructor(
+    private readonly ordering: OrderingService,
+    private readonly devices: DeviceService,
+  ) {}
+
+  /**
+   * Aplica un descuento (RN-T08, RN-POS-03).
+   *
+   * El PIN se verifica AQUÍ y el servicio solo recibe la prueba de que se
+   * verificó. Así el POS offline puede aplicar la misma regla del dominio sin
+   * que exista un camino para saltarse la comprobación al sincronizar.
+   */
+  @Post(':id/discount')
+  @RequirePermission('orders.discount')
+  async discount(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<OrderSummary> {
+    const dto = parse(discountSchema, body);
+
+    let approvedBy: string | undefined;
+    if (dto.supervisorId && dto.supervisorPin) {
+      // Reutiliza el PIN con bloqueo por intentos de F3 (RN-IDN-03): un PIN de
+      // supervisor sin límite se adivina en una tarde de mostrador.
+      await this.devices.verifyPinForSensitiveAction(
+        req.auth!.tid,
+        dto.supervisorId,
+        dto.supervisorPin,
+      );
+      approvedBy = dto.supervisorId;
+    }
+
+    return this.ordering.applyDiscount(req.auth!.tid, id, {
+      discount:
+        dto.amountMinor !== undefined
+          ? { kind: 'amount', amountMinor: dto.amountMinor, reason: dto.reason }
+          : { kind: 'percentage', bps: dto.bps!, reason: dto.reason },
+      reason: dto.reason,
+      actorId: req.auth!.sub,
+      ...(approvedBy !== undefined ? { approvedBy } : {}),
+      ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
+    });
+  }
 
   /** Crea un pedido. Admite Idempotency-Key (ADR-0010). */
   @Post()

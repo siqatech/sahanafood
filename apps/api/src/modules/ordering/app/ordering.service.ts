@@ -5,8 +5,14 @@ import type { Pool } from 'pg';
 import {
   Money,
   calculateOrderTotals,
+  extractInclusiveTax,
   transitionOrder,
   canModify as canModifyOrder,
+  checkDiscountApproval,
+  DiscountError,
+  DEFAULT_DISCOUNT_POLICY,
+  type Discount,
+  type DiscountPolicy,
   cancellationNeedsElevatedPermission,
   InvalidTransitionError,
   type OrderEvent,
@@ -103,6 +109,20 @@ export class OrderVersionConflictError extends DomainError {
   readonly type = 'https://errors.sahana.food/order-version-conflict';
   readonly title = 'El pedido cambió mientras lo editabas';
   readonly code = 'ORDER_VERSION_CONFLICT';
+}
+
+/**
+ * El descuento pasa del umbral y no vino aprobado (RN-T08, RN-POS-03).
+ *
+ * No es un error del cliente ni del sistema: es la regla funcionando. La
+ * respuesta lleva el porcentaje acumulado para que el cajero vea por qué se le
+ * pide el PIN y no crea que es un fallo.
+ */
+export class DiscountRequiresApprovalError extends DomainError {
+  readonly status = 422;
+  readonly type = 'https://errors.sahana.food/discount-requires-approval';
+  readonly title = 'El descuento requiere PIN de supervisor';
+  readonly code = 'DISCOUNT_REQUIRES_APPROVAL';
 }
 
 /** Se intentó modificar un pedido que ya está en cocina (RN-ORD-07). */
@@ -764,6 +784,156 @@ export class OrderingService {
     return existingCtx
       ? fetch(existingCtx)
       : withTenant(this.pool, tenantId, fetch);
+  }
+
+  // ------------------------------------------- Descuentos (RN-T08, RN-POS-03)
+
+  /**
+   * Aplica un descuento al pedido, exigiendo aprobación si pasa del umbral.
+   *
+   * La decisión de si hace falta PIN la toma `@sahana/domain` sobre el
+   * descuento ACUMULADO, no sobre el que se aplica ahora: tres descuentos del
+   * 10 % con umbral del 15 % son un 30 % sin que nadie firme nada, y ese es el
+   * fraude de mostrador que la regla existe para frenar.
+   *
+   * Verificar el PIN es responsabilidad del llamador (el controlador, que tiene
+   * el módulo de identidad a mano); aquí se exige la PRUEBA de que se verificó.
+   * Separarlo así permite que el POS offline aplique la misma regla sin poder
+   * saltarse la comprobación al sincronizar.
+   */
+  async applyDiscount(
+    tenantId: string,
+    orderId: string,
+    input: {
+      discount: Discount;
+      reason: string;
+      actorId?: string | undefined;
+      /** Supervisor que autorizó, ya verificado por el llamador. */
+      approvedBy?: string | undefined;
+      policy?: DiscountPolicy | undefined;
+      traceId?: string | undefined;
+    },
+  ): Promise<OrderSummary> {
+    if (!input.reason.trim()) {
+      throw new ValidationError('Todo descuento exige motivo.');
+    }
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        status: OrderState;
+        subtotal: string;
+        discount_total: string;
+        delivery_fee: string;
+        tip: string;
+        tax_rate_bps: number;
+        row_version: number;
+      }>(
+        `SELECT status, subtotal, discount_total, delivery_fee, tip,
+                tax_rate_bps, row_version
+           FROM ord_orders WHERE id = $1 FOR UPDATE`,
+        [orderId],
+      );
+      const actual = rows[0];
+      if (!actual) throw new NotFoundError('Pedido no encontrado.');
+
+      // Descontar sobre un pedido ya cerrado sería reescribir un cobro hecho;
+      // eso es una nota de crédito, no un descuento (RN-POS-05).
+      if (!canModifyOrder(actual.status)) {
+        throw new OrderNotModifiableError(
+          `Un pedido en "${actual.status}" ya no admite descuentos: sería una nota de crédito.`,
+          { orderStatus: actual.status },
+        );
+      }
+
+      const subtotal = Money.parse(actual.subtotal);
+      const yaDescontado = Money.parse(actual.discount_total);
+
+      let veredicto;
+      try {
+        veredicto = checkDiscountApproval({
+          subtotalMinor: subtotal.minorUnits,
+          alreadyDiscountedMinor: yaDescontado.minorUnits,
+          discount: input.discount,
+          ...(input.policy !== undefined ? { policy: input.policy } : {}),
+        });
+      } catch (error) {
+        if (error instanceof DiscountError) {
+          throw new ValidationError(error.message, { code: error.code });
+        }
+        throw error;
+      }
+
+      if (veredicto.requiresApproval && !input.approvedBy) {
+        throw new DiscountRequiresApprovalError(
+          `El descuento acumulado llega al ${(veredicto.totalBps / 100).toFixed(2)} % y supera el umbral: hace falta el PIN de un supervisor.`,
+          {
+            totalBps: veredicto.totalBps,
+            thresholdBps: (input.policy ?? DEFAULT_DISCOUNT_POLICY)
+              .thresholdBps,
+            approvalReason: veredicto.reason,
+          },
+        );
+      }
+
+      // El total se recalcula con el descuento acumulado: base imponible e IGV
+      // salen del dominio, nunca de una resta hecha aquí.
+      const base = subtotal
+        .subtract(veredicto.totalAfter)
+        .add(Money.parse(actual.delivery_fee));
+      const tax = extractInclusiveTax(base, actual.tax_rate_bps);
+      const total = base.add(Money.parse(actual.tip));
+
+      await ctx.db
+        .update(schema.orders)
+        .set({
+          discountTotal: veredicto.totalAfter.toDecimalString(),
+          taxableBase: base.toDecimalString(),
+          tax: tax.tax.toDecimalString(),
+          total: total.toDecimalString(),
+          rowVersion: actual.row_version + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.orders.id, orderId));
+
+      await this.appendEvent(ctx, {
+        orderId,
+        event: 'discount',
+        fromStatus: actual.status,
+        toStatus: actual.status,
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        reason: input.reason,
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        data: {
+          amount: veredicto.amount.toJSON(),
+          totalDiscount: veredicto.totalAfter.toJSON(),
+          totalBps: veredicto.totalBps,
+          approvedBy: input.approvedBy ?? null,
+        },
+      });
+
+      // Todo descuento va a auditoría, con o sin aprobación: es dinero que
+      // deja de entrar y alguien tiene que poder revisarlo después.
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        action: veredicto.requiresApproval
+          ? 'order.discount_approved'
+          : 'order.discount_applied',
+        resourceType: 'order',
+        resourceId: orderId,
+        reason: input.reason,
+        ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
+        data: {
+          amount: veredicto.amount.toJSON(),
+          totalDiscount: veredicto.totalAfter.toJSON(),
+          totalBps: veredicto.totalBps,
+          approvedBy: input.approvedBy ?? null,
+        },
+      });
+
+      return this.getSummary(tenantId, orderId, ctx);
+    });
   }
 
   // --------------------------------------------- Modificación (RN-ORD-07)

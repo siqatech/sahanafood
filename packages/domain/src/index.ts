@@ -112,3 +112,14 @@ export {
   type ChangedProduct,
   type FieldChange,
 } from './catalog/version-diff.js';
+
+// --- Política de descuentos (RN-T08) ---
+export {
+  checkDiscountApproval,
+  discountAmount,
+  DiscountError,
+  DEFAULT_DISCOUNT_POLICY,
+  type DiscountPolicy,
+  type DiscountApprovalCheck,
+  type DiscountApprovalResult,
+} from './pricing/discount-policy.js';

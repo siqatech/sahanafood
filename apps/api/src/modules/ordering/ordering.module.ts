@@ -5,13 +5,14 @@ import { OrderingController } from './api/ordering.controller.js';
 import { AcceptanceController } from './api/acceptance.controller.js';
 import { CatalogModule } from '../catalog/index.js';
 import { OrganizationModule } from '../organization/index.js';
+import { IdentityModule } from '../identity/index.js';
 
 /**
  * Módulo Ordering (spec 05). Depende de Catalog (precios) y Organization
  * (cobertura), ambos por su API pública.
  */
 @Module({
-  imports: [CatalogModule, OrganizationModule],
+  imports: [CatalogModule, OrganizationModule, IdentityModule],
   controllers: [OrderingController, AcceptanceController],
   providers: [OrderingService, AcceptanceService],
   exports: [OrderingService, AcceptanceService],
