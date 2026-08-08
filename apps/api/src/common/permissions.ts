@@ -32,6 +32,11 @@ export const PERMISSIONS = [
   'roles.write',
   // Auditoría
   'audit.read',
+  // Organización: empresa, marcas, locales, cocinas, estaciones, zonas y
+  // horarios (spec 03). La escritura NO va con el supervisor: quien crea una
+  // zona decide a qué direcciones se reparte y con qué tarifa, y quien crea un
+  // local decide dónde se produce. Eso es del dueño.
+  'org.write',
   // Catálogo (F4)
   'catalog.read',
   'catalog.write',

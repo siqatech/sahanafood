@@ -265,4 +265,18 @@ Dicho sin rodeos: el motor está completo y muy probado —1 141 pruebas, RLS, o
 
 **Corregido en `docs/34-puesta-en-marcha.md`:** el runbook ya no promete un panel que no existe, y §10 lista la ausencia de panel, POS y KDS entre lo que este despliegue no trae.
 
-**Próxima acción de Claude Code:** esperar decisión del propietario
+### DT-10, primera mitad: ya se puede crear un negocio por API
+
+Empresa, marca, local, cocina, unión marca↔cocina, estación, zona y horario. Con permiso propio `org.write` —que **no lleva el supervisor**: quien crea una zona decide a qué direcciones se reparte y con qué tarifa, y quien crea un local decide dónde se produce—, auditoría en cada escritura y las pruebas de aislamiento obligatorias.
+
+Tres decisiones que cambian cómo se opera esto:
+
+· **Todo es idempotente por clave natural** —RUC de la empresa, `slug` de la marca, nombre del local dentro de la empresa—. No es comodidad: una configuración se aplica varias veces y una segunda pasada que duplica la marca deja un negocio con dos cartas y ningún modo de saber cuál cobra. Hay prueba de que reaplicar no duplica.
+
+· **El rectángulo envolvente lo calcula el servidor, siempre**, con la misma función del dominio que usa la consulta de cobertura, y no se acepta del cliente ni aunque lo mande. Un `bbox` que no encierra al polígono hace que la cobertura mienta —direcciones dentro de la zona que se rechazan— y el error es invisible hasta que alguien reclama.
+
+· **El RUC se valida al crear la empresa, no al facturar.** Uno mal escrito que solo se compruebe en el comprobante se descubre el día que el OSE rechaza la primera boleta, con el cliente delante.
+
+La prueba que decide si esto sirve no es que las filas se escriban, sino que **lo creado sea lo que el resto del sistema consulta**: la suite monta un negocio entero por API y luego pregunta por `findCoverage` y `kitchensForBrand`. Una tabla paralela que parece bien no habría pasado.
+
+**Próxima acción de Claude Code:** el catálogo — categorías, productos, precios por canal y modificadores (spec 04, «CRUD completo»). Es la otra mitad de DT-10 y la que de verdad usa un dueño cada semana: la carta cambia; la estructura del negocio, no.
