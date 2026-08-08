@@ -21,6 +21,10 @@ import {
   type ConfigView,
 } from '../app/agent-config.service.js';
 import { KnowledgeService } from '../app/knowledge.service.js';
+import {
+  AgentAnalyticsService,
+  type AgentAnalytics,
+} from '../app/agent-analytics.service.js';
 
 function parse<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
@@ -64,6 +68,7 @@ export class AiController {
     private readonly agent: AgentService,
     private readonly config: AgentConfigService,
     private readonly knowledge: KnowledgeService,
+    private readonly analytics: AgentAnalyticsService,
   ) {}
 
   // ------------------------------------------------------- Configuración
@@ -269,5 +274,50 @@ export class AiController {
     );
     await this.agent.setBudget(req.auth!.tid, input.limitCredits);
     return this.agent.budget(req.auth!.tid);
+  }
+
+  // ------------------------------------------------------------- Analítica
+
+  /**
+   * El panel del agente (spec 19 §6, T5.32).
+   *
+   * `ai.read` y no un permiso de analítica aparte: quien puede leer las trazas
+   * —donde están los mensajes literales de los clientes— ya ve mucho más que
+   * estos agregados. Pedir un permiso extra para lo menos sensible sería
+   * teatro.
+   */
+  @Get('analytics')
+  @RequirePermission('ai.read')
+  async agentAnalytics(
+    @Req() req: AuthenticatedRequest,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('brand') brand?: string,
+  ): Promise<AgentAnalytics> {
+    const input = parse(
+      z.object({
+        from: z.string().datetime().optional(),
+        to: z.string().datetime().optional(),
+        brand: z.string().uuid().optional(),
+      }),
+      { from, to, brand },
+    );
+
+    // Por defecto, los últimos 30 días. Un rango obligatorio obligaría al panel
+    // a inventarse uno igualmente, y sin tope el dueño puede pedir «todo» y
+    // arrastrar el histórico entero en cada carga.
+    const hasta = input.to ? new Date(input.to) : new Date();
+    const desde = input.from
+      ? new Date(input.from)
+      : new Date(hasta.getTime() - 30 * 24 * 60 * 60 * 1000);
+    if (desde >= hasta) {
+      throw new ValidationError('El rango termina antes de empezar.');
+    }
+
+    return this.analytics.overview(req.auth!.tid, {
+      from: desde,
+      to: hasta,
+      ...(input.brand ? { brandId: input.brand } : {}),
+    });
   }
 }

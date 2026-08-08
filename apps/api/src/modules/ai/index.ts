@@ -13,6 +13,13 @@ export {
   type AgentLimits,
 } from './app/agent-config.service.js';
 export { KnowledgeService, type SourceChunk } from './app/knowledge.service.js';
+export {
+  AgentAnalyticsService,
+  type AgentAnalytics,
+  type AgentAnalyticsRange,
+  type OriginConversion,
+} from './app/agent-analytics.service.js';
+export { AiEventHandlers, AI_CONSUMER } from './app/ai-event-handlers.js';
 export { EchoAiProvider } from './app/echo-provider.js';
 export type {
   AiProvider,

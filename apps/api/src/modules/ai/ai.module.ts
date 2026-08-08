@@ -9,6 +9,8 @@ import { AgentService } from './app/agent.service.js';
 import { AgentToolsService } from './app/agent-tools.service.js';
 import { AgentConfigService } from './app/agent-config.service.js';
 import { KnowledgeService } from './app/knowledge.service.js';
+import { AgentAnalyticsService } from './app/agent-analytics.service.js';
+import { AiEventHandlers } from './app/ai-event-handlers.js';
 import { AiController } from './api/ai.controller.js';
 
 /**
@@ -36,7 +38,15 @@ import { AiController } from './api/ai.controller.js';
     AgentToolsService,
     AgentConfigService,
     KnowledgeService,
+    AgentAnalyticsService,
+    AiEventHandlers,
   ],
-  exports: [AgentService, AgentConfigService, KnowledgeService],
+  exports: [
+    AgentService,
+    AgentConfigService,
+    KnowledgeService,
+    AgentAnalyticsService,
+    AiEventHandlers,
+  ],
 })
 export class AiModule {}

@@ -310,3 +310,21 @@ export {
   type AiBudget,
   type BudgetDecision,
 } from './ai/budget.js';
+
+/**
+ * Analítica del agente (T5.32). Puras: la consulta reúne los números, el
+ * dominio decide. Así el umbral del KPI se discute sin tocar SQL.
+ */
+export {
+  messagesPerOrder,
+  conversionBps,
+  MESSAGES_PER_ORDER_TARGET,
+  type MessagesPerOrderInput,
+  type MessagesPerOrderResult,
+  type ConversionInput,
+} from './ai/agent-kpi.js';
+export {
+  unansweredTopics,
+  type TopicCount,
+  type UnansweredTopicsOptions,
+} from './ai/unanswered-topics.js';

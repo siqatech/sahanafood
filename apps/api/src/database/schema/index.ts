@@ -1392,6 +1392,21 @@ export const conversationTagLinks = pgTable('cnv_conversation_tags', {
   tagId: uuid('tag_id').notNull(),
 });
 
+/**
+ * De qué conversación salió cada pedido (T5.32).
+ *
+ * Vive del lado de Conversaciones y no como columna de `ord_orders` porque
+ * Ordering no puede depender de Conversations: la flecha ya va al revés.
+ */
+export const conversationOrders = pgTable('cnv_conversation_orders', {
+  tenantId: uuid('tenant_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  orderId: uuid('order_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const quickReplies = pgTable('cnv_quick_replies', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),

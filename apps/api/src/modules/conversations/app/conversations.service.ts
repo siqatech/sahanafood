@@ -453,6 +453,18 @@ export class ConversationsService {
     });
 
     await withTenant(this.pool, tenantId, async (ctx) => {
+      // El vínculo, en una tabla y no solo dentro de un JSON de mensaje
+      // (T5.32). El mensaje de abajo sirve para que un agente lo LEA; esto
+      // sirve para contarlo, y «¿cuántas conversaciones que atendió la IA
+      // acabaron en pedido?» es la métrica que decide si el agente se queda
+      // encendido. Rebuscar dentro de un payload no es medir: es estimar.
+      await ctx.client.query(
+        `INSERT INTO cnv_conversation_orders (tenant_id, conversation_id, order_id)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (tenant_id, order_id) DO NOTHING`,
+        [tenantId, conversationId, pedido.id],
+      );
+
       // Queda como mensaje de SISTEMA en el hilo: quien abra la conversación
       // mañana tiene que ver que de aquí salió un pedido, y cuál.
       await ctx.client.query(

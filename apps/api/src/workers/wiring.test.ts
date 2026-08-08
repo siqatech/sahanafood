@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { describe, it, expect, beforeAll } from 'vitest';
 
 /**
@@ -24,6 +24,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
  */
 
 const RUTA = new URL('./main.ts', import.meta.url);
+const MODULOS = new URL('../modules/', import.meta.url);
 
 /** Barridos que el worker DEBE arrancar, con el método que ejecuta cada uno. */
 const BARRIDOS = [
@@ -62,6 +63,47 @@ describe('cableado del worker', () => {
       // Y se paran al apagar: un barrido que sigue vivo mientras se cierran el
       // pool y Redis aborta su transacción en cada despliegue.
       expect(fuente).toContain(`${nombre}.stop()`);
+    }
+  });
+
+  /**
+   * Y lo mismo para los CONSUMIDORES de eventos.
+   *
+   * Esta parte nace de un fallo de la misma familia, encontrado en T5.32 y
+   * peor: `AiEventHandlers` no existía, así que
+   * `conversation.message_received` se publicaba y no lo escuchaba nadie. La
+   * plataforma entera del agente —reglas, herramientas, RAG, validador,
+   * presupuesto, suite dorada— estaba construida, probada y era **inalcanzable
+   * desde fuera**: la única ruta que llamaba al agente era el sandbox del
+   * dueño. Un cliente escribiendo por WhatsApp no recibía nada.
+   *
+   * La comprobación anterior solo miraba los `PeriodicJob`. Un módulo puede
+   * traer trabajo de fondo de dos formas —barrido o consumidor— y solo una
+   * estaba vigilada.
+   */
+  it('registra en el worker TODO módulo que declare handlers de eventos', async () => {
+    const modulos = await readdir(MODULOS, { withFileTypes: true });
+    const conHandlers: string[] = [];
+
+    for (const m of modulos) {
+      if (!m.isDirectory()) continue;
+      const publico = new URL(`./${m.name}/index.ts`, MODULOS);
+      const contenido = await readFile(publico, 'utf8').catch(() => '');
+      // La convención del proyecto: quien consume eventos exporta su nombre de
+      // consumidor por su API pública.
+      const consumidor = /export \{[^}]*?(\w+_CONSUMER)/s.exec(contenido);
+      if (consumidor?.[1]) conHandlers.push(consumidor[1]);
+    }
+
+    // Si esto sale vacío, la convención cambió y la prueba dejó de comprobar
+    // nada: mejor que falle a que apruebe en silencio.
+    expect(conHandlers.length).toBeGreaterThan(3);
+
+    for (const constante of conHandlers) {
+      expect(
+        fuente,
+        `El módulo exporta ${constante} pero el worker no lo registra: sus eventos no los escucha nadie.`,
+      ).toContain(`nombre: ${constante}`);
     }
   });
 });

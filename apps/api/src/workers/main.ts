@@ -38,6 +38,7 @@ import {
   AnalyticsEventHandlers,
   ANALYTICS_CONSUMER,
 } from '../modules/analytics/index.js';
+import { AiEventHandlers, AI_CONSUMER } from '../modules/ai/index.js';
 import { Worker } from 'bullmq';
 import {
   outboxPending,
@@ -126,6 +127,13 @@ async function bootstrap(): Promise<void> {
     {
       nombre: ANALYTICS_CONSUMER,
       handlers: app.get(AnalyticsEventHandlers).handlers(),
+    },
+    // El agente. Va el ÚLTIMO a propósito: si contestar falla, el ticket de
+    // cocina y la analítica del mensaje ya están escritos en sus propias
+    // transacciones. Al revés, un fallo del modelo retrasaría la comida.
+    {
+      nombre: AI_CONSUMER,
+      handlers: app.get(AiEventHandlers).handlers(),
     },
   ];
 
