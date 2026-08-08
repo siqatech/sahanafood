@@ -122,8 +122,10 @@ export async function confirmOrder(
   const notes = String(form.get('notes') ?? '').trim();
   const marketingConsent = form.get('marketingConsent') === 'on';
 
-  if (name.length < 2) return { error: 'Necesitamos tu nombre para la entrega.' };
-  if (phone.length < 6) return { error: 'Necesitamos un teléfono de contacto.' };
+  if (name.length < 2)
+    return { error: 'Necesitamos tu nombre para la entrega.' };
+  if (phone.length < 6)
+    return { error: 'Necesitamos un teléfono de contacto.' };
 
   let orderId: string;
   try {

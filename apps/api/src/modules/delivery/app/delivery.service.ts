@@ -296,7 +296,10 @@ export class DeliveryService {
         action: 'delivery.shipment_created',
         resourceType: 'shipment',
         resourceId: id,
-        data: { orderId: input.orderId, external: input.externalCourier ?? null },
+        data: {
+          orderId: input.orderId,
+          external: input.externalCourier ?? null,
+        },
       });
 
       return this.loadShipment(ctx, id);
@@ -491,8 +494,7 @@ export class DeliveryService {
       }
 
       const ahora = new Date();
-      const cobro =
-        options.codCollected === true && actual.cod_amount !== null;
+      const cobro = options.codCollected === true && actual.cod_amount !== null;
 
       await ctx.client.query(
         `UPDATE dlv_shipments
@@ -675,7 +677,10 @@ export class DeliveryService {
     },
   ): Promise<{ shipments: number; amount: string }> {
     const liquidado = await withTenant(this.pool, tenantId, async (ctx) => {
-      const { rows } = await ctx.client.query<{ id: string; cod_amount: string }>(
+      const { rows } = await ctx.client.query<{
+        id: string;
+        cod_amount: string;
+      }>(
         `UPDATE dlv_shipments
             SET settled_session_id = $2, settled_at = now(), updated_at = now()
           WHERE courier_id = $1

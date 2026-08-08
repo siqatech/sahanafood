@@ -1,10 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Pool } from 'pg';
-import {
-  Money,
-  windowCountdown,
-  type WindowCountdown,
-} from '@sahana/domain';
+import { Money, windowCountdown, type WindowCountdown } from '@sahana/domain';
 import { PG_POOL } from '../../../database/database.module.js';
 import { withTenant, type TenantContext } from '../../../database/rls.js';
 import {
@@ -144,7 +140,11 @@ export class ConversationsService {
       waMessageId?: string | undefined;
       at?: Date | undefined;
     },
-  ): Promise<{ conversationId: string; messageId: string; duplicate: boolean }> {
+  ): Promise<{
+    conversationId: string;
+    messageId: string;
+    duplicate: boolean;
+  }> {
     const at = input.at ?? new Date();
 
     return withTenant(this.pool, tenantId, async (ctx) => {
@@ -212,7 +212,11 @@ export class ConversationsService {
         aggregateType: 'conversation',
         aggregateId: conversationId,
         eventType: 'conversation.message_received',
-        payload: { conversationId, messageId: msg[0].id, channel: input.channel },
+        payload: {
+          conversationId,
+          messageId: msg[0].id,
+          channel: input.channel,
+        },
       });
 
       return { conversationId, messageId: msg[0].id, duplicate: false };
@@ -631,10 +635,7 @@ export class ConversationsService {
     return fila;
   }
 
-  private toConversationView(
-    r: FilaConversacion,
-    now: Date,
-  ): ConversationView {
+  private toConversationView(r: FilaConversacion, now: Date): ConversationView {
     return {
       id: r.id,
       brandId: r.brand_id,

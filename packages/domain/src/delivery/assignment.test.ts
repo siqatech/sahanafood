@@ -50,8 +50,18 @@ describe('Asignación de repartidor (spec 09, T5.15)', () => {
     // porque vaya menos cargado. La regla nombra la zona primero.
     const ranking = rankCouriers(
       [
-        repartidor({ courierId: 'c1', name: 'Luis', activeShipments: 0, zoneIds: ['zona-b'] }),
-        repartidor({ courierId: 'c2', name: 'Rosa', activeShipments: 2, zoneIds: ['zona-a'] }),
+        repartidor({
+          courierId: 'c1',
+          name: 'Luis',
+          activeShipments: 0,
+          zoneIds: ['zona-b'],
+        }),
+        repartidor({
+          courierId: 'c2',
+          name: 'Rosa',
+          activeShipments: 2,
+          zoneIds: ['zona-a'],
+        }),
       ],
       peticion('zona-a'),
     );
@@ -65,7 +75,12 @@ describe('Asignación de repartidor (spec 09, T5.15)', () => {
     const ranking = rankCouriers(
       [
         repartidor({ courierId: 'c1', name: 'Luis', activeShipments: 3 }),
-        repartidor({ courierId: 'c2', name: 'Rosa', activeShipments: 1, zoneIds: ['zona-a'] }),
+        repartidor({
+          courierId: 'c2',
+          name: 'Rosa',
+          activeShipments: 1,
+          zoneIds: ['zona-a'],
+        }),
       ],
       peticion('zona-a'),
     );
@@ -85,14 +100,26 @@ describe('Asignación de repartidor (spec 09, T5.15)', () => {
       peticion(null),
     );
     expect(ranking[0]!.name).toBe('Ana');
-    expect(ranking[0]!.activeShipments).toBeLessThan(ranking[1]!.activeShipments);
+    expect(ranking[0]!.activeShipments).toBeLessThan(
+      ranking[1]!.activeShipments,
+    );
   });
 
   it('un repartidor de baja NO entra, aunque sea el único de la zona', () => {
     const ranking = rankCouriers(
       [
-        repartidor({ courierId: 'c1', name: 'Luis', status: 'off', zoneIds: ['zona-a'] }),
-        repartidor({ courierId: 'c2', name: 'Rosa', activeShipments: 5, zoneIds: ['zona-b'] }),
+        repartidor({
+          courierId: 'c1',
+          name: 'Luis',
+          status: 'off',
+          zoneIds: ['zona-a'],
+        }),
+        repartidor({
+          courierId: 'c2',
+          name: 'Rosa',
+          activeShipments: 5,
+          zoneIds: ['zona-b'],
+        }),
       ],
       peticion('zona-a'),
     );
@@ -103,7 +130,14 @@ describe('Asignación de repartidor (spec 09, T5.15)', () => {
     // Excluir a los ocupados dejaría la cola parada en hora punta, que es
     // cuando más falta hace que se mueva.
     const ranking = rankCouriers(
-      [repartidor({ courierId: 'c1', name: 'Luis', status: 'busy', activeShipments: 2 })],
+      [
+        repartidor({
+          courierId: 'c1',
+          name: 'Luis',
+          status: 'busy',
+          activeShipments: 2,
+        }),
+      ],
       peticion(),
     );
     expect(ranking).toHaveLength(1);
@@ -133,7 +167,11 @@ describe('Asignación de repartidor (spec 09, T5.15)', () => {
   it('el motivo explica la decisión en castellano', () => {
     const elegido = pickCourier(
       [repartidor({ name: 'Rosa', activeShipments: 0, zoneIds: ['zona-a'] })],
-      { zoneId: 'zona-a', promisedAt: new Date('2026-06-15T18:40:00Z'), now: AHORA },
+      {
+        zoneId: 'zona-a',
+        promisedAt: new Date('2026-06-15T18:40:00Z'),
+        now: AHORA,
+      },
     );
     expect(elegido.reason).toContain('sin envíos activos');
     expect(elegido.reason).toContain('cubre la zona');
@@ -152,7 +190,10 @@ describe('Asignación de repartidor (spec 09, T5.15)', () => {
         ),
         (crudos) => {
           const couriers = crudos.map((c, i) =>
-            repartidor({ courierId: `${c.courierId}-${i}`, activeShipments: c.activeShipments }),
+            repartidor({
+              courierId: `${c.courierId}-${i}`,
+              activeShipments: c.activeShipments,
+            }),
           );
           const ranking = rankCouriers(couriers, peticion(null));
           const primero = ranking[0]!;

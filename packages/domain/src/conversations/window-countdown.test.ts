@@ -80,7 +80,10 @@ describe('Cuenta regresiva de la ventana de 24 h (RN-CNV-03, T5.20)', () => {
           expect(c.expiresAt!.getTime()).toBeGreaterThan(AHORA.getTime());
         }
         // Y el aviso aparece siempre por debajo del umbral.
-        if (c.minutesRemaining > 0 && c.minutesRemaining <= CLOSING_SOON_MINUTES) {
+        if (
+          c.minutesRemaining > 0 &&
+          c.minutesRemaining <= CLOSING_SOON_MINUTES
+        ) {
           expect(c.state).toBe('closing');
         }
       }),

@@ -14,8 +14,6 @@ import { CheckoutForm } from './checkout-form';
 
 export const dynamic = 'force-dynamic';
 
-
-
 export default async function CheckoutPage() {
   const token = await getCartToken();
   let carrito: Cart | null = null;

@@ -92,7 +92,10 @@ const LONGITUD_MAXIMA = 900;
  */
 const PATRONES: ReadonlyArray<{ kind: FactKind; re: RegExp }> = [
   // Importes: «S/ 32», «32.50 soles», «32,50». Con o sin símbolo.
-  { kind: 'price', re: /(?:S\/\.?\s*|\bsoles?\s*)?\b\d{1,4}(?:[.,]\d{1,2})?\s*(?:soles?|PEN)\b/gi },
+  {
+    kind: 'price',
+    re: /(?:S\/\.?\s*|\bsoles?\s*)?\b\d{1,4}(?:[.,]\d{1,2})?\s*(?:soles?|PEN)\b/gi,
+  },
   { kind: 'price', re: /\bS\/\.?\s*\d{1,4}(?:[.,]\d{1,2})?/gi },
   // Disponibilidad afirmada.
   {

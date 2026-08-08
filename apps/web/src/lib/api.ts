@@ -150,7 +150,11 @@ export const shop = {
   getCart: (token: string): Promise<Cart> => call<Cart>(`/shop/carts/${token}`),
   addLine: (
     token: string,
-    input: { productId: string; quantity: number; modifierOptionIds?: string[] },
+    input: {
+      productId: string;
+      quantity: number;
+      modifierOptionIds?: string[];
+    },
   ): Promise<Cart> =>
     call<Cart>(`/shop/carts/${token}/lines`, {
       method: 'POST',

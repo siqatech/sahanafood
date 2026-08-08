@@ -106,7 +106,9 @@ suite('Saturación de cocina', () => {
     return pedido.id;
   };
 
-  const configurar = async (over: Record<string, unknown> = {}): Promise<void> => {
+  const configurar = async (
+    over: Record<string, unknown> = {},
+  ): Promise<void> => {
     await auth(http().put(`/api/v1/kitchen/capacity/${org.kitchenId}`))
       .send({
         maxConcurrentItems: 10,
@@ -278,7 +280,9 @@ suite('Saturación de cocina', () => {
 
     const pausados = await ordering.pausedChannels(tenantA, org.locationId);
     expect(pausados.map((p) => p.channel)).toContain('rappi');
-    expect(pausados.find((p) => p.channel === 'rappi')?.pausedBy).toBe('manual');
+    expect(pausados.find((p) => p.channel === 'rappi')?.pausedBy).toBe(
+      'manual',
+    );
 
     await ordering.setChannelPause(tenantA, {
       locationId: org.locationId,

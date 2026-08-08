@@ -321,7 +321,11 @@ export class OrderingService {
     //     ya entró tiene que seguir devolviendo ese pedido aunque el canal se
     //     haya pausado entre medias. Rechazarlo dejaría al marketplace
     //     creyendo que no entró comida que ya está en la plancha.
-    await this.assertChannelAccepting(tenantId, input.locationId, input.channel);
+    await this.assertChannelAccepting(
+      tenantId,
+      input.locationId,
+      input.channel,
+    );
 
     // 4) Resolver catálogo y precios para el canal (RN-ORD-09).
     const { domainLines, porId } = await this.resolveLines(tenantId, input);
@@ -1580,7 +1584,10 @@ export class OrderingService {
     channel: string,
   ): Promise<void> {
     const pausa = await withTenant(this.pool, tenantId, async ({ client }) => {
-      const { rows } = await client.query<{ reason: string | null; until: Date | null }>(
+      const { rows } = await client.query<{
+        reason: string | null;
+        until: Date | null;
+      }>(
         `SELECT reason, until FROM ord_channel_pauses
           WHERE location_id = $1 AND channel = $2
             AND (until IS NULL OR until > now())`,
@@ -1667,7 +1674,9 @@ export class OrderingService {
   async pausedChannels(
     tenantId: string,
     locationId: string,
-  ): Promise<Array<{ channel: string; pausedBy: string; reason: string | null }>> {
+  ): Promise<
+    Array<{ channel: string; pausedBy: string; reason: string | null }>
+  > {
     return withTenant(this.pool, tenantId, async ({ client }) => {
       const { rows } = await client.query<{
         channel: string;

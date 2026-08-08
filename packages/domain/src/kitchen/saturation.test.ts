@@ -26,7 +26,9 @@ describe('Saturación de cocina (RN-KIT-04, T5.18)', () => {
 
   it('el umbral es ESTRICTO: 20 no satura, 21 sí', () => {
     // «> max_concurrent», no «>=». Un umbral de 20 significa que 20 caben.
-    expect(evaluateSaturation({ activeItems: 20 }, politica()).level).toBe('normal');
+    expect(evaluateSaturation({ activeItems: 20 }, politica()).level).toBe(
+      'normal',
+    );
     expect(evaluateSaturation({ activeItems: 21 }, politica()).level).toBe(
       'saturated',
     );
@@ -65,7 +67,9 @@ describe('Saturación de cocina (RN-KIT-04, T5.18)', () => {
     // Umbral de pausa por debajo del de saturación: la cocina pasaría de
     // normal a cerrar canales sin avisar por el camino.
     expect(() =>
-      assertValidPolicy(politica({ maxConcurrentItems: 30, pauseThresholdItems: 20 })),
+      assertValidPolicy(
+        politica({ maxConcurrentItems: 30, pauseThresholdItems: 20 }),
+      ),
     ).toThrow(SaturationError);
   });
 
@@ -108,7 +112,10 @@ describe('Saturación de cocina (RN-KIT-04, T5.18)', () => {
           expect(orden[d2.level]).toBeGreaterThanOrEqual(orden[d1.level]);
 
           // Y es pura: dos llamadas iguales dan lo mismo.
-          const otraVez = evaluateSaturation({ activeItems: menor }, politica());
+          const otraVez = evaluateSaturation(
+            { activeItems: menor },
+            politica(),
+          );
           expect(otraVez).toEqual(d1);
         },
       ),

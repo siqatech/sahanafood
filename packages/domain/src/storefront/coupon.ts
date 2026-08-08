@@ -143,7 +143,9 @@ export function applyCoupon(
   } else {
     bruto = coupon.amountMinor ?? 0;
     if (!Number.isInteger(bruto) || bruto < 0) {
-      throw new CouponError('El importe del cupón debe ser un entero no negativo.');
+      throw new CouponError(
+        'El importe del cupón debe ser un entero no negativo.',
+      );
     }
   }
 

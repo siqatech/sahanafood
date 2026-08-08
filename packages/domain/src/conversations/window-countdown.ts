@@ -62,7 +62,8 @@ export function windowCountdown(
       minutesRemaining: 0,
       expiresAt: null,
       canSendFreeform: false,
-      label: 'Este contacto nunca ha escrito: solo se puede iniciar con plantilla.',
+      label:
+        'Este contacto nunca ha escrito: solo se puede iniciar con plantilla.',
     };
   }
 

@@ -162,9 +162,9 @@ suite('Delivery propio', () => {
     // Dos envíos activos del mismo pedido son dos motos yendo a la misma puerta.
     const orderId = await vender();
     await delivery.createShipment(tenantA, { orderId });
-    await expect(
-      delivery.createShipment(tenantA, { orderId }),
-    ).rejects.toThrow(/ya tiene un envío/i);
+    await expect(delivery.createShipment(tenantA, { orderId })).rejects.toThrow(
+      /ya tiene un envío/i,
+    );
   });
 
   // ---------------------------------------------------------------- Estados
@@ -175,9 +175,7 @@ suite('Delivery propio', () => {
       orderId: await vender(),
     });
 
-    await auth(
-      http().post(`/api/v1/delivery/shipments/${envio.id}/assign`),
-    )
+    await auth(http().post(`/api/v1/delivery/shipments/${envio.id}/assign`))
       .send({ courierId })
       .expect(201);
     await auth(
@@ -249,8 +247,14 @@ suite('Delivery propio', () => {
       );
       return rows[0]!;
     });
-    expect(['received', 'accepted', 'preparing', 'ready', 'packed', 'dispatched'])
-      .toContain(pedido.status);
+    expect([
+      'received',
+      'accepted',
+      'preparing',
+      'ready',
+      'packed',
+      'dispatched',
+    ]).toContain(pedido.status);
   });
 
   it('reparto de marketplace: solo se registra el handoff (RN-DLV-04)', async () => {
@@ -406,8 +410,6 @@ suite('Delivery propio', () => {
       orderId: await vender(),
     });
     const enlace = await delivery.issueTrackingLink(tenantA, envio.id);
-    await http()
-      .get(`/api/v1/payments/links/${enlace.token}`)
-      .expect(404);
+    await http().get(`/api/v1/payments/links/${enlace.token}`).expect(404);
   });
 });

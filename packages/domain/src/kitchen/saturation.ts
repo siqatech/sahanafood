@@ -73,7 +73,10 @@ export class SaturationError extends Error {
 }
 
 export function assertValidPolicy(policy: SaturationPolicy): void {
-  if (!Number.isInteger(policy.maxConcurrentItems) || policy.maxConcurrentItems <= 0) {
+  if (
+    !Number.isInteger(policy.maxConcurrentItems) ||
+    policy.maxConcurrentItems <= 0
+  ) {
     throw new SaturationError(
       'El umbral de saturación tiene que ser un entero positivo.',
     );

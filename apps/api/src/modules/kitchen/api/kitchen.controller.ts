@@ -125,7 +125,13 @@ export class KitchenController {
     const schema = z.object({
       maxConcurrentItems: z.number().int().positive().max(10_000),
       extendMinutes: z.number().int().positive().max(240),
-      pauseThresholdItems: z.number().int().positive().max(10_000).nullable().optional(),
+      pauseThresholdItems: z
+        .number()
+        .int()
+        .positive()
+        .max(10_000)
+        .nullable()
+        .optional(),
       channelPauseOrder: z.array(z.string().min(1).max(40)).optional(),
       enabled: z.boolean().optional(),
     });

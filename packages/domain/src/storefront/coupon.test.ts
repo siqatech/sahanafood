@@ -30,7 +30,11 @@ describe('Cupones (spec 11, T5.12)', () => {
   });
 
   it('el envío gratis descuenta exactamente el envío', () => {
-    const r = applyCoupon(cupon({ kind: 'free_delivery' }), soles('50.00'), ENVIO);
+    const r = applyCoupon(
+      cupon({ kind: 'free_delivery' }),
+      soles('50.00'),
+      ENVIO,
+    );
     expect(r.applies).toBe(true);
     if (r.applies) {
       expect(r.discount.toDecimalString()).toBe('6.0000');
@@ -85,9 +89,9 @@ describe('Cupones (spec 11, T5.12)', () => {
 
   it('rechaza un cupón inactivo, caducado o aún no vigente', () => {
     const ahora = new Date('2026-06-15T12:00:00Z');
-    expect(applyCoupon(cupon({ active: false }), soles('50.00'), ENVIO).applies).toBe(
-      false,
-    );
+    expect(
+      applyCoupon(cupon({ active: false }), soles('50.00'), ENVIO).applies,
+    ).toBe(false);
     expect(
       applyCoupon(
         cupon({ validUntil: new Date('2026-01-01T00:00:00Z') }),

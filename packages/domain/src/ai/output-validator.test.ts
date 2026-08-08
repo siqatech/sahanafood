@@ -35,10 +35,9 @@ describe('Validador de salida del agente (RN-AIA-01, T5.24)', () => {
   });
 
   it('el precio CONSULTADO pasa', () => {
-    const v = validateOutput(
-      'El pollo a la brasa entero cuesta S/ 32.00.',
-      [PRECIO_CONSULTADO],
-    );
+    const v = validateOutput('El pollo a la brasa entero cuesta S/ 32.00.', [
+      PRECIO_CONSULTADO,
+    ]);
     expect(v.ok).toBe(true);
   });
 
@@ -57,10 +56,9 @@ describe('Validador de salida del agente (RN-AIA-01, T5.24)', () => {
     // El fallo más probable de todos: el modelo busca el pollo, ve 32, y al
     // redactar cita el de la gaseosa o un número parecido. Una comprobación
     // por TIPO —«¿llamó a una herramienta de precios? sí»— lo dejaría pasar.
-    const v = validateOutput(
-      'El pollo cuesta S/ 32.00 y la gaseosa S/ 8.00.',
-      [PRECIO_CONSULTADO],
-    );
+    const v = validateOutput('El pollo cuesta S/ 32.00 y la gaseosa S/ 8.00.', [
+      PRECIO_CONSULTADO,
+    ]);
     expect(v.ok).toBe(false);
     if (!v.ok) expect(v.reason).toContain('8.00');
   });
@@ -157,7 +155,9 @@ describe('Validador de salida del agente (RN-AIA-01, T5.24)', () => {
           const texto = `Cuesta S/ ${entero}.${String(decimal).padStart(2, '0')}`;
           const v = validateOutput(texto, [PRECIO_CONSULTADO]);
           const centimos = String(
-            Math.round(Number(`${entero}.${String(decimal).padStart(2, '0')}`) * 10_000),
+            Math.round(
+              Number(`${entero}.${String(decimal).padStart(2, '0')}`) * 10_000,
+            ),
           );
           // Pasa si y solo si el importe es EXACTAMENTE el consultado.
           expect(v.ok).toBe(centimos === '320000');

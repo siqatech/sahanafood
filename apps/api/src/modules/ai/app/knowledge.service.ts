@@ -5,7 +5,10 @@ import { withTenant } from '../../../database/rls.js';
 import { NotFoundError, ValidationError } from '../../../common/errors.js';
 import { recordAudit } from '../../audit/index.js';
 import { AI_PROVIDER } from '../ai.tokens.js';
-import { EMBEDDING_DIMENSIONS, type AiProvider } from '../domain/ai-provider.js';
+import {
+  EMBEDDING_DIMENSIONS,
+  type AiProvider,
+} from '../domain/ai-provider.js';
 
 /**
  * Fuentes de conocimiento y RAG (spec 19 §2.4, T5.23).
@@ -87,9 +90,10 @@ export class KnowledgeService {
       // Reindexar es borrar y reescribir. Actualizar en sitio dejaría
       // fragmentos viejos de un texto que ya no existe, y el agente citaría una
       // política derogada como vigente.
-      await ctx.client.query('DELETE FROM ai_source_chunks WHERE source_id = $1', [
-        id,
-      ]);
+      await ctx.client.query(
+        'DELETE FROM ai_source_chunks WHERE source_id = $1',
+        [id],
+      );
 
       for (let i = 0; i < fragmentos.length; i++) {
         await ctx.client.query(
@@ -155,7 +159,10 @@ export class KnowledgeService {
   }
 
   /** Contador de uso: el dueño ve qué material sirve y cuál sobra. */
-  async markUsed(tenantId: string, sourceIds: readonly string[]): Promise<void> {
+  async markUsed(
+    tenantId: string,
+    sourceIds: readonly string[],
+  ): Promise<void> {
     if (sourceIds.length === 0) return;
     await withTenant(this.pool, tenantId, ({ client }) =>
       client.query(
@@ -165,9 +172,7 @@ export class KnowledgeService {
     );
   }
 
-  async listSources(
-    tenantId: string,
-  ): Promise<
+  async listSources(tenantId: string): Promise<
     Array<{
       id: string;
       title: string;
@@ -206,7 +211,8 @@ export class KnowledgeService {
         'DELETE FROM ai_sources WHERE id = $1',
         [id],
       );
-      if ((rowCount ?? 0) === 0) throw new NotFoundError('Fuente no encontrada.');
+      if ((rowCount ?? 0) === 0)
+        throw new NotFoundError('Fuente no encontrada.');
     });
   }
 }

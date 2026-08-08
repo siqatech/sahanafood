@@ -1,11 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import {
-  removeLine,
-  applyCoupon,
-  type ActionState,
-} from '../actions';
+import { removeLine, applyCoupon, type ActionState } from '../actions';
 import type { Cart } from '../../lib/api';
 
 /**

@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { z } from 'zod';
 import {
   RequirePermission,
@@ -6,7 +16,10 @@ import {
 } from '../../../common/authz.js';
 import { ValidationError } from '../../../common/errors.js';
 import { AgentService, type AgentReply } from '../app/agent.service.js';
-import { AgentConfigService, type ConfigView } from '../app/agent-config.service.js';
+import {
+  AgentConfigService,
+  type ConfigView,
+} from '../app/agent-config.service.js';
 import { KnowledgeService } from '../app/knowledge.service.js';
 
 function parse<T>(schema: z.ZodType<T>, body: unknown): T {
@@ -115,7 +128,13 @@ export class AiController {
         matchMode: z.enum(['any', 'all']).optional(),
         conditions: z.array(conditionSchema).min(1).max(10),
         actions: z.array(actionSchema).min(1).max(10),
-        activeFromMinute: z.number().int().min(0).max(1439).nullable().optional(),
+        activeFromMinute: z
+          .number()
+          .int()
+          .min(0)
+          .max(1439)
+          .nullable()
+          .optional(),
         activeToMinute: z.number().int().min(0).max(1439).nullable().optional(),
       }),
       body,

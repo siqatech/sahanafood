@@ -70,7 +70,9 @@ export default async function CatalogPage() {
                   <span className="producto__precio">{precio(producto)}</span>
                 </div>
                 {producto.description ? (
-                  <p className="producto__descripcion">{producto.description}</p>
+                  <p className="producto__descripcion">
+                    {producto.description}
+                  </p>
                 ) : null}
                 <AddToCartForm producto={producto} />
               </article>

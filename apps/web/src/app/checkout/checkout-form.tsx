@@ -95,7 +95,11 @@ export function CheckoutForm({
           nadie.
         */}
         <div className="consentimiento">
-          <input id="marketingConsent" name="marketingConsent" type="checkbox" />
+          <input
+            id="marketingConsent"
+            name="marketingConsent"
+            type="checkbox"
+          />
           <label htmlFor="marketingConsent">{TEXTO_CONSENTIMIENTO}</label>
         </div>
 

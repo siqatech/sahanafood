@@ -1,7 +1,11 @@
 /** API pública del módulo AI (spec 19, ADR-0011). */
 export { AiModule } from './ai.module.js';
 export { AI_PROVIDER } from './ai.tokens.js';
-export { AgentService, type AgentReply, type Resolution } from './app/agent.service.js';
+export {
+  AgentService,
+  type AgentReply,
+  type Resolution,
+} from './app/agent.service.js';
 export {
   AgentConfigService,
   type ConfigView,

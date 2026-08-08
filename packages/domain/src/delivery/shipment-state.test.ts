@@ -47,7 +47,13 @@ describe('Máquina de estados del envío (spec 09, T5.15)', () => {
   });
 
   it('un envío entregado ya no se mueve', () => {
-    for (const evento of ['assign', 'pick_up', 'deliver', 'fail', 'cancel'] as const) {
+    for (const evento of [
+      'assign',
+      'pick_up',
+      'deliver',
+      'fail',
+      'cancel',
+    ] as const) {
       expect(() => applyShipmentEvent('delivered', evento)).toThrow(
         InvalidTransitionError,
       );

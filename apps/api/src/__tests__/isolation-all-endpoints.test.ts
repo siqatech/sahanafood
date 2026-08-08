@@ -421,11 +421,7 @@ suite('Aislamiento — todos los endpoints', () => {
     // respuestas vacías idénticas no son aislamiento, son dos tenants vacíos.
     await app.get(AgentService).setBudget(b.tenantId, 987_654);
     secretsOfB.push('987654');
-    secretsOfB.push(
-      fuenteDeB,
-      'Receta SECRETA de B',
-      'chicha de jora',
-    );
+    secretsOfB.push(fuenteDeB, 'Receta SECRETA de B', 'chicha de jora');
 
     // B necesita DATOS de analítica y mensajería: dos respuestas de ceros
     // idénticas no demuestran aislamiento, solo que ambos tenants están
@@ -1073,14 +1069,18 @@ suite('Aislamiento — todos los endpoints', () => {
     // de terceros, no solo información de negocio.
     await assertEndpointIsolation(
       app,
-      caseFor('GET /delivery/couriers', (r) => r.get('/api/v1/delivery/couriers')),
+      caseFor('GET /delivery/couriers', (r) =>
+        r.get('/api/v1/delivery/couriers'),
+      ),
     );
   });
 
   it('GET /delivery/shipments no trae los envíos de B', async () => {
     await assertEndpointIsolation(
       app,
-      caseFor('GET /delivery/shipments', (r) => r.get('/api/v1/delivery/shipments')),
+      caseFor('GET /delivery/shipments', (r) =>
+        r.get('/api/v1/delivery/shipments'),
+      ),
     );
   });
 
@@ -1146,10 +1146,15 @@ suite('Aislamiento — todos los endpoints', () => {
       .get(`/api/v1/tracking/${seguimientoDeB}`)
       .expect(200);
     const cuerpo = JSON.stringify(r.body);
-    for (const secreto of [envioDeB, 'Repartidor SECRETO de B', '+51999000111']) {
-      expect(cuerpo, `el seguimiento público filtró "${secreto}"`).not.toContain(
-        secreto,
-      );
+    for (const secreto of [
+      envioDeB,
+      'Repartidor SECRETO de B',
+      '+51999000111',
+    ]) {
+      expect(
+        cuerpo,
+        `el seguimiento público filtró "${secreto}"`,
+      ).not.toContain(secreto);
     }
   });
 

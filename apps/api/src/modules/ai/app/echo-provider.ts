@@ -50,7 +50,9 @@ export class EchoAiProvider implements AiProvider {
     return {
       text: texto,
       toolCalls: [],
-      inputTokens: estimarTokens(request.messages.map((m) => m.content).join(' ')),
+      inputTokens: estimarTokens(
+        request.messages.map((m) => m.content).join(' '),
+      ),
       outputTokens: estimarTokens(texto),
     };
   }

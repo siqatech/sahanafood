@@ -15,8 +15,6 @@ import { CartActions } from './cart-actions';
 
 export const dynamic = 'force-dynamic';
 
-
-
 export default async function CartPage() {
   const token = await getCartToken();
   let carrito: Cart | null = null;
@@ -54,7 +52,8 @@ export default async function CartPage() {
               : 'Algunos productos ya no están disponibles.'}
           </strong>
           <p className="nota">
-            Quítalos para poder continuar: {agotados.map((l) => l.name).join(', ')}.
+            Quítalos para poder continuar:{' '}
+            {agotados.map((l) => l.name).join(', ')}.
           </p>
         </div>
       ) : null}
@@ -75,7 +74,9 @@ export default async function CartPage() {
             )}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div>{linea.unavailable ? '—' : formatDecimal(linea.lineTotal)}</div>
+            <div>
+              {linea.unavailable ? '—' : formatDecimal(linea.lineTotal)}
+            </div>
             <CartActions lineId={linea.id} />
           </div>
         </div>
@@ -94,7 +95,9 @@ export default async function CartPage() {
         ) : null}
         {Number(carrito.discount) > 0 ? (
           <div className="totales__fila">
-            <span>Descuento{carrito.coupon ? ` (${carrito.coupon.code})` : ''}</span>
+            <span>
+              Descuento{carrito.coupon ? ` (${carrito.coupon.code})` : ''}
+            </span>
             <span>−{formatDecimal(carrito.discount)}</span>
           </div>
         ) : null}

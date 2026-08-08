@@ -113,14 +113,25 @@ export class StorefrontService {
       isSubdomain?: boolean | undefined;
       actorId?: string | undefined;
     },
-  ): Promise<{ id: string; host: string; status: string; verificationToken: string | null }> {
+  ): Promise<{
+    id: string;
+    host: string;
+    status: string;
+    verificationToken: string | null;
+  }> {
     const host = input.host.trim().toLowerCase();
-    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host)) {
+    if (
+      !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(
+        host,
+      )
+    ) {
       throw new ValidationError(`"${input.host}" no es un host válido.`);
     }
 
     const esSubdominio = input.isSubdomain ?? host.endsWith('.sahana.food');
-    const token = esSubdominio ? null : `sahana-verify=${randomBytes(16).toString('hex')}`;
+    const token = esSubdominio
+      ? null
+      : `sahana-verify=${randomBytes(16).toString('hex')}`;
 
     return withTenant(this.pool, tenantId, async (ctx) => {
       const { rows } = await ctx.client.query<{ id: string; status: string }>(
@@ -168,7 +179,8 @@ export class StorefrontService {
           WHERE id = $1 AND status <> 'disabled'`,
         [domainId],
       );
-      if ((rowCount ?? 0) === 0) throw new NotFoundError('Dominio no encontrado.');
+      if ((rowCount ?? 0) === 0)
+        throw new NotFoundError('Dominio no encontrado.');
     });
   }
 
@@ -194,16 +206,22 @@ export class StorefrontService {
       );
       return rows[0];
     });
-    if (!fila) throw new NotFoundError('No hay ninguna tienda en este dominio.');
+    if (!fila)
+      throw new NotFoundError('No hay ninguna tienda en este dominio.');
 
-    const marca = await withTenant(this.pool, fila.tenant_id, async ({ client }) => {
-      const { rows } = await client.query<{ name: string }>(
-        'SELECT name FROM org_brands WHERE id = $1',
-        [fila.brand_id],
-      );
-      return rows[0];
-    });
-    if (!marca) throw new NotFoundError('No hay ninguna tienda en este dominio.');
+    const marca = await withTenant(
+      this.pool,
+      fila.tenant_id,
+      async ({ client }) => {
+        const { rows } = await client.query<{ name: string }>(
+          'SELECT name FROM org_brands WHERE id = $1',
+          [fila.brand_id],
+        );
+        return rows[0];
+      },
+    );
+    if (!marca)
+      throw new NotFoundError('No hay ninguna tienda en este dominio.');
 
     return {
       brandId: fila.brand_id,
@@ -225,17 +243,23 @@ export class StorefrontService {
   }
 
   /** El tenant del host, para uso interno del propio módulo. */
-  private async tenantOfHost(host: string): Promise<{ tenantId: string; brandId: string }> {
+  private async tenantOfHost(
+    host: string,
+  ): Promise<{ tenantId: string; brandId: string }> {
     const normalizado = host.trim().toLowerCase().split(':')[0] ?? '';
     const fila = await withPublicToken(this.pool, async ({ client }) => {
-      const { rows } = await client.query<{ tenant_id: string; brand_id: string }>(
+      const { rows } = await client.query<{
+        tenant_id: string;
+        brand_id: string;
+      }>(
         `SELECT tenant_id, brand_id FROM sto_domains
           WHERE lower(host) = $1 AND status = 'active' LIMIT 1`,
         [normalizado],
       );
       return rows[0];
     });
-    if (!fila) throw new NotFoundError('No hay ninguna tienda en este dominio.');
+    if (!fila)
+      throw new NotFoundError('No hay ninguna tienda en este dominio.');
     return { tenantId: fila.tenant_id, brandId: fila.brand_id };
   }
 
@@ -286,7 +310,9 @@ export class StorefrontService {
   ): Promise<CartView> {
     const { tenantId, cartId, brandId } = await this.resolveCart(token);
     if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
-      throw new ValidationError('La cantidad tiene que ser un entero positivo.');
+      throw new ValidationError(
+        'La cantidad tiene que ser un entero positivo.',
+      );
     }
 
     const catalogo = await this.catalogoDeMarca(tenantId, brandId);
@@ -330,10 +356,10 @@ export class StorefrontService {
   async removeLine(token: string, lineId: string): Promise<CartView> {
     const { tenantId, cartId } = await this.resolveCart(token);
     await withTenant(this.pool, tenantId, ({ client }) =>
-      client.query('DELETE FROM sto_cart_lines WHERE id = $1 AND cart_id = $2', [
-        lineId,
-        cartId,
-      ]),
+      client.query(
+        'DELETE FROM sto_cart_lines WHERE id = $1 AND cart_id = $2',
+        [lineId, cartId],
+      ),
     );
     return this.getCart(token);
   }
@@ -527,7 +553,10 @@ export class StorefrontService {
       }
 
       const total = Money.fromMinor(
-        Math.max(0, subtotal.minorUnits + envio.minorUnits - descuento.minorUnits),
+        Math.max(
+          0,
+          subtotal.minorUnits + envio.minorUnits - descuento.minorUnits,
+        ),
       );
 
       return {
@@ -557,10 +586,9 @@ export class StorefrontService {
   async checkout(token: string): Promise<{ orderId: string; total: string }> {
     const vista = await this.getCart(token);
     if (vista.blockers.length > 0) {
-      throw new ValidationError(
-        vista.blockers.map((b) => b.detail).join(' '),
-        { blockers: vista.blockers },
-      );
+      throw new ValidationError(vista.blockers.map((b) => b.detail).join(' '), {
+        blockers: vista.blockers,
+      });
     }
 
     const { tenantId, cartId, brandId } = await this.resolveCart(token);
@@ -594,7 +622,8 @@ export class StorefrontService {
     // cocina de la marca. Sin esto, «recoger» acaba en un pedido sin local que
     // el motor rechaza — justo la venta que el modo recojo venía a salvar.
     const locationId =
-      pedido.cabecera.location_id ?? (await this.localDeRecojo(tenantId, brandId));
+      pedido.cabecera.location_id ??
+      (await this.localDeRecojo(tenantId, brandId));
 
     const creado = await this.ordering.submit(tenantId, {
       brandId,
@@ -761,7 +790,8 @@ export class StorefrontService {
   ): void {
     const grupoDeOpcion = new Map<string, string>();
     for (const grupo of producto.modifierGroups) {
-      for (const opcion of grupo.options) grupoDeOpcion.set(opcion.id, grupo.id);
+      for (const opcion of grupo.options)
+        grupoDeOpcion.set(opcion.id, grupo.id);
     }
 
     const porGrupo = new Map<string, string[]>();
@@ -779,10 +809,12 @@ export class StorefrontService {
     // Los grupos obligatorios sin elegir tienen que llegar a la validación como
     // selección vacía; si no se enviaran, `validateAndPriceModifiers` no vería
     // que falta nada y el fallo aparecería en el checkout.
-    const selecciones: ModifierSelection[] = producto.modifierGroups.map((g) => ({
-      groupId: g.id,
-      optionIds: porGrupo.get(g.id) ?? [],
-    }));
+    const selecciones: ModifierSelection[] = producto.modifierGroups.map(
+      (g) => ({
+        groupId: g.id,
+        optionIds: porGrupo.get(g.id) ?? [],
+      }),
+    );
 
     try {
       validateAndPriceModifiers(producto.modifierGroups, selecciones);
@@ -827,7 +859,10 @@ export class StorefrontService {
     return local;
   }
 
-  private async tarifaDeZona(ctx: TenantContext, zoneId: string): Promise<Money> {
+  private async tarifaDeZona(
+    ctx: TenantContext,
+    zoneId: string,
+  ): Promise<Money> {
     const { rows } = await ctx.client.query<{ delivery_fee: string }>(
       'SELECT delivery_fee FROM org_zones WHERE id = $1',
       [zoneId],
@@ -871,7 +906,9 @@ export class StorefrontService {
       code: fila.code,
       kind: fila.kind as Coupon['kind'],
       percentBps: fila.percent_bps ?? undefined,
-      amountMinor: fila.amount ? Money.parse(fila.amount).minorUnits : undefined,
+      amountMinor: fila.amount
+        ? Money.parse(fila.amount).minorUnits
+        : undefined,
       minOrderMinor: Money.parse(fila.min_order).minorUnits,
       maxDiscountMinor: fila.max_discount
         ? Money.parse(fila.max_discount).minorUnits

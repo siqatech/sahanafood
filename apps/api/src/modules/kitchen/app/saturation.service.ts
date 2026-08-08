@@ -223,8 +223,7 @@ export class SaturationService {
     // Las promesas se extienden SOLO al entrar en un nivel peor. Extenderlas en
     // cada evaluación acumularía quince minutos por minuto de barrido y el
     // cliente vería su promesa alejarse sola.
-    const empeora =
-      NIVEL_ORDEN[decision.level] > NIVEL_ORDEN[config.level];
+    const empeora = NIVEL_ORDEN[decision.level] > NIVEL_ORDEN[config.level];
 
     let ordersExtended = 0;
     const channelsPaused: string[] = [];
@@ -353,12 +352,16 @@ export class SaturationService {
     let evaluated = 0;
     let changed = 0;
     for (const tenantId of tenants) {
-      const cocinas = await withTenant(this.pool, tenantId, async ({ client }) => {
-        const { rows } = await client.query<{ kitchen_id: string }>(
-          'SELECT kitchen_id FROM kit_capacity WHERE enabled',
-        );
-        return rows.map((r) => r.kitchen_id);
-      });
+      const cocinas = await withTenant(
+        this.pool,
+        tenantId,
+        async ({ client }) => {
+          const { rows } = await client.query<{ kitchen_id: string }>(
+            'SELECT kitchen_id FROM kit_capacity WHERE enabled',
+          );
+          return rows.map((r) => r.kitchen_id);
+        },
+      );
 
       for (const kitchenId of cocinas) {
         // Una cocina que falla no puede parar el barrido de las demás: en hora

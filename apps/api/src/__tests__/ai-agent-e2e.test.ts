@@ -201,9 +201,9 @@ suite('Agente de IA', () => {
     await auth(http().put(`/api/v1/ai/config/${nuevo.body.id}`))
       .send({ identity: { name: 'Versión 2' }, enabled: true })
       .expect(200);
-    await auth(http().post(`/api/v1/ai/config/${nuevo.body.id}/publish`)).expect(
-      201,
-    );
+    await auth(
+      http().post(`/api/v1/ai/config/${nuevo.body.id}/publish`),
+    ).expect(201);
 
     // La v1 quedó archivada, no borrada: es lo que hace posible volver.
     const vuelta = await auth(
@@ -216,7 +216,9 @@ suite('Agente de IA', () => {
       http().get(`/api/v1/ai/config/versions?brand=${brandA}`),
     ).expect(200);
     expect(
-      versiones.body.filter((v: { status: string }) => v.status === 'published'),
+      versiones.body.filter(
+        (v: { status: string }) => v.status === 'published',
+      ),
     ).toHaveLength(1);
   });
 
@@ -252,10 +254,11 @@ suite('Agente de IA', () => {
 
     // Y el traspaso lleva su contexto: el humano no empieza de cero.
     const fila = await withTenant(pool, tenantA, async ({ client }) => {
-      const { rows } = await client.query<{ handoff_summary: { intent: string } }>(
-        'SELECT handoff_summary FROM cnv_conversations WHERE id = $1',
-        [conv.conversationId],
-      );
+      const { rows } = await client.query<{
+        handoff_summary: { intent: string };
+      }>('SELECT handoff_summary FROM cnv_conversations WHERE id = $1', [
+        conv.conversationId,
+      ]);
       return rows[0]!;
     });
     expect(fila.handoff_summary.intent).toContain('devolución');
@@ -368,7 +371,9 @@ suite('Agente de IA', () => {
     expect(sinRegla.trace.budget).toBe('exhausted');
 
     await withTenant(pool, tenantA, ({ client }) =>
-      client.query('UPDATE ai_budgets SET used_credits = 0, limit_credits = 100000'),
+      client.query(
+        'UPDATE ai_budgets SET used_credits = 0, limit_credits = 100000',
+      ),
     );
   });
 
@@ -394,7 +399,9 @@ suite('Agente de IA', () => {
     expect(JSON.stringify(enA)).not.toContain('charapita');
     expect(JSON.stringify(enA)).not.toContain('SECRETA');
 
-    const enB = await knowledge.search(tenantB, 'mascotas comedor', { limit: 5 });
+    const enB = await knowledge.search(tenantB, 'mascotas comedor', {
+      limit: 5,
+    });
     expect(JSON.stringify(enB)).not.toContain('mascotas');
   });
 
@@ -442,7 +449,8 @@ suite('Agente de IA', () => {
     // La traza guarda la entrada, la salida y cómo se resolvió: sin eso, «¿por
     // qué el bot le dijo eso a mi cliente?» no tiene respuesta.
     expect(trazas.body[0].inbound).toBeTruthy();
-    expect(trazas.body.some((t: { resolution: string }) => t.resolution === 'rule'))
-      .toBe(true);
+    expect(
+      trazas.body.some((t: { resolution: string }) => t.resolution === 'rule'),
+    ).toBe(true);
   });
 });

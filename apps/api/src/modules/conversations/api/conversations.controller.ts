@@ -117,10 +117,7 @@ export class ConversationsController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<{ ok: true }> {
-    const input = parse(
-      z.object({ assigneeId: z.string().uuid() }),
-      body,
-    );
+    const input = parse(z.object({ assigneeId: z.string().uuid() }), body);
     await this.conversations.assign(
       req.auth!.tid,
       id,

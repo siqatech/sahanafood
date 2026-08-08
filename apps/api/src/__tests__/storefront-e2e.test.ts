@@ -56,7 +56,10 @@ suite('Tienda web', () => {
     brandId: string,
     host: string,
   ): Promise<void> => {
-    const dominio = await storefront.registerDomain(tenantId, { brandId, host });
+    const dominio = await storefront.registerDomain(tenantId, {
+      brandId,
+      host,
+    });
     await storefront.verifyDomain(tenantId, dominio.id);
   };
 
@@ -152,8 +155,14 @@ suite('Tienda web', () => {
   // ------------------------------------------------- Aislamiento por dominio
 
   it('BLOQUEANTE: el host de la marca A no sirve el catálogo de B', async () => {
-    const a = await http().get('/api/v1/shop/context').set('host', HOST_A).expect(200);
-    const b = await http().get('/api/v1/shop/context').set('host', HOST_B).expect(200);
+    const a = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    const b = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_B)
+      .expect(200);
 
     expect(a.body.brandId).toBe(brandA);
     expect(b.body.brandId).toBe(brandB);
@@ -194,7 +203,10 @@ suite('Tienda web', () => {
   it('un host sin tienda no dice si el dominio existe', async () => {
     // Mismo 404 para «no registrado» y «registrado pero sin verificar»: si
     // distinguiera, cualquiera sabría qué dominios están a medio configurar.
-    await http().get('/api/v1/shop/context').set('host', 'nadie.example').expect(404);
+    await http()
+      .get('/api/v1/shop/context')
+      .set('host', 'nadie.example')
+      .expect(404);
 
     const pendiente = await storefront.registerDomain(tenantA, {
       brandId: brandA,
@@ -231,9 +243,9 @@ suite('Tienda web', () => {
     // Precio web (32) + «Grande» (5) = 37, × 2. El modificador entra en el
     // precio del carrito: si no entrara, el cliente vería 64 y pagaría 74.
     expect(conLinea.body.subtotal).toBe('74.0000');
-    expect(conLinea.body.blockers.map((b: { code: string }) => b.code)).toContain(
-      'NO_ADDRESS',
-    );
+    expect(
+      conLinea.body.blockers.map((b: { code: string }) => b.code),
+    ).toContain('NO_ADDRESS');
 
     // Dirección DENTRO de la zona céntrica (la barata: gana por RN-ORG-02).
     const conDireccion = await http()
@@ -269,7 +281,10 @@ suite('Tienda web', () => {
   });
 
   it('el catálogo público sale del host y respeta el canal web', async () => {
-    const r = await http().get('/api/v1/shop/catalog').set('host', HOST_A).expect(200);
+    const r = await http()
+      .get('/api/v1/shop/catalog')
+      .set('host', HOST_A)
+      .expect(200);
     expect(r.body.brandId).toBe(brandA);
     expect(r.body.channel).toBe('web');
 
@@ -320,7 +335,8 @@ suite('Tienda web', () => {
         name: 'Ana',
         phone: '+51900000000',
         marketingConsent: true,
-        marketingConsentText: 'Acepto recibir promociones de Pollería El Buen Sabor.',
+        marketingConsentText:
+          'Acepto recibir promociones de Pollería El Buen Sabor.',
       })
       .expect(201);
 
@@ -415,9 +431,9 @@ suite('Tienda web', () => {
     expect(vista.body.deliveryFee).toBe('0.0000');
     // Y sobre todo: sin cobertura NO es un bloqueo de dirección. La venta sigue
     // viva, solo que el cliente recoge.
-    expect(vista.body.blockers.map((b: { code: string }) => b.code)).not.toContain(
-      'NO_ADDRESS',
-    );
+    expect(
+      vista.body.blockers.map((b: { code: string }) => b.code),
+    ).not.toContain('NO_ADDRESS');
 
     await http()
       .post(`/api/v1/shop/carts/${carrito}/customer`)
@@ -444,7 +460,9 @@ suite('Tienda web', () => {
       .expect(201);
 
     // El cliente cierra la pestaña. Vuelve por el enlace y encuentra lo suyo.
-    const recuperado = await http().get(`/api/v1/shop/carts/${carrito}`).expect(200);
+    const recuperado = await http()
+      .get(`/api/v1/shop/carts/${carrito}`)
+      .expect(200);
     expect(recuperado.body.status).toBe('open');
     expect(recuperado.body.lines).toHaveLength(1);
     expect(recuperado.body.lines[0].quantity).toBe(3);
@@ -518,7 +536,9 @@ suite('Tienda web', () => {
         modifierOptionIds: [catA.optionGrandeId],
       })
       .expect(201);
-    const aplicado = await http().get(`/api/v1/shop/carts/${carrito}`).expect(200);
+    const aplicado = await http()
+      .get(`/api/v1/shop/carts/${carrito}`)
+      .expect(200);
     expect(aplicado.body.coupon.applied).toBe(true);
     expect(aplicado.body.discount).toBe('7.4000');
 

@@ -135,7 +135,9 @@ suite('Bandeja omnicanal', () => {
       (c: { contactPhone: string }) => c.contactPhone === TELEFONO,
     );
     expect(delTelefono).toHaveLength(2);
-    expect(new Set(delTelefono.map((c: { brandName: string }) => c.brandName)).size).toBe(2);
+    expect(
+      new Set(delTelefono.map((c: { brandName: string }) => c.brandName)).size,
+    ).toBe(2);
   });
 
   it('el mismo cliente escribiendo dos veces sigue en su hilo', async () => {

@@ -186,10 +186,7 @@ export class DeliveryController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<ShipmentView> {
-    const input = parse(
-      z.object({ reason: z.string().min(3).max(280) }),
-      body,
-    );
+    const input = parse(z.object({ reason: z.string().min(3).max(280) }), body);
     return this.delivery.fail(req.auth!.tid, id, input.reason, req.auth!.sub);
   }
 
@@ -224,9 +221,7 @@ export class DeliveryController {
 
   @Get('couriers/balances')
   @RequirePermission('delivery.settle')
-  async balances(
-    @Req() req: AuthenticatedRequest,
-  ): Promise<CourierBalance[]> {
+  async balances(@Req() req: AuthenticatedRequest): Promise<CourierBalance[]> {
     return this.delivery.courierBalances(req.auth!.tid);
   }
 
