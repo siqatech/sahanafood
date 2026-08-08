@@ -199,6 +199,71 @@ export class StorefrontService {
   }
 
   /**
+   * Registra el dominio de una tienda **si no lo está ya**, y lo apunta a la
+   * marca indicada.
+   *
+   * `registerDomain` no es idempotente a propósito —un alta es un alta—, pero
+   * la configuración por archivo se aplica varias veces y ahí la segunda pasada
+   * chocaría contra el índice único del host, abortando el resto de la
+   * configuración por algo que ya estaba bien. Esto es lo que usa
+   * `setup-business`.
+   *
+   * `verified` solo debería venir en true cuando quien ejecuta el comando tiene
+   * acceso al servidor y al DNS del cliente: dar por verificado un dominio que
+   * no lo está es servir el catálogo de una marca en un host ajeno.
+   */
+  async ensureDomain(
+    tenantId: string,
+    input: {
+      brandId: string;
+      host: string;
+      isSubdomain?: boolean | undefined;
+      verified?: boolean | undefined;
+      actorId?: string | undefined;
+    },
+  ): Promise<{ id: string; host: string; status: string }> {
+    const host = input.host.trim().toLowerCase();
+
+    const existente = await withTenant(
+      this.pool,
+      tenantId,
+      async ({ client }) => {
+        const { rows } = await client.query<{ id: string; status: string }>(
+          'SELECT id, status FROM sto_domains WHERE lower(host) = $1',
+          [host],
+        );
+        return rows[0];
+      },
+    );
+
+    let id: string;
+    let status: string;
+    if (existente) {
+      // Reapuntar a otra marca es legítimo —un cliente que cambia el nombre
+      // comercial—, y no reapuntar sería peor: el archivo diría una cosa y la
+      // tienda serviría otra.
+      await withTenant(this.pool, tenantId, async ({ client }) => {
+        await client.query(
+          'UPDATE sto_domains SET brand_id = $2, updated_at = now() WHERE id = $1',
+          [existente.id, input.brandId],
+        );
+      });
+      id = existente.id;
+      status = existente.status;
+    } else {
+      const alta = await this.registerDomain(tenantId, input);
+      id = alta.id;
+      status = alta.status;
+    }
+
+    if (input.verified && status !== 'active') {
+      await this.verifyDomain(tenantId, id);
+      status = 'active';
+    }
+    return { id, host, status };
+  }
+
+  /**
    * Resuelve qué marca sirve un host. PÚBLICO: llega sin sesión.
    *
    * Solo dominios **activos**. Uno pendiente devuelve lo mismo que uno que no

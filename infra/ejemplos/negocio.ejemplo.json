@@ -1,0 +1,177 @@
+{
+  "_lee_esto": [
+    "Descripción de un negocio para `node dist/database/setup-business.js`.",
+    "Cópialo, edítalo y aplícalo; las claves que empiezan por _ se ignoran.",
+    "",
+    "IMPORTES: siempre como CADENA y en soles — \"12.50\", nunca 12.5. El precio",
+    "que paga un cliente no pasa por coma flotante en ningún punto del sistema.",
+    "",
+    "PRECIOS: la clave es el canal. \"base\" es el que sirve a cualquier canal que",
+    "no tenga uno propio. Un producto SIN precio para un canal no se ve en ese",
+    "canal — es preferible que falte a que se venda a un precio inventado.",
+    "",
+    "IDEMPOTENTE: volver a aplicar este archivo con la carta cambiada actualiza",
+    "precios y añade productos nuevos sin duplicar nada. Es como se corrige un",
+    "precio mal escrito sin tocar la base a mano."
+  ],
+
+  "empresa": {
+    "razonSocial": "Inversiones El Buen Sabor S.A.C.",
+    "ruc": "20512345678",
+    "direccion": "Av. Larco 100, Miraflores, Lima"
+  },
+
+  "marcas": [
+    {
+      "nombre": "Pollería El Buen Sabor",
+      "slug": "buen-sabor",
+      "_tienda": "El dominio de la tienda. El proxy debe conservar el Host original.",
+      "tienda": { "host": "buensabor.sahana.food", "esSubdominio": true }
+    }
+  ],
+
+  "locales": [
+    {
+      "nombre": "Miraflores",
+      "direccion": "Av. Larco 100",
+      "lat": -12.125,
+      "lng": -77.02,
+      "zonaHoraria": "America/Lima",
+
+      "cocinas": [
+        {
+          "nombre": "Cocina principal",
+          "_marcas": "Qué marcas se producen aquí. Sin esto, un pedido no encuentra dónde cocinarse.",
+          "marcas": ["Pollería El Buen Sabor"],
+          "estaciones": [
+            { "nombre": "Parrilla", "orden": 1 },
+            { "nombre": "Frituras", "orden": 2 },
+            { "nombre": "Despacho", "orden": 3 }
+          ]
+        }
+      ],
+
+      "_zonas": [
+        "El polígono va como [[lng, lat], …] —orden de GeoJSON— y cierra en el",
+        "primer punto. El rectángulo envolvente lo calcula el servidor: no se",
+        "acepta del archivo ni aunque venga."
+      ],
+      "zonas": [
+        {
+          "nombre": "Miraflores centro",
+          "poligono": [
+            [-77.05, -12.15],
+            [-77.0, -12.15],
+            [-77.0, -12.1],
+            [-77.05, -12.1],
+            [-77.05, -12.15]
+          ],
+          "tarifaEnvio": "5.00",
+          "pedidoMinimo": "25.00",
+          "minutosBase": 35
+        }
+      ],
+
+      "_horarios": "weekday: 0 = domingo … 6 = sábado. Un cierre menor que la apertura cruza medianoche.",
+      "horarios": [
+        {
+          "semanal": [
+            { "weekday": 1, "opensAt": "11:00", "closesAt": "23:00" },
+            { "weekday": 2, "opensAt": "11:00", "closesAt": "23:00" },
+            { "weekday": 3, "opensAt": "11:00", "closesAt": "23:00" },
+            { "weekday": 4, "opensAt": "11:00", "closesAt": "23:00" },
+            { "weekday": 5, "opensAt": "11:00", "closesAt": "02:00" },
+            { "weekday": 6, "opensAt": "11:00", "closesAt": "02:00" },
+            { "weekday": 0, "opensAt": "11:00", "closesAt": "22:00" }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "carta": [
+    {
+      "marca": "Pollería El Buen Sabor",
+
+      "categorias": [
+        { "nombre": "Pollos a la brasa", "orden": 1 },
+        { "nombre": "Bebidas", "orden": 2 },
+        { "nombre": "Combos", "orden": 3 }
+      ],
+
+      "_gruposModificadores": [
+        "min/max los valida @sahana/domain con el mismo código que el POS.",
+        "Un delta negativo descuenta: «sin guarnición» resta."
+      ],
+      "gruposModificadores": [
+        {
+          "nombre": "Guarnición",
+          "min": 1,
+          "max": 1,
+          "opciones": [
+            { "nombre": "Papas fritas" },
+            { "nombre": "Ensalada", "delta": "3.00" },
+            { "nombre": "Sin guarnición", "delta": "-2.00" }
+          ]
+        },
+        {
+          "nombre": "Cremas extra",
+          "min": 0,
+          "max": 3,
+          "permiteRepetir": false,
+          "opciones": [
+            { "nombre": "Ají", "delta": "1.50" },
+            { "nombre": "Mayonesa", "delta": "1.50" },
+            { "nombre": "Huacatay", "delta": "2.00" }
+          ]
+        }
+      ],
+
+      "productos": [
+        {
+          "sku": "POLLO-ENT",
+          "nombre": "Pollo a la brasa entero",
+          "descripcion": "Con papas y ensalada",
+          "categoria": "Pollos a la brasa",
+          "minutosPreparacion": 25,
+          "modificadores": ["Guarnición", "Cremas extra"],
+          "_precios": "En la web cuesta más porque la web no cobra comisión; en un marketplace, más todavía.",
+          "precios": {
+            "base": "55.00",
+            "web": "59.00",
+            "rappi": "69.00"
+          }
+        },
+        {
+          "sku": "POLLO-MED",
+          "nombre": "Medio pollo a la brasa",
+          "categoria": "Pollos a la brasa",
+          "minutosPreparacion": 20,
+          "modificadores": ["Guarnición"],
+          "precios": { "base": "32.00", "web": "34.00" }
+        },
+        {
+          "sku": "GASEOSA-15",
+          "nombre": "Gaseosa 1.5 L",
+          "categoria": "Bebidas",
+          "minutosPreparacion": 1,
+          "precios": { "base": "9.00", "web": "10.00" }
+        },
+        {
+          "sku": "COMBO-FAM",
+          "nombre": "Combo familiar",
+          "descripcion": "Pollo entero + gaseosa de 1.5 L",
+          "categoria": "Combos",
+          "minutosPreparacion": 25,
+          "esCombo": true,
+          "_componentes": "El precio del combo es el suyo; los componentes son para el consumo de inventario y el costo.",
+          "componentes": [
+            { "producto": "POLLO-ENT", "cantidad": 1 },
+            { "producto": "GASEOSA-15", "cantidad": 1 }
+          ],
+          "precios": { "base": "62.00", "web": "65.00" }
+        }
+      ]
+    }
+  ]
+}

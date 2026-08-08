@@ -11,4 +11,13 @@ export {
   type PublishedVersion,
   type PublishedVersionWithSnapshot,
 } from './app/catalog-publication.service.js';
+export {
+  CatalogAdminService,
+  CatalogVersionConflictError,
+  type CategoryView,
+  type ProductView,
+  type PriceView,
+  type ModifierGroupView,
+  type ModifierOptionView,
+} from './app/catalog-admin.service.js';
 export { seedDemoCatalog, type DemoCatalog } from './app/demo-seed.js';

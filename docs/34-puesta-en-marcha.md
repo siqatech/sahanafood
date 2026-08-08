@@ -88,9 +88,10 @@ Devuelve el `tenantId` en JSON.
 **Aquí hay que decir la verdad: NO existe todavía un panel de administración.**
 La cuenta creada sirve para la API, no para una pantalla. Lo que falta —marcas,
 locales, zona de reparto, horario, carta y dominio de la tienda— se configura
-con el comando de la sección siguiente. El panel está especificado
-(`specs/ux/03-panel.md`, asignado a F4–F5) y **no se construyó**; ver
-`docs/23-technical-debt.md` (DT-09).
+con el comando de la sección siguiente, o llamando a la API de escritura
+(`POST /api/v1/org/…` y `POST /api/v1/catalog/…`) con esa cuenta. El panel está
+especificado (`specs/ux/03-panel.md`, asignado a F4–F5) y **no se construyó**;
+ver `docs/23-technical-debt.md` (DT-09).
 
 ## 5. Configurar el negocio
 
@@ -105,9 +106,20 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
   node dist/database/setup-business.js --tenant <TENANT_ID> --file /tmp/negocio.json
 ```
 
+El archivo describe empresa, marcas, dominio de tienda, locales, cocinas,
+estaciones, zonas de reparto, horarios y la carta entera con sus precios por
+canal y sus modificadores. **Los importes van como cadena en soles** (`"12.50"`)
+y se convierten a unidades menores con aritmética entera: el precio que paga un
+cliente no pasa por coma flotante en ningún punto.
+
 Es **idempotente**: volver a aplicarlo con la carta cambiada actualiza precios y
 añade productos nuevos sin duplicar nada. Así se corrige un precio mal escrito
 sin tocar la base a mano.
+
+El ejemplo del repositorio **se aplica en CI de punta a punta**
+(`setup-business-e2e`): se monta el negocio, se resuelve la tienda por su host,
+se pide un pedido y se comprueba que cobra el precio del archivo. Un ejemplo que
+nadie ha ejecutado se descubre roto con el cliente delante.
 
 ## 6. Poner la tienda en un dominio
 

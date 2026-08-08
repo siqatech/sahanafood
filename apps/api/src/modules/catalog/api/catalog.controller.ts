@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { z } from 'zod';
 import {
   RequirePermission,
@@ -14,6 +24,14 @@ import {
   type PublishedVersion,
   type PublishedVersionWithSnapshot,
 } from '../app/catalog-publication.service.js';
+import {
+  CatalogAdminService,
+  type CategoryView,
+  type ModifierGroupView,
+  type ModifierOptionView,
+  type PriceView,
+  type ProductView,
+} from '../app/catalog-admin.service.js';
 
 /** Endpoints de catálogo (spec 04). */
 
@@ -200,6 +218,229 @@ export class CatalogController {
       channels: dto.channels,
       actorId: req.auth!.sub,
       ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
+    });
+    return { ok: true };
+  }
+}
+
+/**
+ * Escritura de la carta (spec 04 «CRUD completo», salda DT-10).
+ *
+ * Controlador aparte del de lectura por la misma razón que el servicio: esto lo
+ * usa quien configura el negocio, no el camino caliente de cada pedido.
+ *
+ * Todos los endpoints son **`POST` idempotentes por clave natural**, no `PUT`
+ * con id: quien sube su carta desde una hoja de cálculo no conoce los UUID que
+ * generó la base, conoce el SKU y el nombre de su plato. Volver a enviar la
+ * misma carta actualiza precios y añade lo nuevo sin duplicar nada.
+ */
+@Controller({ path: 'catalog', version: '1' })
+export class CatalogAdminController {
+  constructor(private readonly admin: CatalogAdminService) {}
+
+  @Post('categories')
+  @RequirePermission('catalog.write')
+  category(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<CategoryView> {
+    const input = parse(
+      z.object({
+        brandId: z.string().uuid(),
+        name: z.string().min(1).max(120),
+        sortOrder: z.number().int().min(0).max(9999).optional(),
+        active: z.boolean().optional(),
+      }),
+      body,
+    );
+    return this.admin.upsertCategory(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  /**
+   * Alta o edición de un plato. `If-Match` es **opcional** aquí, al revés que en
+   * un pedido: subir la carta entera de golpe es el caso normal y exigir la
+   * versión de cada producto lo haría imposible. Cuando viene —el panel editando
+   * un plato concreto— se respeta y un desfase devuelve 409.
+   */
+  @Post('products')
+  @RequirePermission('catalog.write')
+  product(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+    @Headers('if-match') ifMatch?: string,
+  ): Promise<ProductView> {
+    const input = parse(
+      z.object({
+        brandId: z.string().uuid(),
+        categoryId: z.string().uuid().nullish(),
+        sku: z.string().max(60).optional(),
+        name: z.string().min(1).max(160),
+        description: z.string().max(1000).nullish(),
+        imageUrl: z.string().url().max(500).nullish(),
+        allergens: z.array(z.string().max(60)).max(30).optional(),
+        prepMinutes: z.number().int().positive().max(600).optional(),
+        isCombo: z.boolean().optional(),
+        active: z.boolean().optional(),
+      }),
+      body,
+    );
+
+    let expectedRowVersion: number | undefined;
+    if (ifMatch !== undefined) {
+      const version = Number(ifMatch);
+      if (!Number.isInteger(version) || version < 1) {
+        throw new ValidationError(
+          'If-Match debe llevar la versión del producto (campo rowVersion).',
+        );
+      }
+      expectedRowVersion = version;
+    }
+
+    return this.admin.upsertProduct(req.auth!.tid, {
+      ...input,
+      ...(expectedRowVersion !== undefined ? { expectedRowVersion } : {}),
+      actorId: req.auth!.sub,
+    });
+  }
+
+  /** Precio de un producto en un ámbito (RN-CAT-01). Incluye IGV (RN-T05). */
+  @Post('prices')
+  @RequirePermission('catalog.write')
+  price(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<PriceView> {
+    const input = parse(
+      z.object({
+        productId: z.string().uuid(),
+        // Nulo = precio base / todos los locales. Se distingue de "ausente"
+        // para poder pedir explícitamente el ámbito más general.
+        channel: z.string().min(1).max(40).nullish(),
+        locationId: z.string().uuid().nullish(),
+        // Unidades menores enteras: el importe no pasa por coma flotante ni
+        // aquí ni en la base.
+        priceMinor: z.number().int().min(0),
+        active: z.boolean().optional(),
+      }),
+      body,
+    );
+    return this.admin.setPrice(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  @Post('modifier-groups')
+  @RequirePermission('catalog.write')
+  modifierGroup(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<ModifierGroupView> {
+    const input = parse(
+      z.object({
+        brandId: z.string().uuid(),
+        name: z.string().min(1).max(120),
+        minSelections: z.number().int().min(0).max(50).optional(),
+        maxSelections: z.number().int().min(1).max(50).optional(),
+        allowRepeat: z.boolean().optional(),
+        sortOrder: z.number().int().min(0).max(9999).optional(),
+      }),
+      body,
+    );
+    return this.admin.upsertModifierGroup(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  @Post('modifier-options')
+  @RequirePermission('catalog.write')
+  modifierOption(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<ModifierOptionView> {
+    const input = parse(
+      z.object({
+        groupId: z.string().uuid(),
+        name: z.string().min(1).max(120),
+        // Sin mínimo: «sin papas» descuenta y el delta es negativo.
+        priceDeltaMinor: z.number().int().optional(),
+        available: z.boolean().optional(),
+        sortOrder: z.number().int().min(0).max(9999).optional(),
+      }),
+      body,
+    );
+    return this.admin.upsertModifierOption(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  @Post('products/:id/modifier-groups')
+  @RequirePermission('catalog.write')
+  async linkGroup(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<{ ok: true }> {
+    const input = parse(
+      z.object({
+        groupId: z.string().uuid(),
+        sortOrder: z.number().int().min(0).max(9999).optional(),
+      }),
+      body,
+    );
+    await this.admin.linkProductModifierGroup(req.auth!.tid, {
+      productId: id,
+      ...input,
+      actorId: req.auth!.sub,
+    });
+    return { ok: true };
+  }
+
+  @Delete('products/:id/modifier-groups/:groupId')
+  @RequirePermission('catalog.write')
+  async unlinkGroup(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('groupId') groupId: string,
+  ): Promise<{ ok: true }> {
+    await this.admin.unlinkProductModifierGroup(req.auth!.tid, {
+      productId: id,
+      groupId,
+      actorId: req.auth!.sub,
+    });
+    return { ok: true };
+  }
+
+  /** Composición de un combo (RN-CAT-04). Reemplaza la lista entera. */
+  @Post('products/:id/combo')
+  @RequirePermission('catalog.write')
+  async combo(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<{ ok: true }> {
+    const input = parse(
+      z.object({
+        components: z
+          .array(
+            z.object({
+              productId: z.string().uuid(),
+              quantity: z.number().int().positive().max(99),
+            }),
+          )
+          .max(50),
+      }),
+      body,
+    );
+    await this.admin.setComboComponents(req.auth!.tid, {
+      comboId: id,
+      components: input.components,
+      actorId: req.auth!.sub,
     });
     return { ok: true };
   }

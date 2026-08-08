@@ -279,4 +279,28 @@ Tres decisiones que cambian cómo se opera esto:
 
 La prueba que decide si esto sirve no es que las filas se escriban, sino que **lo creado sea lo que el resto del sistema consulta**: la suite monta un negocio entero por API y luego pregunta por `findCoverage` y `kitchensForBrand`. Una tabla paralela que parece bien no habría pasado.
 
-**Próxima acción de Claude Code:** el catálogo — categorías, productos, precios por canal y modificadores (spec 04, «CRUD completo»). Es la otra mitad de DT-10 y la que de verdad usa un dueño cada semana: la carta cambia; la estructura del negocio, no.
+### DT-10, segunda mitad: la carta — **DT-10 saldada**
+
+Categorías, productos, precios por ámbito, grupos y opciones de modificadores, unión producto↔grupo y componentes de combo. Con `catalog.write`, auditoría y las pruebas de aislamiento obligatorias, incluida la que más importa aquí: **el tenant B no puede ponerle precio a un producto de A**.
+
+Tres cosas que no eran obvias al empezar:
+
+· **La clave natural del producto es el SKU, y el nombre solo si no hay SKU.** Es lo que permite renombrar sin duplicar: «Pollo a la brasa» pasa a «Pollo a la brasa entero» y sigue siendo el mismo producto, con su historial de ventas. Sin SKU, cada renombrado crearía uno nuevo y el anterior se quedaría en la carta.
+
+· **La marca del precio se deriva del producto, nunca del cuerpo.** Si se aceptara, un precio podría acabar apuntando a otra marca y desaparecer de los dos catálogos a la vez, sin que nada fallara.
+
+· **Las claves foráneas del esquema son por `(tenant_id, id)`: impiden cruzar tenants pero NO cruzar marcas.** Nada en la base evitaba ponerle a un producto de la marca B una categoría de la marca A, o un grupo de modificadores de otra marca — y el síntoma habría sido silencioso: la categoría no aparece, el modificador sí, y el cliente elige una bebida que esa cocina no tiene. Se comprueba en el servicio, que es donde se puede dar un mensaje que se entienda.
+
+`If-Match` sobre `row_version` es **opcional** aquí, al revés que en un pedido: subir la carta entera de golpe es el caso normal y exigir la versión de cada plato lo haría imposible; cuando viene, un desfase devuelve 409 y no pisa el cambio del otro.
+
+Y la comprobación que decide si esto sirve, otra vez: no que las filas se escriban, sino que **el precio que el dueño escribe sea el que la tienda muestra y el que el pedido cobra**. La suite crea la carta por API, la lee con `getResolvedCatalog` y manda un pedido: 59.00 del canal web más 3.00 de la ensalada, 62.00. Con el precio base habrían sido 58.00, y la carta por canal sería decorativa.
+
+### Y un negocio entero desde un archivo
+
+El runbook prometía `setup-business.js` y `infra/ejemplos/negocio.ejemplo.json`. **Ninguno de los dos existía.** Ahora existen los dos: el archivo describe empresa, marcas, dominio de tienda, locales, cocinas, estaciones, zonas, horarios y la carta completa, y el comando lo aplica de una vez sobre un tenant ya creado.
+
+Los importes van **como cadena en soles** —`"12.50"`— y se convierten a unidades menores con aritmética entera. Pasar por `Number` sería meter coma flotante en la única cifra que no la admite.
+
+La lógica vive en `business-setup.ts`, separada del envoltorio de línea de comandos **para que una prueba pueda ejecutarla contra el ejemplo del repositorio**. Y la ejecuta: monta el negocio, resuelve la tienda por su host, comprueba la cobertura y su tarifa, manda un pedido y verifica el total; luego reaplica el mismo archivo con un precio cambiado y comprueba que corrige sin duplicar. Un ejemplo que nadie ha ejecutado se descubre roto con el cliente delante — que es exactamente lo que le pasó a la versión anterior de este runbook.
+
+**Próxima acción de Claude Code:** DT-09 — el panel mínimo sobre esta API (`specs/ux/03-panel.md`): entrar, ver la estructura del negocio, editar la carta y sus precios, pausar un producto. Y después POS y KDS, que son las pantallas que el mostrador y la cocina no tienen.
