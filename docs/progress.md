@@ -217,4 +217,12 @@ Se cerró con `AiEventHandlers`, consumidor propio en `inbox`, registrado el ÚL
 
 **Fase 5 cerrada con excepciones, y las cuatro tienen la misma causa.** Pentest, pilotos, canario completo y Lighthouse dependen todas de **DT-02: no hay entorno cloud**. Esa deuda ya no bloquea una tarea — bloquea el cierre de la fase. **DT-08** (sin pruebas de navegador para la tienda) venció en este gate sin saldarse: adoptar un runner necesita ADR, y la recomendación sigue siendo Playwright.
 
-**Próxima acción de Claude Code:** abrir la **Fase 6** con su tarea T6.00 (generar el backlog desde las specs), salvo que el propietario prefiera cerrar antes las preguntas abiertas **PA-04** a **PA-07** o saldar DT-08 con un ADR de Playwright. Lo que NO se puede adelantar sin el propietario: DT-02 (credenciales cloud), el pentest y los tres operadores piloto.
+## Fase 6 — Backlog propuesto
+
+**T6.00 finalizada:** `specs/phases/phase-6-inventario-costos.md` trae ya su backlog de 17 tareas derivado de la spec 08 (parte F6), la 16, la 09 y docs/15. **Pendiente de aprobación del propietario**, como lo estuvo el de F5.
+
+El corazón de la fase son **T6.03 (costo promedio móvil)** y **T6.11 (cierre mensual reproducible)**. La decisión que hay que acertar en la primera tarea y no se puede recuperar después: **cada movimiento guarda el costo VIGENTE en su momento**. Sin ese snapshot, recalcular el histórico con el costo de hoy reescribe la rentabilidad de meses ya cerrados, y no hay forma de reconstruirlo.
+
+**No se ha implementado nada de F6, y no debe implementarse todavía.** El criterio común 7 exige aprobación explícita del propietario para pasar de fase, y el gate de negocio de F5 —tres operadores piloto en producción real— sigue bloqueado por DT-02. Además hay una precondición práctica: el inventario real solo se prueba contra consumo real; hasta que alguien venda de verdad, cualquier conciliación se valida contra datos sintéticos, que siempre cuadran.
+
+**Próxima acción de Claude Code:** esperar decisión del propietario sobre (a) aprobar el backlog de F6, (b) cerrar **PA-04** a **PA-07**, o (c) saldar **DT-08** con un ADR de Playwright — que es lo único de los tres que se puede hacer sin él. Lo que NO se puede adelantar en ningún caso: **DT-02** (credenciales cloud), el pentest de T5.36 y los tres operadores piloto.
