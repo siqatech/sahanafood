@@ -170,6 +170,27 @@ suite('Tienda web', () => {
     expect(cruzado.body.detail).toMatch(/no está disponible/i);
   });
 
+  it('el host del visitante llega por x-forwarded-host cuando hay proxy delante', async () => {
+    // Detrás de un proxy —y el servidor de Next lo es— el `host` es el del
+    // salto interno. Si mandara ese, TODAS las tiendas servirían la misma
+    // marca, y sin ruido: la página carga igual, solo que con el catálogo
+    // equivocado. Costó encontrarlo una vez; esta prueba es para no repetirlo.
+    const r = await http()
+      .get('/api/v1/shop/context')
+      .set('host', 'balanceador.interno')
+      .set('x-forwarded-host', HOST_A)
+      .expect(200);
+    expect(r.body.brandId).toBe(brandA);
+
+    // Con varios saltos manda el primero, que es el del cliente.
+    const cadena = await http()
+      .get('/api/v1/shop/context')
+      .set('host', 'balanceador.interno')
+      .set('x-forwarded-host', `${HOST_A}, interno.privado`)
+      .expect(200);
+    expect(cadena.body.brandId).toBe(brandA);
+  });
+
   it('un host sin tienda no dice si el dominio existe', async () => {
     // Mismo 404 para «no registrado» y «registrado pero sin verificar»: si
     // distinguiera, cualquiera sabría qué dominios están a medio configurar.

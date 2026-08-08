@@ -126,6 +126,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm build
+      # Presupuesto de rendimiento de la tienda (T5.14). Va aquí y no en un job
+      # aparte porque necesita la compilación que se acaba de hacer, y BLOQUEA:
+      # un presupuesto que solo se mira a mano se incumple el primer martes con
+      # prisa, y para cuando alguien lo note la tienda ya carga en cinco
+      # segundos en el móvil de un cliente en Lima.
+      - name: Presupuesto de rendimiento de la tienda
+        run: pnpm --filter @sahana/web budget
 
   # ---------------------------------------------------------------------------
   # Análisis de composición (SCA): dependencias con vulnerabilidades conocidas.

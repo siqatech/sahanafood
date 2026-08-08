@@ -98,6 +98,26 @@ export class StorefrontAdminController {
 }
 
 /**
+ * El host del visitante.
+ *
+ * `x-forwarded-host` manda sobre `host` porque la API siempre está detrás de
+ * algo: el proxy en producción y el servidor de Next en desarrollo. Sin esto,
+ * `host` sería el del balanceador y **todas las tiendas servirían la misma
+ * marca** — el fallo más caro posible aquí, y silencioso, porque la página
+ * carga igual.
+ *
+ * Que un llamante directo pueda inventarse la cabecera no añade riesgo: lo
+ * único que consigue es ver la tienda pública de otra marca, que es pública
+ * precisamente. No abre nada que no abriera escribir ese dominio en el
+ * navegador. La cabecera NO decide nada que no sea qué escaparate se enseña.
+ */
+function hostDelVisitante(forwarded?: string, host?: string): string {
+  // Puede venir con varios saltos: `cliente.com, interno` — manda el primero.
+  const primero = forwarded?.split(',')[0]?.trim();
+  return primero || host || '';
+}
+
+/**
  * La tienda. TODO público: quien compra no tiene cuenta.
  *
  * El tenant sale del **host**, nunca de un parámetro. Es la diferencia entre
@@ -110,20 +130,27 @@ export class ShopController {
   constructor(private readonly storefront: StorefrontService) {}
 
   @Get('context')
-  async context(@Headers('host') host: string): Promise<StorefrontContext> {
-    return this.storefront.resolveHost(host ?? '');
+  async context(
+    @Headers('x-forwarded-host') forwarded: string,
+    @Headers('host') host: string,
+  ): Promise<StorefrontContext> {
+    return this.storefront.resolveHost(hostDelVisitante(forwarded, host));
   }
 
   @Get('catalog')
-  async catalog(@Headers('host') host: string): Promise<unknown> {
-    return this.storefront.getPublicCatalog(host ?? '');
+  async catalog(
+    @Headers('x-forwarded-host') forwarded: string,
+    @Headers('host') host: string,
+  ): Promise<unknown> {
+    return this.storefront.getPublicCatalog(hostDelVisitante(forwarded, host));
   }
 
   @Post('carts')
   async createCart(
+    @Headers('x-forwarded-host') forwarded: string,
     @Headers('host') host: string,
   ): Promise<{ token: string }> {
-    return this.storefront.createCart(host ?? '');
+    return this.storefront.createCart(hostDelVisitante(forwarded, host));
   }
 
   @Get('carts/:token')

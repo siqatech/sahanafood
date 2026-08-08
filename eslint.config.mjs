@@ -21,6 +21,9 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/*.config.{js,cjs,mjs}',
       '**/.dependency-cruiser.cjs',
+      // Lo genera Next en cada compilación y va con su propia directiva de
+      // triple slash: corregirlo aquí solo sirve para que Next lo reescriba.
+      'apps/web/next-env.d.ts',
     ],
   },
   eslint.configs.recommended,
@@ -112,6 +115,45 @@ export default tseslint.config(
         URL: 'readonly',
       },
     },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    /**
+     * Scripts de apoyo de la tienda: los ejecuta Node, no el navegador, y su
+     * salida ES el resultado —el presupuesto de T5.14 se lee en la consola de
+     * CI, no en un logger.
+     */
+    files: ['apps/web/scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    /**
+     * Componentes de React: el tipo de retorno de un componente es JSX y
+     * anotarlo a mano no añade nada que el compilador no sepa ya.
+     */
+    files: ['apps/web/**/*.tsx'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+    },
+  },
+  {
+    /**
+     * Semillas de desarrollo: imprimen por consola a propósito, porque su
+     * salida es lo que alguien copia y pega para levantar el entorno.
+     */
+    files: ['apps/api/src/database/seed-shop.ts'],
     rules: {
       'no-console': 'off',
     },

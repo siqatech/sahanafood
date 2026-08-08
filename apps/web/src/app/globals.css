@@ -1,0 +1,253 @@
+/*
+ * Estilos de la tienda.
+ *
+ * CSS a mano, sin framework, por el presupuesto de T5.14: cualquier librería de
+ * utilidades trae más peso del que esta tienda entera necesita. Y CSS puro no
+ * cuenta contra el presupuesto de JavaScript, que es el que aprieta.
+ *
+ * Móvil primero de verdad: en Perú se pide comida desde el teléfono, y el
+ * ancho de referencia es el de un móvil de gama media, no el de un portátil.
+ */
+
+:root {
+  --color-fondo: #ffffff;
+  --color-texto: #1a1a1a;
+  --color-suave: #6b6b6b;
+  --color-borde: #e3e3e3;
+  --color-marca: #c8102e;
+  --color-error: #a4161a;
+  --color-aviso-fondo: #fff4f4;
+  --radio: 10px;
+  --espacio: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--color-texto);
+  background: var(--color-fondo);
+  line-height: 1.5;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--espacio);
+}
+
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espacio);
+  padding: var(--espacio);
+  border-bottom: 1px solid var(--color-borde);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.marca {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-marca);
+  text-decoration: none;
+}
+
+.enlace-carrito {
+  color: var(--color-texto);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.pie {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--espacio);
+  color: var(--color-suave);
+  font-size: 0.85rem;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 var(--espacio);
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: calc(var(--espacio) * 1.5) 0 var(--espacio);
+}
+
+.producto {
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  padding: var(--espacio);
+  margin-bottom: var(--espacio);
+}
+
+.producto__cabecera {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--espacio);
+  align-items: baseline;
+}
+
+.producto__nombre {
+  font-weight: 600;
+}
+
+.producto__precio {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.producto__descripcion {
+  color: var(--color-suave);
+  font-size: 0.9rem;
+  margin: 4px 0 var(--espacio);
+}
+
+fieldset {
+  border: none;
+  padding: 0;
+  margin: 0 0 var(--espacio);
+}
+
+legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.obligatorio {
+  color: var(--color-marca);
+  font-weight: 600;
+}
+
+.opcion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+/* Objetivos táctiles cómodos: se pide con una mano y en movimiento. */
+.opcion input {
+  width: 20px;
+  height: 20px;
+}
+
+label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+input[type='text'],
+input[type='tel'],
+input[type='number'],
+textarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px; /* 16px o menos hace que iOS haga zoom al enfocar. */
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  font-family: inherit;
+}
+
+.campo {
+  margin-bottom: var(--espacio);
+}
+
+button {
+  width: 100%;
+  padding: 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-marca);
+  border: none;
+  border-radius: var(--radio);
+  cursor: pointer;
+}
+
+button.secundario {
+  background: transparent;
+  color: var(--color-suave);
+  border: 1px solid var(--color-borde);
+  width: auto;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.linea {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--espacio);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-borde);
+}
+
+.linea--agotada .linea__nombre {
+  text-decoration: line-through;
+  color: var(--color-suave);
+}
+
+.totales {
+  margin-top: var(--espacio);
+}
+
+.totales__fila {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.totales__fila--total {
+  font-weight: 700;
+  font-size: 1.1rem;
+  border-top: 1px solid var(--color-borde);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.aviso {
+  background: var(--color-aviso-fondo);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radio);
+  color: var(--color-error);
+  padding: 12px;
+  margin-bottom: var(--espacio);
+  font-size: 0.9rem;
+}
+
+.nota {
+  color: var(--color-suave);
+  font-size: 0.9rem;
+}
+
+.consentimiento {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: var(--espacio);
+}
+
+.consentimiento input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.consentimiento label {
+  font-weight: 400;
+  font-size: 0.85rem;
+  margin: 0;
+}
