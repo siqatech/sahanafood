@@ -225,4 +225,12 @@ El corazón de la fase son **T6.03 (costo promedio móvil)** y **T6.11 (cierre m
 
 **No se ha implementado nada de F6, y no debe implementarse todavía.** El criterio común 7 exige aprobación explícita del propietario para pasar de fase, y el gate de negocio de F5 —tres operadores piloto en producción real— sigue bloqueado por DT-02. Además hay una precondición práctica: el inventario real solo se prueba contra consumo real; hasta que alguien venda de verdad, cualquier conciliación se valida contra datos sintéticos, que siempre cuadran.
 
-**Próxima acción de Claude Code:** esperar decisión del propietario sobre (a) aprobar el backlog de F6, (b) cerrar **PA-04** a **PA-07**, o (c) saldar **DT-08** con un ADR de Playwright — que es lo único de los tres que se puede hacer sin él. Lo que NO se puede adelantar en ningún caso: **DT-02** (credenciales cloud), el pentest de T5.36 y los tres operadores piloto.
+**DT-08 saldada: la tienda ya se prueba en un navegador (ADR-0018).** Playwright, acotado a `apps/web`, **un solo motor**, contra el build real y bloqueante en CI. Seis pruebas en **3,4 s**. Cada una corresponde a un fallo que OCURRIÓ —el `host` descartado por undici, el `S/ NaN`, el `'use server'` con una constante— y se comprueba **por su síntoma**, que es lo que el cliente ve, no por su causa técnica, que la próxima vez será otra. Cubre además la promesa de T5.14 de que la tienda **funciona sin JavaScript**, que hasta ahora era una frase en un documento.
+
+**Y escribirlas destapó el cuarto de la misma familia.** El checkout decía «**Cambiar** dirección» a quien no había escrito ninguna: el estado se deducía de «tiene líneas y no es recojo» en vez de leer el bloqueador `NO_ADDRESS` que el servidor ya mandaba en la respuesta. Una palabra equivocada, en el paso exacto donde el comprador decide si sigue o cierra la pestaña.
+
+**Dos cosas que la propia suite enseñó sobre sí misma**, ambas anotadas en el código para que no se repitan: la sonda de arranque de Playwright tiene que ir por **IP** —el navegador resuelve `*.localhost` por especificación, Node no—, y con JavaScript activo hay que **esperar la respuesta de la acción de servidor**, porque `click()` vuelve en cuanto despacha el evento y navegar a continuación adelanta al servidor. Sin JS no pasa, y esa asimetría es justo la clase de intermitencia que ADR-0018 prohíbe tapar con un `waitForTimeout`.
+
+**dependency-cruiser: cero violaciones y cero advertencias, por primera vez.** Las que quedaban eran huérfanos por definición —rutas de Next, que descubre el framework, y configuraciones— y una lista de avisos que nunca baja a cero enseña a ignorarla entera.
+
+**Próxima acción de Claude Code:** esperar decisión del propietario

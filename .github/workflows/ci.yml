@@ -150,6 +150,88 @@ jobs:
         run: pnpm --filter @sahana/web budget
 
   # ---------------------------------------------------------------------------
+  # Navegador: la tienda, vista como la ve un cliente (ADR-0018, salda DT-08).
+  #
+  # Job propio y no un paso más del de integración porque necesita otra cosa:
+  # la API y Next levantados a la vez, y un navegador. Tres fallos reales de
+  # T5.08-T5.14 pasaron typecheck, lint y las 484 pruebas de la API — los tres
+  # se veían igual: la página cargaba.
+  # ---------------------------------------------------------------------------
+  browser:
+    name: Browser (tienda)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: sahana
+          POSTGRES_PASSWORD: sahana_dev
+          POSTGRES_DB: sahana
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sahana -d sahana"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://sahana_app:sahana_app_dev@localhost:5432/sahana
+      MIGRATION_DATABASE_URL: postgres://sahana_migrator:sahana_migrator_dev@localhost:5432/sahana
+      REDIS_URL: redis://localhost:6379
+      CREDENTIALS_MASTER_KEY: ci-only-credentials-master-key-change-me
+      JWT_ACCESS_SECRET: ci-access-secret-0123456789
+      JWT_REFRESH_SECRET: ci-refresh-secret-0123456789
+      SAHANA_API_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cliente psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Crear roles (app/migrator SIN BYPASSRLS)
+        run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/01-roles.sql
+      - name: Extensiones (pgvector, con superusuario)
+        run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/02-extensions.sql
+      - name: Migraciones
+        run: pnpm --filter @sahana/api migrate
+      # La tienda se SIEMBRA, no se construye clicando: montar el escenario por
+      # interfaz multiplica el tiempo y hace que un fallo de la semilla parezca
+      # un fallo de la tienda (ADR-0018).
+      - name: Sembrar la tienda demo
+        run: pnpm --filter @sahana/api seed:shop
+      - name: Build
+        run: pnpm build
+      - name: Navegador (solo Chromium)
+        run: pnpm --filter @sahana/web exec playwright install --with-deps chromium
+      - name: Levantar la API
+        run: |
+          pnpm --filter @sahana/api start &
+          npx --yes wait-on http://localhost:3000/api/v1/health --timeout 60000
+      # Playwright levanta Next por su cuenta (webServer); la API va aparte
+      # porque necesita Postgres migrado y sembrado ANTES de arrancar.
+      - name: Pruebas de navegador
+        run: pnpm --filter @sahana/web test:browser
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
   # Análisis de composición (SCA): dependencias con vulnerabilidades conocidas.
   #
   # BLOQUEA desde el gate de F4. Estuvo en modo informativo mientras había

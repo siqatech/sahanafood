@@ -66,8 +66,16 @@ module.exports = {
         pathNot: [
           '\\.d\\.ts$',
           '(^|/)tsconfig\\.',
-          '(^|/)(eslint|prettier|vitest|drizzle)\\.config\\.',
+          '(^|/)(eslint|prettier|vitest|drizzle|next|playwright)\\.config\\.',
           '(^|/)index\\.ts$',
+          // Especificaciones de navegador: las arranca Playwright, no las
+          // importa nadie. Igual que los `.config.` de arriba, huérfanas por
+          // definición — y dejarlas avisando enseña a ignorar la lista entera.
+          '(^|/)e2e/.*\\.spec\\.ts$',
+          // Rutas de Next: las descubre el framework por convención de
+          // directorio y no las importa nadie. La regla no puede decir nada
+          // útil sobre ellas, así que avisar solo añade ruido.
+          'apps/web/src/app/.*/(page|layout|error|loading|not-found)\\.tsx$',
         ],
       },
       to: {},

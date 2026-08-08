@@ -40,3 +40,8 @@ Thumbs.db
 
 # Turbo / caches
 .turbo/
+
+# Salidas de Playwright: capturas, trazas e informes de una ejecución concreta.
+# No son fuente y pesan; el job de CI las sube como artefacto cuando falla.
+apps/web/test-results/
+apps/web/playwright-report/

@@ -125,3 +125,11 @@ load-verify: ## Comprueba la CERO PÉRDIDA contra la base tras la carga
 
 .PHONY: load
 load: load-seed load-peak load-verify ## Prueba de carga completa + verificación
+
+.PHONY: e2e-web
+e2e-web: ## Pruebas de navegador de la tienda (ADR-0018). Requiere docker up + migrate.
+	@echo "Sembrando la tienda demo…"
+	pnpm --filter @sahana/api seed:shop
+	@echo "Levanta la API en otra terminal (make api) y vuelve a ejecutar si falla."
+	pnpm --filter @sahana/web build
+	pnpm --filter @sahana/web test:browser

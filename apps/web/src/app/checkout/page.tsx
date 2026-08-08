@@ -38,7 +38,13 @@ export default async function CheckoutPage() {
   }
 
   const esRecojo = carrito.fulfillment === 'pickup';
-  const tieneDireccion = Boolean(carrito.lines.length) && !esRecojo;
+  // Se pregunta al SERVIDOR si falta la dirección, en vez de deducirlo de que
+  // haya líneas. La versión anterior daba `true` a cualquier carrito con
+  // productos, así que un comprador que llegaba por primera vez leía «Cambiar
+  // dirección» sin haber escrito ninguna — justo en el paso donde decide si
+  // sigue o cierra la pestaña. El bloqueador `NO_ADDRESS` ya viaja en la
+  // respuesta: no hacía falta adivinarlo.
+  const tieneDireccion = !carrito.blockers.some((b) => b.code === 'NO_ADDRESS');
 
   return (
     <>

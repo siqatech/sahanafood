@@ -7,10 +7,10 @@
 >
 > **Veredicto: APTO CON EXCEPCIONES.** El software de la fase está completo y
 > verificado. Las excepciones son las que el propio backlog anticipó como
-> **entregables humanos** —el pentest externo, el gate de negocio con tres
-> operadores piloto y la medición de Lighthouse en un móvil real—, más la deuda
-> DT-08 (sin pruebas de navegador para la tienda). Ninguna es código pendiente,
-> y las tres dependen de **DT-02: no hay entorno cloud**.
+> **entregables humanos**: el pentest externo, el gate de negocio con tres
+> operadores piloto y la medición de Lighthouse en un móvil real. Ninguna es
+> código pendiente, y las tres dependen de **DT-02: no hay entorno cloud**.
+> La deuda **DT-08 —que vencía en este gate— queda saldada** (ADR-0018).
 
 ---
 
@@ -40,7 +40,7 @@ persona, un móvil o un tercero.
 |---|---|
 | ESLint (incluye regla anti-`number` monetario) | ✅ |
 | Typecheck (TypeScript estricto, `exactOptionalPropertyTypes`) | ✅ |
-| dependency-cruiser (fronteras de módulo) | ✅ **308 módulos, 1 126 dependencias, 0 errores** |
+| dependency-cruiser (fronteras de módulo) | ✅ **310 módulos, 1 126 dependencias, 0 violaciones** — ni una advertencia, por primera vez |
 | Prettier | ✅ — y **el gate volvió a verde** tras varios commits en rojo (§4.1) |
 | **Compatibilidad de migraciones** (nuevo, T5.35) | ✅ **30 migraciones, todas admiten volver a la imagen anterior** |
 | Pruebas de dominio | ✅ **438** |
@@ -49,9 +49,10 @@ persona, un móvil o un tercero.
 | `@sahana/ai-prompts` | ✅ **7** |
 | **Aislamiento de tenant** | ✅ suite bloqueante sobre **66 casos**, incluida la superficie pública de la tienda |
 | **Suite dorada del agente** | ✅ paso propio y bloqueante |
+| **Navegador (tienda)** | ✅ **6 pruebas, 3,4 s**, job propio y bloqueante (ADR-0018) |
 | **SCA (`pnpm audit --audit-level high`)** | ✅ **0 altas** — ver §2.3 |
 
-**Total: 1 135 pruebas en verde.**
+**Total: 1 141 pruebas en verde.**
 
 ### 2.2 Cobertura de dominio — ✅ CUMPLE
 
@@ -154,7 +155,7 @@ pruebas de entonces: `fetch` de Node **descarta en silencio la cabecera `host`**
 (la tienda pedía el catálogo sin decir de quién era), los precios se pintaban
 **`S/ NaN`**, y un archivo `'use server'` **no puede exportar una constante**.
 Comparten la forma: **la página carga bien**. Ninguna prueba mira una página →
-**DT-08**, con fecha límite en este gate y sin saldar.
+**DT-08** — **saldada** con ADR-0018 (ver §4.2).
 
 El harness de aislamiento tampoco servía para la tienda: comparaba la respuesta
 con el token de A y con el de B, y en la tienda **el token ni se mira**. Se
@@ -248,6 +249,5 @@ comparten causa: **DT-02, no hay entorno cloud.** Es la deuda que hay que saldar
 antes que ninguna otra, y a estas alturas ya no bloquea una tarea: bloquea el
 cierre de la fase.
 
-La deuda **DT-08** (sin pruebas de navegador para la tienda) vencía en este gate
-y no se saldó. Adoptar un runner de navegador necesita ADR; la recomendación
-sigue siendo Playwright.
+La deuda **DT-08** vencía en este gate y **se saldó**: ADR-0018 adopta
+Playwright, acotado a `apps/web`, y el job `browser` bloquea en CI.
