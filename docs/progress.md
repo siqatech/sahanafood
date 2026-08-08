@@ -13,7 +13,8 @@ Paquete: **v1.0 consolidado** (2026-08-06). Estados: Pendiente / En análisis / 
 | ADR-0015 (geometría en el dominio) | Aceptada | Cobertura y horarios compartidos servidor/cliente en vez de PostGIS; divergencia de la spec 03 registrada |
 | **Fase 3 — Fundamentos** | **En ejecución** | Negocio y observabilidad completos, verificados contra Postgres real (**198 pruebas en verde**: 101 API + 97 dominio). Queda T3.16 (Terraform) y el gate T3.18 |
 | **Fase 4 — Operación principal** | **Propuesta (gate emitido)** | Backlog aprobado (32 tareas). Hecho: T4.01–T4.22 (totales, catálogo versionado con diff, pedidos con dedupe, modificación con control optimista, aceptación automática con vencimiento, bandeja de excepciones resoluble, simulador de marketplace con **prueba de caos de cero pérdida**, **KDS con el ciclo de eventos cerrado**, **caja con arqueo y descuentos con PIN** y **sincronización offline con sus dos pruebas bloqueantes**). Hecho también T4.23–T4.29 (**print-agent instalable**, **food cost real**, **facturación electrónica** con correlativo sin huecos, **avisos por WhatsApp** y **rentabilidad por marca y canal conciliada con Billing**). Hecho T4.30 (**carga con k6**: pico 10× de 15 min con **cero pérdida verificada contra Postgres**), que además destapó que **nadie procesaba los webhooks de marketplace en producción**. Hecho T4.32 (**gate F4**: `docs/32-gate-fase-4.md`, apto con excepciones). **837 pruebas en verde** (315 dominio + 405 API + 117 print-agent), **0 vulnerabilidades altas** y SCA bloqueante. Falta solo T4.31, que es entregable humano |
-| Fases 5–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
+| **Fase 5 — Venta digital** | **En análisis** | Backlog de 37 tareas generado desde las specs (T5.00, `specs/phases/phase-5-venta-digital.md`), **pendiente de aprobación**. Orden por dependencia real: pagos antes que tienda (un storefront sin pasarela es una demo), bandeja antes que agente IA (el agente escribe EN una conversación), plataforma `ai` antes que agente. Corazón de la fase: **T5.03** (el pedido se confirma SOLO por webhook verificado, nunca por redirect) y **T5.24** (validador anti-precio-inventado), ambos con prueba adversarial |
+| Fases 6–9 | Pendiente | Backlog se genera al abrir cada fase (TX.00) |
 
 ## Fase 3 — Backlog (estado por tarea)
 
@@ -128,4 +129,12 @@ Backlog completo (32 tareas) en `specs/phases/phase-4-operacion.md`. Aquí solo 
 
 **Cobertura de dominio subida donde faltaba, no justificada:** `catalog/` (86,1 %) y `offline/` (89,2 %) entraban al gate por debajo del 90 %. Lo que faltaba no era decorativo: marcar como sincronizado un pedido que ya no está en la cola (pasa al purgar justo antes de que llegue la respuesta) y comparar por contenido un campo que es un objeto (decide si la PWA se baja el catálogo entero en cada publicación). Ahora **97,5 % de ramas global**, ningún módulo bajo 90 %, dinero al 100 %.
 
-**Próxima acción de Claude Code:** esperar la aprobación del gate F4 para abrir la Fase 5. Antes conviene cerrar **PA-04** (el código `ORDER_BRAND_NOT_SERVED` no está en el catálogo de la spec 05 §9, y un código publicado ya no se cambia sin romper integraciones).
+## Fase 5 — Backlog (generado, pendiente de aprobación)
+
+37 tareas en `specs/phases/phase-5-venta-digital.md`. Sin estado por tarea todavía: la fase no está abierta.
+
+**Lo que decide el orden.** Tres cadenas que no se pueden adelantar: **pagos antes que tienda** (un storefront sin pasarela es una demo, y dentro de pagos el webhook manda sobre el redirect — construir el redirect primero invita a confirmar pedidos con él «mientras tanto», y eso ya no se quita); **bandeja antes que agente IA** (el agente escribe EN una conversación: al revés necesitaría su propio almacén de mensajes y luego habría que fusionarlos con el histórico ya escrito); **plataforma `ai` antes que agente** (es lo que permite apagar la IA sin que se caiga nada). Y una regla que no es de dependencia sino de riesgo: el **validador anti-precio-inventado se construye ANTES** que la composición libre de respuestas, porque al revés se acaba probando contra los mismos casos que ya pasaban.
+
+**Dos entregables humanos ya identificados:** el **pentest externo** (T5.36) y el **gate de negocio** de la fase — 3 operadores piloto usando F4 en producción real ANTES de cerrar F5. Este segundo probablemente marque el calendario, y exige que **DT-02 (entorno cloud) esté resuelto mucho antes del final**.
+
+**Próxima acción de Claude Code:** esperar la aprobación del gate F4 y del backlog F5 para empezar por T5.01. Antes conviene cerrar **PA-04** (el código `ORDER_BRAND_NOT_SERVED` no está en el catálogo de la spec 05 §9, y un código publicado ya no se cambia sin romper integraciones).
