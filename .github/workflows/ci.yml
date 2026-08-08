@@ -106,6 +106,16 @@ jobs:
         run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/01-roles.sql
       - name: Migraciones
         run: pnpm --filter @sahana/api migrate
+      # Paso PROPIO y a propósito duplicado dentro de la suite completa (T5.31).
+      #
+      # El criterio del backlog es que **un cambio de prompt que degrada la
+      # suite dorada no se mergea**, y para eso la señal tiene que ser legible
+      # sin abrir un log de 500 tests: aquí el job se llama por su nombre y el
+      # fallo sale con el motivo de negocio de cada turno. Cuesta cuatro
+      # segundos; una regresión de calidad enterrada entre los demás tests
+      # cuesta la confianza del dueño en su agente.
+      - name: Suite dorada del agente (bloqueante)
+        run: pnpm --filter @sahana/api test:golden
       - name: Pruebas de integración (incluye gates de aislamiento)
         run: pnpm --filter @sahana/api test
 

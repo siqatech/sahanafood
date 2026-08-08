@@ -36,18 +36,71 @@ export interface ToolResult {
  * validador bloquea la respuesta y el cliente se queda sin contestación. Es
  * barato, es determinista y falla hacia consultar de más.
  */
+/**
+ * Límite de palabra que entiende las tildes.
+ *
+ * `\b` de JavaScript NO sirve aquí: las vocales acentuadas no son caracteres de
+ * palabra, así que `/\bmen[uú]\b/` **nunca** casa con «menú» —entre «ú» y el
+ * signo de cierre no hay frontera porque ninguno de los dos es `\w`—. Con el
+ * `\b` de toda la vida, «¿me pasas el menú?» y «¿hacen envío?» no disparaban
+ * ninguna herramienta, y la respuesta salía sin catálogo ni cobertura detrás:
+ * exactamente el caso que el validador acaba bloqueando y el cliente vive como
+ * un bot que no contesta.
+ *
+ * La lookahead/lookbehind sobre `\p{L}\p{N}` sí trata «ú» como letra, y de paso
+ * hace que el plural dispare («pollos», «combos») sin dejar de rechazar
+ * «cartera» para «carta».
+ */
+const INI = '(?<![\\p{L}\\p{N}])';
+const FIN = '(?![\\p{L}\\p{N}])';
+
+function palabras(...alternativas: string[]): RegExp {
+  return new RegExp(`${INI}(?:${alternativas.join('|')})${FIN}`, 'iu');
+}
+
 const DISPARADORES: ReadonlyArray<{ tool: string; re: RegExp }> = [
   {
     tool: 'catalog.search',
-    re: /\b(?:precio|cuesta|cu[aá]nto|carta|men[uú]|tienen|hay|pollo|combo|promo\w*)\b/i,
+    re: palabras(
+      'precio',
+      'cuesta',
+      'cu[aá]nto',
+      'cartas?',
+      'men[uú]s?',
+      'tienen',
+      'hay',
+      'pollos?',
+      'combos?',
+      // `\p{L}*` y no `\w*`: con `\w*` la coincidencia paraba antes de la «ó»
+      // de «promoción» y la letra siguiente hacía fallar el límite.
+      'promo\\p{L}*',
+    ),
   },
   {
     tool: 'org.coverage',
-    re: /\b(?:llegan|llegas|reparto|delivery|env[ií]o|zona|direcci[oó]n|domicilio)\b/i,
+    re: palabras(
+      'llegan',
+      'llegas',
+      'reparto',
+      'reparten',
+      'delivery',
+      'env[ií]os?',
+      'zonas?',
+      'direcci[oó]n',
+      'domicilio',
+    ),
   },
   {
     tool: 'org.hours',
-    re: /\b(?:horario|abren|cierran|abierto|cerrado|atienden|hora)\b/i,
+    re: palabras(
+      'horarios?',
+      'abren',
+      'cierran',
+      'abierto',
+      'cerrado',
+      'atienden',
+      'hora',
+    ),
   },
 ];
 

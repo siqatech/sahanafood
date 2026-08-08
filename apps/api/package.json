@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:integration": "vitest run",
     "seed:load": "node --import @swc-node/register/esm-register src/database/seed-load.ts",
-    "seed:shop": "node --import @swc-node/register/esm-register src/database/seed-shop.ts"
+    "seed:shop": "node --import @swc-node/register/esm-register src/database/seed-shop.ts",
+    "test:golden": "vitest run src/__tests__/ai-golden-suite.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -29,6 +30,7 @@
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-node": "^0.221.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@sahana/ai-prompts": "workspace:*",
     "@sahana/domain": "workspace:*",
     "argon2": "^0.41.1",
     "bullmq": "^5.34.10",

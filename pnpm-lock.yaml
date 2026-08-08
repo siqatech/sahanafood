@@ -67,6 +67,9 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.43.0
         version: 1.43.0
+      '@sahana/ai-prompts':
+        specifier: workspace:*
+        version: link:../../packages/ai-prompts
       '@sahana/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -201,6 +204,19 @@ importers:
       '@types/react-dom':
         specifier: ^19.1.7
         version: 19.2.4(@types/react@19.2.18)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.9)(yaml@2.9.0)
+
+  packages/ai-prompts:
+    dependencies:
+      '@sahana/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
       typescript:
         specifier: ^5.7.3
         version: 5.9.3

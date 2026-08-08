@@ -32,8 +32,16 @@ describe('Acciones deterministas (spec 19 §2.3, T5.25)', () => {
     // un bot parezca un bot.
     const m = matchRule(
       [
-        regla({ id: 'a', priority: 20, actions: [{ kind: 'reply', value: 'segunda' }] }),
-        regla({ id: 'b', priority: 5, actions: [{ kind: 'reply', value: 'primera' }] }),
+        regla({
+          id: 'a',
+          priority: 20,
+          actions: [{ kind: 'reply', value: 'segunda' }],
+        }),
+        regla({
+          id: 'b',
+          priority: 5,
+          actions: [{ kind: 'reply', value: 'primera' }],
+        }),
       ],
       { text: '¿horario?' },
     );
@@ -104,8 +112,28 @@ describe('Acciones deterministas (spec 19 §2.3, T5.25)', () => {
     expect(detectNegativeSentiment('¿tienen pollo?')).toBe(false);
   });
 
+  it('detecta la queja con CONCORDANCIA de género y número', () => {
+    // El reclamo literal de una pizzería. El patrón solo cubría «frío», así
+    // que «la pizza llegó fría» pasaba como conversación normal y nadie la
+    // atendía.
+    expect(detectNegativeSentiment('La pizza llegó fría')).toBe(true);
+    expect(detectNegativeSentiment('las papas llegaron frías')).toBe(true);
+    expect(detectNegativeSentiment('el pedido llegó incompleto')).toBe(true);
+    expect(detectNegativeSentiment('la hamburguesa estaba cruda')).toBe(true);
+    expect(detectNegativeSentiment('llegó tarde')).toBe(true);
+  });
+
+  it('una consulta de estado NO es un reclamo', () => {
+    // «llegó» a secas no puede derivar: gastar a una persona en «¿ya llegó mi
+    // pedido?» es justo lo que el agente existe para evitar.
+    expect(detectNegativeSentiment('¿ya llegó mi pedido?')).toBe(false);
+    expect(detectNegativeSentiment('avísame cuando llegue')).toBe(false);
+  });
+
   it('una regla desactivada no dispara', () => {
-    expect(matchRule([regla({ enabled: false })], { text: 'horario' })).toBeNull();
+    expect(
+      matchRule([regla({ enabled: false })], { text: 'horario' }),
+    ).toBeNull();
   });
 
   it('la franja horaria CRUZA MEDIANOCHE', () => {
@@ -116,12 +144,15 @@ describe('Acciones deterministas (spec 19 §2.3, T5.25)', () => {
       activeTo: 2 * 60,
       actions: [{ kind: 'reply', value: 'Estamos cerrados.' }],
     });
-    expect(matchRule([nocturna], { text: 'horario', minuteOfDay: 23 * 60 + 30 }))
-      .not.toBeNull();
-    expect(matchRule([nocturna], { text: 'horario', minuteOfDay: 60 }))
-      .not.toBeNull();
-    expect(matchRule([nocturna], { text: 'horario', minuteOfDay: 12 * 60 }))
-      .toBeNull();
+    expect(
+      matchRule([nocturna], { text: 'horario', minuteOfDay: 23 * 60 + 30 }),
+    ).not.toBeNull();
+    expect(
+      matchRule([nocturna], { text: 'horario', minuteOfDay: 60 }),
+    ).not.toBeNull();
+    expect(
+      matchRule([nocturna], { text: 'horario', minuteOfDay: 12 * 60 }),
+    ).toBeNull();
   });
 
   it('sin hora conocida, una regla horaria NO dispara', () => {

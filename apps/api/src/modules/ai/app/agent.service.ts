@@ -11,6 +11,7 @@ import {
   type ToolEvidence,
   type BudgetDecision,
 } from '@sahana/domain';
+import { buildSystemPrompt, SYSTEM_PROMPT_VERSION } from '@sahana/ai-prompts';
 import { PG_POOL } from '../../../database/database.module.js';
 import { withTenant } from '../../../database/rls.js';
 import { AI_PROVIDER } from '../ai.tokens.js';
@@ -55,10 +56,36 @@ export interface AgentReply {
     validator?: { ok: boolean; reason?: string } | undefined;
     credits: number;
     budget: BudgetDecision['state'];
+    /**
+     * Versión del prompt de sistema con la que se generó. `undefined` cuando no
+     * hubo modelo (regla, derivación, presupuesto agotado): decir «v1» ahí sería
+     * atribuirle a un prompt una respuesta que no escribió.
+     */
+    promptVersion?: string | undefined;
+    inputTokens: number;
+    outputTokens: number;
   };
 }
 
 const MAX_FUENTES = 3;
+
+interface AgentIdentityFields {
+  name?: string | undefined;
+  role?: string | undefined;
+  personality?: string | undefined;
+  tone?: string | undefined;
+  length?: string | undefined;
+}
+
+interface PublishedConfig {
+  id: string;
+  enabled: boolean;
+  identity: AgentIdentityFields;
+  guidelines: string[];
+  limits: { forbiddenTopics?: string[] };
+  /** Nombre real de la marca: el prompt dice de quién es el agente. */
+  brandName: string;
+}
 
 @Injectable()
 export class AgentService {
@@ -94,17 +121,25 @@ export class AgentService {
     // un error: es un tenant que no lo activó, y su bandeja sigue funcionando
     // con personas (ADR-0011: apagar la IA deja el sistema 100 % funcional).
     if (!config || !config.enabled) {
-      return this.registrar(tenantId, input, {
-        resolution: 'handoff',
-        text: null,
-        actions: [{ kind: 'handoff', value: 'El agente no está activo.' }],
-        trace: {
-          sourceIds: [],
-          toolsCalled: [],
-          credits: 0,
-          budget: 'ok',
+      return this.registrar(
+        tenantId,
+        input,
+        {
+          resolution: 'handoff',
+          text: null,
+          actions: [{ kind: 'handoff', value: 'El agente no está activo.' }],
+          trace: {
+            sourceIds: [],
+            toolsCalled: [],
+            credits: 0,
+            budget: 'ok',
+            inputTokens: 0,
+            outputTokens: 0,
+          },
         },
-      }, null, inicio);
+        null,
+        inicio,
+      );
     }
 
     const presupuesto = await this.budget(tenantId);
@@ -138,6 +173,8 @@ export class AgentService {
             toolsCalled: [],
             credits: 0,
             budget: presupuesto.state,
+            inputTokens: 0,
+            outputTokens: 0,
           },
         },
         config.id,
@@ -173,6 +210,8 @@ export class AgentService {
             toolsCalled: [],
             credits: 0,
             budget: presupuesto.state,
+            inputTokens: 0,
+            outputTokens: 0,
           },
         },
         config.id,
@@ -199,7 +238,15 @@ export class AgentService {
     try {
       const respuesta = await this.provider.chat({
         messages: [
-          { role: 'system', content: promptDeSistema(config, fuentes) },
+          {
+            role: 'system',
+            content: buildSystemPrompt({
+              brandName: config.brandName,
+              identity: config.identity,
+              guidelines: config.guidelines,
+              sources: fuentes.map((f) => f.content),
+            }),
+          },
           ...resultados.map((r) => ({
             role: 'tool' as const,
             name: r.tool,
@@ -262,6 +309,9 @@ export class AgentService {
             validator: { ok: false, reason: veredicto.reason },
             credits,
             budget: presupuesto.state,
+            promptVersion: SYSTEM_PROMPT_VERSION,
+            inputTokens,
+            outputTokens,
           },
         },
         config.id,
@@ -270,7 +320,10 @@ export class AgentService {
       );
     }
 
-    await this.knowledge.markUsed(tenantId, fuentes.map((f) => f.sourceId));
+    await this.knowledge.markUsed(
+      tenantId,
+      fuentes.map((f) => f.sourceId),
+    );
 
     return this.registrar(
       tenantId,
@@ -285,6 +338,9 @@ export class AgentService {
           validator: { ok: true },
           credits,
           budget: presupuesto.state,
+          promptVersion: SYSTEM_PROMPT_VERSION,
+          inputTokens,
+          outputTokens,
         },
       },
       config.id,
@@ -320,7 +376,14 @@ export class AgentService {
         resolution: 'handoff',
         text: null,
         actions: [{ kind: 'handoff', value: motivo }],
-        trace: { sourceIds: [], toolsCalled: [], credits: 0, budget },
+        trace: {
+          sourceIds: [],
+          toolsCalled: [],
+          credits: 0,
+          budget,
+          inputTokens: 0,
+          outputTokens: 0,
+        },
       },
       configId,
       inicio,
@@ -341,8 +404,8 @@ export class AgentService {
         `INSERT INTO ai_traces
            (tenant_id, conversation_id, config_id, inbound_text, outbound_text,
             resolution, rule_id, source_ids, tools_called, validator,
-            credits, latency_ms)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            credits, latency_ms, input_tokens, output_tokens, prompt_version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [
           tenantId,
           input.conversationId,
@@ -358,6 +421,12 @@ export class AgentService {
           reply.trace.validator ? JSON.stringify(reply.trace.validator) : null,
           reply.trace.credits,
           Date.now() - inicio,
+          // Los tokens ya se contaban para cobrar créditos, pero no se
+          // guardaban: sin ellos «cuánto cuesta una conversación» (T5.32) solo
+          // se puede estimar, y una estimación no sirve para facturar.
+          reply.trace.inputTokens,
+          reply.trace.outputTokens,
+          reply.trace.promptVersion ?? null,
         ],
       );
     });
@@ -367,27 +436,33 @@ export class AgentService {
   private async publishedConfig(
     tenantId: string,
     brandId: string,
-  ): Promise<{
-    id: string;
-    enabled: boolean;
-    identity: Record<string, unknown>;
-    guidelines: string[];
-    limits: { forbiddenTopics?: string[] };
-  } | null> {
+  ): Promise<PublishedConfig | null> {
     return withTenant(this.pool, tenantId, async ({ client }) => {
       const { rows } = await client.query<{
         id: string;
         enabled: boolean;
-        identity: Record<string, unknown>;
+        identity: AgentIdentityFields;
         guidelines: string[];
         limits: { forbiddenTopics?: string[] };
+        brand_name: string;
       }>(
-        `SELECT id, enabled, identity, guidelines, limits
-           FROM ai_agent_configs
-          WHERE brand_id = $1 AND status = 'published'`,
+        `SELECT c.id, c.enabled, c.identity, c.guidelines, c.limits,
+                b.name AS brand_name
+           FROM ai_agent_configs c
+           JOIN org_brands b ON b.id = c.brand_id
+          WHERE c.brand_id = $1 AND c.status = 'published'`,
         [brandId],
       );
-      return rows[0] ?? null;
+      const c = rows[0];
+      if (!c) return null;
+      return {
+        id: c.id,
+        enabled: c.enabled,
+        identity: c.identity,
+        guidelines: c.guidelines,
+        limits: c.limits,
+        brandName: c.brand_name,
+      };
     });
   }
 
@@ -520,41 +595,6 @@ export class AgentService {
       }));
     });
   }
-}
-
-/** Prompt de sistema a partir de la configuración del dueño. */
-function promptDeSistema(
-  config: {
-    identity: Record<string, unknown>;
-    guidelines: string[];
-    limits: { forbiddenTopics?: string[] };
-  },
-  fuentes: ReadonlyArray<{ content: string }>,
-): string {
-  const identidad = config.identity as {
-    name?: string;
-    role?: string;
-    personality?: string;
-    tone?: string;
-  };
-
-  return [
-    `Eres ${identidad.name ?? 'el asistente'} de un restaurante.`,
-    identidad.role ? `Tu rol: ${identidad.role}.` : '',
-    identidad.personality ? `Personalidad: ${identidad.personality}.` : '',
-    identidad.tone ? `Tono: ${identidad.tone}.` : '',
-    ...config.guidelines.map((g, i) => `Pauta ${i + 1}: ${g}`),
-    // Esta instrucción es un refuerzo, NO el control. El control es el
-    // validador de T5.24, que lee la respuesta y la bloquea. Pedirle al modelo
-    // que no invente es un deseo; comprobarlo después es una garantía.
-    'NUNCA menciones precios, disponibilidad, zonas de reparto ni horarios que ' +
-      'no aparezcan literalmente en los datos consultados que se te han dado.',
-    fuentes.length > 0
-      ? `Información del negocio:\n${fuentes.map((f) => `- ${f.content}`).join('\n')}`
-      : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
 }
 
 export type { ToolResult };

@@ -254,7 +254,12 @@ export class AgentConfigService {
     tenantId: string,
     brandId: string,
   ): Promise<
-    Array<{ id: string; version: number; status: string; publishedAt: string | null }>
+    Array<{
+      id: string;
+      version: number;
+      status: string;
+      publishedAt: string | null;
+    }>
   > {
     return withTenant(this.pool, tenantId, async ({ client }) => {
       const { rows } = await client.query<{

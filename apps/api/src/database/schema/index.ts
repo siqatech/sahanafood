@@ -1500,6 +1500,8 @@ export const aiTraces = pgTable(
     outputTokens: integer('output_tokens').notNull().default(0),
     credits: integer('credits').notNull().default(0),
     latencyMs: integer('latency_ms'),
+    /** Versión del prompt (T5.31). NULL si no hubo modelo. */
+    promptVersion: text('prompt_version'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

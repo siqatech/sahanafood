@@ -1,0 +1,27 @@
+{
+  "name": "@sahana/ai-prompts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prompts versionados y suite de conversaciones doradas (T5.31)",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sahana/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7"
+  }
+}

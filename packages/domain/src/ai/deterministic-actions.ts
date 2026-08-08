@@ -90,15 +90,30 @@ export interface RuleMatch {
 
 /** Palabras que delatan una intención de compra, reserva o reclamo. */
 const VERBOS: Record<string, readonly RegExp[]> = {
-  comprar: [/\b(?:quiero|quisiera|me das|dame|ped(?:ir|ido)|comprar|llevar)\b/i],
+  comprar: [
+    /\b(?:quiero|quisiera|me das|dame|ped(?:ir|ido)|comprar|llevar)\b/i,
+  ],
   reservar: [/\b(?:reserv\w+|mesa para|apart\w+)\b/i],
   // Sin `\b` FINAL a propósito: en JavaScript las vocales acentuadas no son
   // caracteres de palabra, así que `\b` detrás de «llegó» no casa nunca y el
   // reclamo más común del negocio —«no llegó»— pasaba desapercibido. El
   // límite inicial sí se mantiene, que es el que evita casar dentro de otra
   // palabra.
+  //
+  // La queja va por dos vías, y separarlas importa:
+  //  · Palabras que YA son una queja por sí solas: «reclamo», «queja»,
+  //    «devolución», «pésimo».
+  //  · Un verbo de llegada/estado SEGUIDO de lo que salió mal. «llegó» a secas
+  //    NO basta —«¿ya llegó mi pedido?» es una consulta de estado, no un
+  //    reclamo, y derivarla a un humano sería gastar a una persona en algo que
+  //    el agente sabe contestar—; pero «llegó fría» sí lo es.
+  //
+  // La concordancia de género y número es lo que hacía fallar el caso más
+  // frecuente: el patrón solo cubría «frío», así que «la pizza llegó fría» —el
+  // reclamo literal de una pizzería— pasaba como conversación normal.
   reclamar: [
-    /\b(?:reclam\w+|queja|devoluci[oó]n|no lleg[oó]|est[aá] (?:fr[ií]o|mal)|p[eé]simo)/i,
+    /\b(?:reclam\w+|queja|devoluci[oó]n|p[eé]simo|no lleg[oó])/i,
+    /\b(?:lleg(?:[oó]|aron)|est[aá]n?|estaba[n]?|vino|vinieron)\s+(?:muy\s+)?(?:fr[ií][oa]s?|mal|tarde|quemad[oa]s?|crud[oa]s?|incomplet[oa]s?)/i,
   ],
 };
 
