@@ -270,3 +270,11 @@ export {
   type SaturationLevel,
   type SaturationDecision,
 } from './kitchen/saturation.js';
+
+// --- Bandeja omnicanal (spec 18, F5) ---
+export {
+  windowCountdown,
+  CLOSING_SOON_MINUTES,
+  type WindowState,
+  type WindowCountdown,
+} from './conversations/window-countdown.js';

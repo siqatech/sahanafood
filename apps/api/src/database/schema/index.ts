@@ -1319,3 +1319,86 @@ export const deliveryShipments = pgTable(
   },
   (t) => [index('idx_dlv_shipments_cola').on(t.tenantId, t.status)],
 );
+
+// ---------------------------------------------------------------------------
+// Bandeja omnicanal (spec 18, F5).
+// ---------------------------------------------------------------------------
+
+export const conversations = pgTable(
+  'cnv_conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    channel: text('channel').notNull(),
+    contactId: uuid('contact_id').notNull(),
+    status: text('status').notNull().default('bot'),
+    assigneeId: uuid('assignee_id'),
+    queue: text('queue').notNull().default('general'),
+    aiEnabled: boolean('ai_enabled').notNull().default(true),
+    lastMsgAt: timestamp('last_msg_at', { withTimezone: true }),
+    lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+    windowExpiresAt: timestamp('window_expires_at', { withTimezone: true }),
+    handoffSummary: jsonb('handoff_summary'),
+    handoffAt: timestamp('handoff_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_cnv_bandeja').on(t.tenantId, t.queue, t.status)],
+);
+
+export const conversationMessages = pgTable(
+  'cnv_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    direction: text('direction').notNull(),
+    authorType: text('author_type').notNull(),
+    authorId: uuid('author_id'),
+    kind: text('kind').notNull(),
+    payload: jsonb('payload').notNull(),
+    templateName: text('template_name'),
+    waMessageId: text('wa_message_id'),
+    status: text('status').notNull().default('sent'),
+    errorReason: text('error_reason'),
+    /** Dinero: NUMERIC(14,4), nunca `number`. */
+    costEstimate: numeric('cost_estimate', { precision: 14, scale: 4 }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_cnv_messages_hilo').on(t.tenantId, t.conversationId)],
+);
+
+export const conversationTags = pgTable('cnv_tags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  name: text('name').notNull(),
+  color: text('color'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const conversationTagLinks = pgTable('cnv_conversation_tags', {
+  tenantId: uuid('tenant_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  tagId: uuid('tag_id').notNull(),
+});
+
+export const quickReplies = pgTable('cnv_quick_replies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  brandId: uuid('brand_id'),
+  shortcut: text('shortcut').notNull(),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

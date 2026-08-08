@@ -25,6 +25,7 @@ import { AnalyticsModule } from './modules/analytics/index.js';
 import { CashModule } from './modules/cash/index.js';
 import { StorefrontModule } from './modules/storefront/index.js';
 import { DeliveryModule } from './modules/delivery/index.js';
+import { ConversationsModule } from './modules/conversations/index.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 
 /**
@@ -73,6 +74,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     CashModule,
     StorefrontModule,
     DeliveryModule,
+    ConversationsModule,
     ObservabilityModule,
   ],
 })

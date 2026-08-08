@@ -84,6 +84,9 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       // Registrar consentimiento y bajas toca datos personales (RN-T10): se
       // separa de la lectura a propósito.
       'messaging.manage',
+      'conversations.read',
+      'conversations.reply',
+      'conversations.assign',
       'reports.read',
       // Ve los cobros y puede generar un link de pago; devolver dinero y
       // configurar la pasarela quedan arriba.
@@ -141,7 +144,15 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
   {
     code: 'call_center',
     name: 'Operador call center',
-    permissions: ['catalog.read', 'orders.read', 'orders.create'],
+    // Atiende la bandeja y crea pedidos por el cliente (RN-CNV-05). NO asigna:
+    // repartir el trabajo entre agentes es de supervisión.
+    permissions: [
+      'catalog.read',
+      'orders.read',
+      'orders.create',
+      'conversations.read',
+      'conversations.reply',
+    ],
   },
   {
     code: 'accountant',

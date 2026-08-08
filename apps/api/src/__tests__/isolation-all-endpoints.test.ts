@@ -21,6 +21,7 @@ import {
 } from '../modules/payments/index.js';
 import { StorefrontService } from '../modules/storefront/index.js';
 import { DeliveryService } from '../modules/delivery/index.js';
+import { ConversationsService } from '../modules/conversations/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -85,6 +86,8 @@ suite('Aislamiento — todos los endpoints', () => {
   let envioDeB = '';
   /** Enlace de seguimiento de B: quien lo tenga sabe dónde va un pedido ajeno. */
   let seguimientoDeB = '';
+  /** Conversación de B: lo que sus clientes le escriben es lo más privado que tiene. */
+  let conversacionDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -381,6 +384,24 @@ suite('Aislamiento — todos los endpoints', () => {
       '+51999000111',
       envioDeB,
       seguimientoDeB,
+    );
+
+    // Conversación de B con un mensaje reconocible: lo que los clientes de un
+    // tenant le escriben es de lo más privado que guarda el sistema.
+    const conversationsB = app.get(ConversationsService);
+    const conv = await conversationsB.receiveInbound(b.tenantId, {
+      brandId: demoB.brandIds[0],
+      channel: 'whatsapp',
+      phone: '+51999888777',
+      text: 'Reclamo SECRETO de un cliente de B',
+      displayName: 'Cliente que escribe a B',
+    });
+    conversacionDeB = conv.conversationId;
+    secretsOfB.push(
+      conversacionDeB,
+      '+51999888777',
+      'Reclamo SECRETO de un cliente de B',
+      'Cliente que escribe a B',
     );
 
     // B necesita DATOS de analítica y mensajería: dos respuestas de ceros
@@ -1107,6 +1128,54 @@ suite('Aislamiento — todos los endpoints', () => {
         secreto,
       );
     }
+  });
+
+  it('GET /conversations no trae la bandeja de B', async () => {
+    // Lo que los clientes de un tenant escriben —reclamos, teléfonos, nombres—
+    // es de lo más privado que guarda el sistema.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /conversations', (r) => r.get('/api/v1/conversations')),
+    );
+  });
+
+  it('GET /conversations con BÚSQUEDA no atraviesa el tenant', async () => {
+    // La búsqueda por texto es el camino más fácil a una fuga: se busca por
+    // contenido, no por id, así que un filtro olvidado devuelve el mensaje de
+    // otro sin que ningún identificador lo delate.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /conversations?search', (r) =>
+        r.get('/api/v1/conversations?search=SECRETO'),
+      ),
+    );
+  });
+
+  it('GET /conversations/:id/messages del hilo de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /conversations/:id/messages',
+        (r) => r.get(`/api/v1/conversations/${conversacionDeB}/messages`),
+        { expectedStatusForA: [200, 404] },
+      ),
+    );
+  });
+
+  it('POST /conversations/:id/messages en la conversación de B', async () => {
+    // Escribirle a un cliente de otro tenant EN NOMBRE de esa marca es la peor
+    // fuga posible de este módulo: no solo se ve algo ajeno, se actúa.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /conversations/:id/messages',
+        (r) =>
+          r
+            .post(`/api/v1/conversations/${conversacionDeB}/messages`)
+            .send({ kind: 'text', text: 'Mensaje intruso' }),
+        { expectedStatusForA: [404, 422] },
+      ),
+    );
   });
 
   it('el harness DETECTA una fuga simulada (prueba del detector)', async () => {

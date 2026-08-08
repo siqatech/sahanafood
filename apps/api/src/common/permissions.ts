@@ -87,6 +87,13 @@ export const PERMISSIONS = [
   // Registrar consentimiento y bajas toca datos personales (RN-T10): se
   // separa de la lectura a propósito.
   'messaging.manage',
+  // Bandeja omnicanal (F5)
+  'conversations.read',
+  // Responder a un cliente. Separado de leer: en un call center la mayoría
+  // solo mira, y quien escribe habla EN NOMBRE de la marca.
+  'conversations.reply',
+  // Repartir el trabajo entre agentes. Es de supervisión, no de atención.
+  'conversations.assign',
   // Reportes
   'reports.read',
   'reports.export',
