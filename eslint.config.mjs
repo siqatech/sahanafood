@@ -121,11 +121,12 @@ export default tseslint.config(
   },
   {
     /**
-     * Scripts de apoyo de la tienda: los ejecuta Node, no el navegador, y su
-     * salida ES el resultado —el presupuesto de T5.14 se lee en la consola de
-     * CI, no en un logger.
+     * Scripts de apoyo que ejecuta Node en CI, no el navegador, y cuya salida
+     * ES el resultado: el presupuesto de la tienda (T5.14) y el gate de
+     * compatibilidad de migraciones (T5.35) se leen en la consola del job, no
+     * en un logger.
      */
-    files: ['apps/web/scripts/**/*.mjs'],
+    files: ['apps/web/scripts/**/*.mjs', 'infra/scripts/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

@@ -35,6 +35,11 @@ jobs:
         run: pnpm typecheck
       - name: Fronteras de módulos (dependency-cruiser)
         run: pnpm depcruise
+      # Sin base de datos: es análisis de los .sql. Comprueba que ninguna
+      # migración rompe a la versión anterior, que es de lo que depende poder
+      # revertir un despliegue SIN tocar la base (docs/17, T5.35).
+      - name: Migraciones compatibles con la versión anterior
+        run: pnpm migrations:check
       - name: Formato (prettier)
         run: pnpm format:check
 

@@ -569,6 +569,19 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /health/ready es público y no expone datos de tenant', async () => {
+    // La sonda que gobierna el canario. Es pública a propósito —un balanceador
+    // no lleva token— así que lo único que puede decir es si ESTA instancia
+    // sirve: nunca nada de ningún tenant.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /health/ready', (r) => r.get('/api/v1/health/ready'), {
+        isPublic: true,
+        tenantless: true,
+      }),
+    );
+  });
+
   it('POST /devices/pairing-codes', async () => {
     await assertEndpointIsolation(
       app,
