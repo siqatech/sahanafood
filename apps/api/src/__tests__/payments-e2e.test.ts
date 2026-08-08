@@ -505,6 +505,250 @@ suite('Pagos online', () => {
     expect(await estadoDe(reference)).toBe('pending');
   });
 
+  // ------------------------- Cobro que no debió confirmarse (T5.04)
+
+  it('PAGO CONFIRMADO TRAS EL VENCIMIENTO → no acepta y queda para devolver', async () => {
+    const pedido = await vender();
+    // TTL mínimo y se fuerza el vencimiento: reproducir la espera real haría
+    // una prueba de media hora que nadie ejecuta.
+    const intencion = await payments.createIntent(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        "UPDATE pay_intents SET expires_at = now() - interval '1 minute' WHERE id = $1",
+        [intencion.id],
+      ),
+    );
+
+    const res = await enviarCulqi(
+      cuerpoCulqi(intencion.reference, intencion.amount),
+    ).expect(200);
+    expect(res.body.kind).toBe('applied');
+
+    // El dinero SE COBRÓ —eso ya pasó, negarlo sería mentir— pero el pedido NO
+    // se acepta y el cobro queda marcado.
+    expect(await estadoDe(intencion.reference)).toBe('captured');
+    expect(await estadoPedido(pedido.id)).not.toBe('accepted');
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        refund_required: boolean;
+        refund_reason: string;
+      }>(
+        'SELECT refund_required, refund_reason FROM pay_intents WHERE id = $1',
+        [intencion.id],
+      );
+      return rows[0]!;
+    });
+    expect(fila.refund_required).toBe(true);
+    expect(fila.refund_reason).toContain('venciera');
+  });
+
+  it('la marca de devolución se escribe CON la captura, no después', async () => {
+    // Es lo que hace que un proceso que se muere a mitad retrase la devolución
+    // en vez de perderla. Si la marca se pusiera en una segunda transacción,
+    // habría un instante con dinero cobrado y nadie que supiera devolverlo.
+    const pedido = await vender();
+    const intencion = await payments.createIntent(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        "UPDATE pay_intents SET expires_at = now() - interval '1 minute' WHERE id = $1",
+        [intencion.id],
+      ),
+    );
+    await enviarCulqi(
+      cuerpoCulqi(intencion.reference, intencion.amount),
+    ).expect(200);
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        status: string;
+        refund_required: boolean;
+        captured_at: Date | null;
+      }>(
+        'SELECT status, refund_required, captured_at FROM pay_intents WHERE id = $1',
+        [intencion.id],
+      );
+      return rows[0]!;
+    });
+    // Las tres cosas a la vez: capturado, con fecha, y marcado.
+    expect(fila.status).toBe('captured');
+    expect(fila.captured_at).not.toBeNull();
+    expect(fila.refund_required).toBe(true);
+  });
+
+  it('un pago sobre un pedido RECHAZADO también se devuelve', async () => {
+    const pedido = await vender();
+    const intencion = await payments.createIntent(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    // El barrido de aceptación rechazó el pedido mientras el cliente pagaba.
+    await ordering.applyTransition(tenantA, pedido.id, 'reject', {
+      actorType: 'system',
+      reason: 'Vencido sin aceptar',
+    });
+
+    await enviarCulqi(
+      cuerpoCulqi(intencion.reference, intencion.amount),
+    ).expect(200);
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        refund_required: boolean;
+        refund_reason: string;
+      }>(
+        'SELECT refund_required, refund_reason FROM pay_intents WHERE id = $1',
+        [intencion.id],
+      );
+      return rows[0]!;
+    });
+    expect(fila.refund_required).toBe(true);
+    expect(fila.refund_reason).toContain('rejected');
+  });
+
+  it('EL BARRIDO DEVUELVE EL DINERO y deja el cobro en refunded', async () => {
+    const pedido = await vender();
+    const intencion = await payments.createIntent(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        "UPDATE pay_intents SET expires_at = now() - interval '1 minute' WHERE id = $1",
+        [intencion.id],
+      ),
+    );
+    await enviarCulqi(
+      cuerpoCulqi(intencion.reference, intencion.amount),
+    ).expect(200);
+
+    const antes = culqi.outbound.filter((o) => o.op === 'refund').length;
+    const r = await payments.processRefunds();
+    expect(r.refunded).toBeGreaterThan(0);
+
+    // Se llamó de verdad a la pasarela, no solo se cambió una fila. Y UNA
+    // llamada por cobro devuelto: el barrido arrastra los que dejaron marcados
+    // las pruebas anteriores, así que se compara el delta con lo que dice haber
+    // hecho, no con un número fijo.
+    expect(culqi.outbound.filter((o) => o.op === 'refund').length).toBe(
+      antes + r.refunded,
+    );
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        status: string;
+        refund_required: boolean;
+        refunded_at: Date | null;
+        refund_provider_ref: string | null;
+      }>(
+        `SELECT status, refund_required, refunded_at, refund_provider_ref
+           FROM pay_intents WHERE id = $1`,
+        [intencion.id],
+      );
+      return rows[0]!;
+    });
+    expect(fila.status).toBe('refunded');
+    expect(fila.refund_required).toBe(false);
+    expect(fila.refunded_at).not.toBeNull();
+    expect(fila.refund_provider_ref).toBeTruthy();
+  });
+
+  it('el barrido NO devuelve dos veces el mismo cobro', async () => {
+    // Correrlo otra vez no puede volver a llamar a la pasarela: la marca ya se
+    // limpió y el estado ya no es `captured`.
+    const antes = culqi.outbound.filter((o) => o.op === 'refund').length;
+    const r = await payments.processRefunds();
+    expect(r.refunded).toBe(0);
+    expect(culqi.outbound.filter((o) => o.op === 'refund').length).toBe(antes);
+  });
+
+  it('la devolución automática deja traza en auditoría', async () => {
+    const auditoria = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ action: string }>(
+        `SELECT action FROM audit_log
+          WHERE action IN ('payment.refund_required','payment.refunded')`,
+      );
+      return rows.map((r) => r.action);
+    });
+    // Las dos: por qué hubo que devolver, y que se devolvió.
+    expect(auditoria).toContain('payment.refund_required');
+    expect(auditoria).toContain('payment.refunded');
+  });
+
+  it('las intenciones que nadie pagó acaban VENCIDAS', async () => {
+    const pedido = await vender();
+    const intencion = await payments.createIntent(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        "UPDATE pay_intents SET expires_at = now() - interval '1 hour' WHERE id = $1",
+        [intencion.id],
+      ),
+    );
+
+    expect(await payments.expireStaleIntents()).toBeGreaterThan(0);
+    expect(await estadoDe(intencion.reference)).toBe('expired');
+
+    // Y una vez vencida, un pago tardío ya no la mueve.
+    const res = await enviarCulqi(
+      cuerpoCulqi(intencion.reference, intencion.amount),
+    ).expect(200);
+    expect(res.body.kind).toBe('ignored');
+  });
+
+  it('una devolución que la pasarela rechaza se REINTENTA, y acaba pidiendo ayuda', async () => {
+    const pedido = await vender();
+    const intencion = await payments.createIntent(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        "UPDATE pay_intents SET expires_at = now() - interval '1 minute' WHERE id = $1",
+        [intencion.id],
+      ),
+    );
+    await enviarCulqi(
+      cuerpoCulqi(intencion.reference, intencion.amount),
+    ).expect(200);
+
+    // Sin referencia de la pasarela no hay devolución por API posible: es una
+    // gestión a mano, y decirlo vale más que reintentar en bucle.
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query('UPDATE pay_intents SET provider_ref = NULL WHERE id = $1', [
+        intencion.id,
+      ]),
+    );
+
+    const r = await payments.processRefunds();
+    expect(r.exhausted).toBeGreaterThan(0);
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        refund_attempts: number;
+        refund_last_error: string;
+        status: string;
+      }>(
+        'SELECT refund_attempts, refund_last_error, status FROM pay_intents WHERE id = $1',
+        [intencion.id],
+      );
+      return rows[0]!;
+    });
+    // NO se marca como devuelto: el dinero sigue con el cliente sin devolver, y
+    // fingir lo contrario sería el peor resultado posible.
+    expect(fila.status).toBe('captured');
+    expect(fila.refund_attempts).toBeGreaterThanOrEqual(5);
+    expect(fila.refund_last_error).toContain('a mano');
+  });
+
   // ------------------------------------------------------------ Robustez
 
   it('una referencia desconocida no revienta ni confirma nada', async () => {

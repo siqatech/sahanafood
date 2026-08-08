@@ -976,6 +976,17 @@ export const paymentIntents = pgTable(
     mismatchReason: text('mismatch_reason'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     capturedAt: timestamp('captured_at', { withTimezone: true }),
+    /**
+     * Este cobro no debió confirmarse y hay que devolverlo (T5.04). Se escribe
+     * en la MISMA transacción que la captura: o existen las dos cosas o no
+     * existe ninguna.
+     */
+    refundRequired: boolean('refund_required').notNull().default(false),
+    refundReason: text('refund_reason'),
+    refundedAt: timestamp('refunded_at', { withTimezone: true }),
+    refundProviderRef: text('refund_provider_ref'),
+    refundAttempts: integer('refund_attempts').notNull().default(0),
+    refundLastError: text('refund_last_error'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

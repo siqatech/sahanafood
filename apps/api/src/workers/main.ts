@@ -28,6 +28,7 @@ import {
 } from '../modules/inventory/index.js';
 import { BillingService } from '../modules/billing/index.js';
 import { IngestionService } from '../modules/integrations/index.js';
+import { PaymentsService } from '../modules/payments/index.js';
 import {
   MessagingEventHandlers,
   MESSAGING_CONSUMER,
@@ -81,6 +82,7 @@ async function bootstrap(): Promise<void> {
   const acceptance = app.get(AcceptanceService);
   const billing = app.get(BillingService);
   const ingestion = app.get(IngestionService);
+  const payments = app.get(PaymentsService);
 
   const redis = createRedis(config.redisUrl);
   const publisher = createQueuePublisher(redis);
@@ -243,15 +245,54 @@ async function bootstrap(): Promise<void> {
     },
   });
 
+  /**
+   * Devoluciones automáticas y vencimiento de cobros (T5.04, RN-PAY-01).
+   *
+   * Dos trabajos en una vuelta porque van juntos: primero se marcan como
+   * vencidas las intenciones que nadie pagó, y después se devuelve el dinero de
+   * las que se cobraron cuando ya no debían.
+   *
+   * La marca de devolución la escribe el webhook en la misma transacción que la
+   * captura; esto solo la ejecuta. Ese reparto es lo que hace que un proceso
+   * que se muere a mitad retrase la devolución en vez de perderla.
+   *
+   * Cada 60 s: devolver diez segundos antes no cambia nada para el cliente, y
+   * machacar a la pasarela con reintentos sí.
+   */
+  const devoluciones = new PeriodicJob({
+    name: 'payments-refunds',
+    intervalMs: config.worker.refundIntervalMs,
+    initialDelayMs: 15_000,
+    run: async () => {
+      const vencidas = await payments.expireStaleIntents();
+      const r = await payments.processRefunds();
+      if (vencidas > 0 || r.refunded > 0 || r.failed > 0 || r.exhausted > 0) {
+        logger.log(
+          `Pagos: ${vencidas} intenciones vencidas, ${r.refunded} devueltas, ` +
+            `${r.failed} por reintentar, ${r.exhausted} agotadas.`,
+        );
+      }
+      if (r.exhausted > 0) {
+        // Dinero de un cliente retenido que el sistema ya no va a poder
+        // devolver solo. Es una alarma, no una estadística.
+        logger.error(
+          `${r.exhausted} devolución(es) agotaron sus intentos: requieren intervención manual.`,
+        );
+      }
+    },
+  });
+
   relay.start();
   aceptacion.start();
   facturacion.start();
   ingesta.start();
+  devoluciones.start();
   logger.log(
     `Worker activo — relay cada ${config.worker.outboxIntervalMs} ms, ` +
       `aceptación cada ${config.worker.acceptanceIntervalMs} ms, ` +
       `facturación cada ${config.worker.billingIntervalMs} ms, ` +
       `ingesta cada ${config.worker.ingestionIntervalMs} ms, ` +
+      `devoluciones cada ${config.worker.refundIntervalMs} ms, ` +
       `consumidores [${consumidores.map((c) => c.nombre).join(', ')}] escuchando eventos de dominio.`,
   );
 
@@ -268,6 +309,7 @@ async function bootstrap(): Promise<void> {
       aceptacion.stop(),
       facturacion.stop(),
       ingesta.stop(),
+      devoluciones.stop(),
     ]);
     // `close()` del consumidor espera a que termine el job en curso: matarlo a
     // mitad dejaría una transacción abortada y el evento por reintentar.

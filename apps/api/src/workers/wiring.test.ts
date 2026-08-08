@@ -31,6 +31,7 @@ const BARRIDOS = [
   { job: 'acceptance-sweep', metodo: 'sweepAllTenants(' },
   { job: 'billing-queue', metodo: 'processQueueAllTenants(' },
   { job: 'ingestion-sweep', metodo: 'processPending(' },
+  { job: 'payments-refunds', metodo: 'processRefunds(' },
 ];
 
 describe('cableado del worker', () => {

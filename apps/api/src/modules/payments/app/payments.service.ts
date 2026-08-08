@@ -12,6 +12,7 @@ import { PG_POOL } from '../../../database/database.module.js';
 import { CONFIG, type AppConfig } from '../../../config/config.js';
 import {
   withTenant,
+  withSystem,
   withPaymentLookup,
   type TenantContext,
 } from '../../../database/rls.js';
@@ -48,6 +49,26 @@ import { PAYMENT_PROVIDERS } from '../payments.tokens.js';
 
 /** Campo cifrado donde vive el secreto con el que se verifica la firma. */
 export const WEBHOOK_SECRET_FIELD = 'webhook_secret';
+
+/**
+ * Estados de pedido que ya no admiten un pago (T5.04).
+ *
+ * Si el dinero llega con el pedido aquí, es que el sistema ya decidió no hacer
+ * esa comida: hay que devolverlo. `delivered` y `picked_up` NO están en la
+ * lista a propósito — un pago que confirma tarde sobre un pedido ya entregado
+ * es simplemente un pago que confirma tarde, y devolverlo sería regalar la
+ * comida.
+ */
+const NO_ACEPTAN_PAGO: ReadonlySet<string> = new Set(['rejected', 'cancelled']);
+
+/**
+ * Intentos de devolución antes de rendirse y pedir ayuda humana.
+ *
+ * Rendirse es parte del diseño: una pasarela que rechaza la devolución no va a
+ * empezar a aceptarla al intento noventa, y el bucle infinito solo consigue que
+ * nadie mire el problema.
+ */
+export const MAX_REFUND_ATTEMPTS = 5;
 
 export interface PaymentIntentView {
   id: string;
@@ -465,19 +486,48 @@ export class PaymentsService {
           } as const;
         }
 
+        // ¿Este cobro se puede honrar? Solo importa al capturar, y hay que
+        // saberlo AQUÍ dentro para poder marcar la devolución en la misma
+        // transacción que la captura (T5.04).
+        const noHonorable =
+          decision.to === 'captured'
+            ? await this.motivoParaDevolver(ctx, intencion)
+            : null;
+
         await ctx.client.query(
           `UPDATE pay_intents
               SET status = $2, paid_amount = $3, provider_ref = COALESCE($4, provider_ref),
                   captured_at = CASE WHEN $2 = 'captured' THEN now() ELSE captured_at END,
-                  mismatch_reason = NULL, updated_at = now()
+                  mismatch_reason = NULL,
+                  refund_required = $5, refund_reason = $6,
+                  updated_at = now()
             WHERE id = $1`,
           [
             intencion.id,
             decision.to,
             evento.amount,
             evento.providerRef ?? null,
+            noHonorable !== null,
+            noHonorable,
           ],
         );
+
+        if (noHonorable !== null) {
+          // El dinero está cobrado y hay que devolverlo. Se registra como
+          // alarma: es plata de un cliente retenida por un pedido que no se va
+          // a preparar, y nadie debería enterarse por la conciliación.
+          this.logger.error(
+            `Cobro que no debió confirmarse (${intencion.id}): ${noHonorable}. Marcado para devolución.`,
+          );
+          await recordAudit(ctx, {
+            actorType: 'system',
+            action: 'payment.refund_required',
+            resourceType: 'payment_intent',
+            resourceId: intencion.id,
+            reason: noHonorable,
+            data: { orderId: intencion.order_id, amount: intencion.amount },
+          });
+        }
 
         // El evento sale por el OUTBOX, en esta misma transacción (ADR-0007).
         // Publicar a Redis desde aquí dejaría un aviso sin pago o al revés.
@@ -501,11 +551,8 @@ export class PaymentsService {
             intentId: intencion.id,
           },
           confirmar:
-            decision.to === 'captured'
-              ? {
-                  orderId: intencion.order_id,
-                  vencida: intencion.expires_at.getTime() < Date.now(),
-                }
+            decision.to === 'captured' && noHonorable === null
+              ? { orderId: intencion.order_id }
               : null,
         } as const;
       },
@@ -517,37 +564,268 @@ export class PaymentsService {
     // webhooks de pedidos que se referencian.
     const confirmar = 'confirmar' in resultado ? resultado.confirmar : null;
     if (confirmar) {
-      await this.confirmarPedido(
-        conexion.tenantId,
-        confirmar.orderId,
-        confirmar.vencida,
-      );
+      await this.confirmarPedido(conexion.tenantId, confirmar.orderId);
     }
 
     return resultado.outcome;
   }
 
   /**
-   * Confirma el pedido tras un pago capturado.
+   * ¿Hay motivo para devolver este cobro? (T5.04)
    *
-   * El caso raro está contemplado a propósito: un pago que se confirma DESPUÉS
-   * de que la intención venciera. Pasa —la pasarela reintenta, el cliente paga
-   * en el último segundo, la red tarda— y el pedido puede haberse rechazado ya.
-   * Cobrar por comida que se decidió no hacer es peor que perder la venta, así
-   * que se marca para devolución automática (T5.04) en vez de forzar la
-   * aceptación.
+   * Dos motivos, y los dos son el mismo hecho visto desde sitios distintos: el
+   * dinero llegó cuando el sistema ya había decidido no hacer esa comida.
+   *
+   *  · La intención venció. El cliente pagó en el último segundo, o la pasarela
+   *    tardó en avisar.
+   *  · El pedido ya no admite aceptación —lo rechazó el barrido por vencimiento
+   *    (RN-ORD-04) o lo canceló alguien—.
+   *
+   * Se comprueba DENTRO de la transacción de la captura a propósito: la
+   * decisión y la marca tienen que ser atómicas con el cambio de estado.
    */
+  private async motivoParaDevolver(
+    ctx: TenantContext,
+    intencion: FilaIntencion,
+  ): Promise<string | null> {
+    if (intencion.expires_at.getTime() < Date.now()) {
+      return 'El pago se confirmó después de que venciera la intención de cobro.';
+    }
+
+    const { rows } = await ctx.client.query<{ status: string }>(
+      'SELECT status FROM ord_orders WHERE id = $1',
+      [intencion.order_id],
+    );
+    const estado = rows[0]?.status;
+    if (estado === undefined) {
+      return 'El pago se confirmó pero el pedido ya no existe.';
+    }
+    if (NO_ACEPTAN_PAGO.has(estado)) {
+      return `El pago se confirmó con el pedido ya en "${estado}".`;
+    }
+    return null;
+  }
+
+  /**
+   * Devuelve el dinero de los cobros marcados.
+   *
+   * Barrido y no llamada en línea: devolver es una llamada de red a un tercero,
+   * y el proceso puede morirse entre capturar y devolver. Con la marca escrita
+   * junto a la captura, ese hueco solo retrasa la devolución; sin ella, la
+   * dejaría sin hacer y sin nadie que lo supiera.
+   *
+   * Cruza tenants —lo llama el worker— y por eso resuelve cada intención en su
+   * propio contexto.
+   */
+  async processRefunds(limit = 20): Promise<{
+    refunded: number;
+    failed: number;
+    exhausted: number;
+  }> {
+    // `pay_intents` NO tiene escape de sistema, y es deliberado: es una tabla
+    // con importes (ADR-0016 §1). Así que el barrido hace lo mismo que el de
+    // aceptación: enumera tenants bajo `app.system` —que sí abre el catálogo de
+    // tenants— y luego entra en el contexto de cada uno.
+    //
+    // Es más lento que una consulta global. Es también la única forma de que
+    // este barrido no sea un agujero por el que se vean los cobros de todos.
+    const tenants = await this.tenantsActivos();
+    const pendientes: Array<{
+      id: string;
+      tenant_id: string;
+      provider_ref: string | null;
+      paid_amount: string | null;
+      amount: string;
+      refund_attempts: number;
+      connection_id: string;
+    }> = [];
+
+    for (const tenantId of tenants) {
+      if (pendientes.length >= limit) break;
+      const filas = await withTenant(
+        this.pool,
+        tenantId,
+        async ({ client }) => {
+          const { rows } = await client.query<{
+            id: string;
+            tenant_id: string;
+            provider_ref: string | null;
+            paid_amount: string | null;
+            amount: string;
+            refund_attempts: number;
+            connection_id: string;
+          }>(
+            `SELECT id, tenant_id, provider_ref, paid_amount, amount,
+                  refund_attempts, connection_id
+             FROM pay_intents
+            WHERE refund_required AND status = 'captured'
+              AND refund_attempts < $2
+            ORDER BY captured_at
+            LIMIT $1`,
+            [limit - pendientes.length, MAX_REFUND_ATTEMPTS],
+          );
+          return rows;
+        },
+      );
+      pendientes.push(...filas);
+    }
+
+    const resultado = { refunded: 0, failed: 0, exhausted: 0 };
+
+    for (const fila of pendientes) {
+      const providerName = await this.providerNameOf(
+        fila.tenant_id,
+        fila.connection_id,
+      );
+      const provider = providerName ? this.providers.get(providerName) : null;
+
+      if (!provider || !fila.provider_ref) {
+        // Sin referencia de la pasarela no se puede devolver por API. Es una
+        // devolución a mano, y decirlo es más útil que reintentar en bucle.
+        await this.anotarFalloDeDevolucion(
+          fila.tenant_id,
+          fila.id,
+          'Sin referencia de la pasarela: la devolución tiene que hacerse a mano.',
+          MAX_REFUND_ATTEMPTS,
+        );
+        resultado.exhausted++;
+        continue;
+      }
+
+      try {
+        const devuelto = await provider.refund(
+          fila.provider_ref,
+          fila.paid_amount ?? fila.amount,
+        );
+
+        await withTenant(this.pool, fila.tenant_id, async (ctx) => {
+          await ctx.client.query(
+            `UPDATE pay_intents
+                SET status = 'refunded', refunded_at = now(),
+                    refund_required = false, refund_provider_ref = $2,
+                    refund_last_error = NULL, updated_at = now()
+              WHERE id = $1`,
+            [fila.id, devuelto.providerRef],
+          );
+          await enqueueEvent(ctx, {
+            aggregateType: 'payment',
+            aggregateId: fila.id,
+            eventType: 'payment.refunded',
+            payload: {
+              intentId: fila.id,
+              amount: devuelto.amount,
+              automatic: true,
+            },
+          });
+          await recordAudit(ctx, {
+            actorType: 'system',
+            action: 'payment.refunded',
+            resourceType: 'payment_intent',
+            resourceId: fila.id,
+            data: { amount: devuelto.amount, automatic: true },
+          });
+        });
+        resultado.refunded++;
+      } catch (error) {
+        const mensaje = error instanceof Error ? error.message : String(error);
+        const intentos = fila.refund_attempts + 1;
+        await this.anotarFalloDeDevolucion(
+          fila.tenant_id,
+          fila.id,
+          mensaje,
+          intentos,
+        );
+        if (intentos >= MAX_REFUND_ATTEMPTS) resultado.exhausted++;
+        else resultado.failed++;
+      }
+    }
+
+    return resultado;
+  }
+
+  /**
+   * Marca como vencidas las intenciones que nadie pagó.
+   *
+   * Sin esto, una intención abierta lo sigue estando para siempre y el panel
+   * enseña cobros «esperando pago» de hace semanas. Cruza tenants: lo llama el
+   * worker.
+   */
+  async expireStaleIntents(limit = 200): Promise<number> {
+    // Mismo motivo que en `processRefunds`: tenant a tenant, porque la tabla no
+    // tiene —ni debe tener— escape de sistema.
+    let vencidas = 0;
+    for (const tenantId of await this.tenantsActivos()) {
+      if (vencidas >= limit) break;
+      vencidas += await withTenant(this.pool, tenantId, async ({ client }) => {
+        const { rowCount } = await client.query(
+          `UPDATE pay_intents
+              SET status = 'expired', updated_at = now()
+            WHERE id IN (
+              SELECT id FROM pay_intents
+               WHERE status IN ('pending','authorized') AND expires_at < now()
+               ORDER BY expires_at
+               LIMIT $1
+            )`,
+          [limit - vencidas],
+        );
+        return rowCount ?? 0;
+      });
+    }
+    return vencidas;
+  }
+
+  /**
+   * Tenants activos. El catálogo de tenants SÍ es visible bajo `app.system`
+   * —es infraestructura de plataforma, no dato de negocio— y es el único punto
+   * donde este servicio usa ese escape.
+   */
+  private async tenantsActivos(): Promise<string[]> {
+    return withSystem(this.pool, async ({ client }) => {
+      const { rows } = await client.query<{ id: string }>(
+        "SELECT id FROM ten_tenants WHERE status = 'active'",
+      );
+      return rows.map((r) => r.id);
+    });
+  }
+
+  private async anotarFalloDeDevolucion(
+    tenantId: string,
+    intentId: string,
+    mensaje: string,
+    intentos: number,
+  ): Promise<void> {
+    await withTenant(this.pool, tenantId, async ({ client }) => {
+      await client.query(
+        `UPDATE pay_intents
+            SET refund_attempts = $3, refund_last_error = $2, updated_at = now()
+          WHERE id = $1`,
+        [intentId, mensaje, intentos],
+      );
+    });
+    const agotado = intentos >= MAX_REFUND_ATTEMPTS;
+    this.logger[agotado ? 'error' : 'warn'](
+      `Devolución ${agotado ? 'AGOTADA' : 'fallida'} para el cobro ${intentId} (intento ${intentos}/${MAX_REFUND_ATTEMPTS}): ${mensaje}`,
+    );
+  }
+
+  private async providerNameOf(
+    tenantId: string,
+    connectionId: string,
+  ): Promise<string | null> {
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ provider: string }>(
+        'SELECT provider FROM pay_connections WHERE id = $1',
+        [connectionId],
+      );
+      return rows[0]?.provider ?? null;
+    });
+  }
+
+  /** Confirma el pedido tras un pago capturado que SÍ se puede honrar. */
   private async confirmarPedido(
     tenantId: string,
     orderId: string,
-    vencida: boolean,
   ): Promise<void> {
-    if (vencida) {
-      this.logger.warn(
-        `Pago capturado tras el vencimiento de su intención (pedido ${orderId}): queda para devolución.`,
-      );
-      return;
-    }
     try {
       await this.ordering.applyTransition(tenantId, orderId, 'accept', {
         actorType: 'system',

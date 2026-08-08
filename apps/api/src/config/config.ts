@@ -43,6 +43,11 @@ const configSchema = z.object({
       .positive()
       .max(1_000)
       .default(50),
+    /**
+     * Devoluciones automáticas. Cada minuto: devolver diez segundos antes no
+     * cambia nada para el cliente, y machacar a la pasarela con reintentos sí.
+     */
+    refundIntervalMs: z.coerce.number().int().positive().default(60_000),
   }),
 
   /** Colector OTLP. Sin él no se arranca el tracing (ver observability/tracing). */
@@ -80,6 +85,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       outboxBatchSize: env.WORKER_OUTBOX_BATCH_SIZE,
       ingestionIntervalMs: env.WORKER_INGESTION_INTERVAL_MS,
       ingestionBatchSize: env.WORKER_INGESTION_BATCH_SIZE,
+      refundIntervalMs: env.WORKER_REFUND_INTERVAL_MS,
     },
     otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
     credentialsMasterKey:
