@@ -251,4 +251,18 @@ El corazón de la fase son **T6.03 (costo promedio móvil)** y **T6.11 (cierre m
 
 **Lo que este despliegue NO trae, dicho por adelantado** (`docs/34-puesta-en-marcha.md` §9): alta disponibilidad, copias gestionadas —hay comando, pero **hacerlas es de quien levanta**—, escalado del Postgres local, canario con reparto de tráfico y certificados. Todo eso sigue siendo **DT-02**.
 
+## Hallazgo grave: falta la mitad de administración del producto
+
+Al escribir el runbook de puesta en marcha afirmé que, tras dar de alta al cliente, «todo lo demás se hace desde el panel». **Al verificarlo, el panel no existe.** Y tirando del hilo apareció algo mayor.
+
+**DT-09 — no hay ninguna interfaz de administración.** `apps/web` solo contiene la tienda del comprador; `apps/pos` no existe. Las tres —panel, POS y KDS— están **especificadas y asignadas a estas fases** (`specs/ux/03-panel.md` dice literalmente «Fase 4–5»; `01-pos.md` y `02-kds.md`, F4), y **ningún backlog de F4 ni de F5 las incluyó**. Los gates de las dos fases no lo detectaron porque comprueban pruebas, cobertura y criterios de salida, no superficie de spec.
+
+**DT-10 — no hay forma de crear los datos de negocio.** Ni marca, ni local, ni zona, ni horario, ni categoría, ni producto. La spec 03 pide «CRUD empresas/marcas/locales/cocinas/estaciones/almacenes/zonas/horarios» y la spec 04 «CRUD completo»; de las dos solo se construyó la mitad de **lectura** —`getResolvedCatalog`, `findCoverage`, `getStructure`, pausar y reanudar—. Las únicas escrituras que existen son las semillas demo, con SQL directo y siempre la misma pollería ficticia. **T3.12b, T4.01 y T4.03 se dieron por finalizadas sobre esa mitad.**
+
+Dicho sin rodeos: el motor está completo y muy probado —1 141 pruebas, RLS, outbox, pagos, facturación, delivery, agente— y **un cliente nuevo no puede cargar su carta por ningún medio**. Un piloto podría vender por tienda web y por WhatsApp solo si alguien le monta el negocio con SQL a mano, y no tendría pantalla de mostrador ni de cocina.
+
+**Por qué no se vio antes.** Cada tarea se cerró contra su criterio del backlog, y los criterios estaban bien escritos; lo que faltaba era **la tarea**. Es el mismo patrón que el resto de la fase —la pieza que existe y nadie conecta— pero un nivel más arriba: aquí no falta el cable, falta el aparato. Y el gate de fase no lo pilla porque pregunta «¿cumple lo que el backlog prometió?» y no «¿está lo que la spec pide?».
+
+**Corregido en `docs/34-puesta-en-marcha.md`:** el runbook ya no promete un panel que no existe, y §10 lista la ausencia de panel, POS y KDS entre lo que este despliegue no trae.
+
 **Próxima acción de Claude Code:** esperar decisión del propietario

@@ -83,14 +83,38 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
 #   -e SAHANA_OWNER_PASSWORD='…'
 ```
 
-Devuelve el `tenantId` en JSON. A partir de ahí, todo lo demás —marcas, locales,
-carta, dominio de la tienda— se hace desde el panel con esa cuenta.
+Devuelve el `tenantId` en JSON.
 
-## 5. Poner la tienda en un dominio
+**Aquí hay que decir la verdad: NO existe todavía un panel de administración.**
+La cuenta creada sirve para la API, no para una pantalla. Lo que falta —marcas,
+locales, zona de reparto, horario, carta y dominio de la tienda— se configura
+con el comando de la sección siguiente. El panel está especificado
+(`specs/ux/03-panel.md`, asignado a F4–F5) y **no se construyó**; ver
+`docs/23-technical-debt.md` (DT-09).
+
+## 5. Configurar el negocio
+
+Sin panel, la configuración va por archivo. Se describe el negocio una vez y se
+aplica de golpe — que además es lo que hace repetible dar de alta a diez
+clientes en vez de a uno:
+
+```bash
+cp infra/ejemplos/negocio.ejemplo.json negocio.json   # editar
+docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
+  run --rm -v "$PWD/negocio.json:/tmp/negocio.json:ro" api \
+  node dist/database/setup-business.js --tenant <TENANT_ID> --file /tmp/negocio.json
+```
+
+Es **idempotente**: volver a aplicarlo con la carta cambiada actualiza precios y
+añade productos nuevos sin duplicar nada. Así se corrige un precio mal escrito
+sin tocar la base a mano.
+
+## 6. Poner la tienda en un dominio
 
 El tenant de cada tienda **sale del `Host`** y de nada más. Los pasos son:
 
-1. En el panel, registrar el dominio de la marca y verificarlo.
+1. Declarar el dominio en el archivo de §5 (`tienda.host`). El comando lo
+   registra y lo marca verificado.
 2. Apuntar el DNS del cliente al servidor.
 3. En el proxy, enrutar ese dominio al puerto `3001` **conservando el `Host`
    original** (`proxy_set_header Host $host` en nginx; Caddy lo hace solo).
@@ -98,7 +122,7 @@ El tenant de cada tienda **sale del `Host`** y de nada más. Los pasos son:
 Si el proxy reescribe el `Host`, **todas las tiendas resolverán a la misma
 marca**. Es el fallo más caro posible aquí y es silencioso: la página carga.
 
-## 6. Copias de seguridad — responsabilidad de quien levanta
+## 7. Copias de seguridad — responsabilidad de quien levanta
 
 En este despliegue Postgres vive en el mismo servidor. **Nadie hace copias por
 ti.** Lo mínimo antes de tener un cliente vendiendo:
@@ -112,7 +136,7 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
 Diario, **fuera de la máquina**, y probando la restauración de vez en cuando:
 una copia que nadie ha restaurado nunca no es una copia, es una carpeta.
 
-## 7. Desplegar una versión nueva, y revertirla
+## 8. Desplegar una versión nueva, y revertirla
 
 Las imágenes se fijan por **tag**, nunca `latest`: revertir es volver a poner el
 tag anterior, y con `latest` no hay tag anterior al que volver.
@@ -133,24 +157,27 @@ a la versión anterior: lo impide el gate `pnpm migrations:check`, que corre en
 CI y rechaza `DROP COLUMN`, renombrados, cambios de tipo y `NOT NULL` sin
 `DEFAULT`. Las dos piezas son la misma garantía (docs/17, T5.35).
 
-## 8. Qué mirar cuando algo va mal
+## 9. Qué mirar cuando algo va mal
 
 | Síntoma | Dónde mirar |
 |---|---|
 | La API reinicia en bucle | `docker logs sahana-api-1`. Casi siempre es configuración: el proceso valida al arrancar y prefiere no arrancar |
 | `/health/ready` dice `not_ready` con `database: ok` | El esquema va por detrás de la imagen: falta correr `migrate` |
-| Una tienda enseña la carta de otra | El proxy está reescribiendo el `Host` (§5) |
+| Una tienda enseña la carta de otra | El proxy está reescribiendo el `Host` (§6) |
 | Los pedidos no llegan a cocina | El worker. `docker logs sahana-worker-1`: al arrancar imprime qué barridos y qué consumidores tiene activos |
 | La cola crece | Métricas `outbox_pending` y `outbox_oldest_pending_seconds` (docs/18). Más de 1 000 pendientes es alerta |
 
-## 9. Lo que este despliegue NO trae
+## 10. Lo que este despliegue NO trae
 
 Se dice aquí para que nadie lo descubra el día que haga falta:
 
 - **Alta disponibilidad.** Un servidor. Si se cae, se cae todo.
-- **Copias gestionadas.** Ver §6.
+- **Copias gestionadas.** Ver §7.
 - **Escalado horizontal.** La API y el worker escalan con réplicas, pero el
   Postgres local no.
 - **Canario.** El reparto de tráfico al 10 % necesita balanceador (**DT-02**).
   Lo que sí está: revertir sin tocar la base.
 - **Certificados.** Los pone el proxy.
+- **Panel de administración, POS y KDS.** No existen (DT-09). El negocio vende
+  por la tienda web y por el agente de WhatsApp; el mostrador y la pantalla de
+  cocina todavía no tienen interfaz.
