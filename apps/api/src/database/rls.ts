@@ -155,3 +155,32 @@ export async function withIntegrationLookup<T>(
 ): Promise<T> {
   return inTransaction(pool, [['app.integration_lookup', 'on']], work);
 }
+
+/**
+ * Contexto de RESOLUCIÓN DE CONEXIÓN DE PASARELA DE PAGO (ADR-0016).
+ *
+ * Cuarto escape acotado, y el más delicado de los cuatro: aquí hay dinero. Un
+ * fallo de aislamiento en la ingesta de marketplace mete un pedido en la cocina
+ * equivocada; uno aquí confirmaría un cobro en el tenant equivocado.
+ *
+ * Por eso importa muchísimo QUÉ tabla lleva el escape. Lo lleva
+ * `pay_connections`, que guarda credenciales. **NO lo lleva `pay_intents`**, que
+ * guarda importes — y esa es exactamente la línea que mantiene defendible todo
+ * el patrón de ADR-0014: «ninguna tabla de negocio menciona el flag, así que
+ * activarlo no puede exponer pedidos, catálogo ni cobros de otro tenant».
+ *
+ * Mismas tres restricciones que sus hermanos:
+ *  - Solo lectura: la política `payment_lookup` es `FOR SELECT`.
+ *  - Solo `pay_connections`: ninguna otra tabla consulta este flag.
+ *  - Uso acotado: solo el paso de resolver la conexión. Aplicar el efecto del
+ *    webhook va por `withTenant` con el tenant ya resuelto y verificado.
+ *
+ * Resolver NO autoriza: devuelve el secreto para comprobar el HMAC, y una firma
+ * inválida se rechaza sin tocar el pago (RN-PAY-01).
+ */
+export async function withPaymentLookup<T>(
+  pool: Pool,
+  work: (ctx: { db: Db; client: PoolClient }) => Promise<T>,
+): Promise<T> {
+  return inTransaction(pool, [['app.payment_lookup', 'on']], work);
+}

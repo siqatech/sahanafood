@@ -925,3 +925,84 @@ export const cashMovements = pgTable(
   },
   (t) => [index('idx_cash_movements_sesion').on(t.tenantId, t.sessionId)],
 );
+
+// ---------------------------------------------------------------------------
+// Pagos online (spec 10 parte F5, ADR-0016).
+// ---------------------------------------------------------------------------
+
+export const paymentConnections = pgTable(
+  'pay_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    provider: text('provider').notNull(),
+    /** NULL = vale para todas las marcas del tenant. */
+    brandId: uuid('brand_id'),
+    /**
+     * Token público de la URL de callback. Es lo ÚNICO que permite averiguar
+     * de quién es un aviso antes de poder verificar su firma (ADR-0016 §1).
+     */
+    webhookToken: text('webhook_token').notNull(),
+    /** Cifrado campo a campo con clave por tenant, igual que las de conector. */
+    credentials: jsonb('credentials').notNull().default({}),
+    config: jsonb('config').notNull().default({}),
+    status: text('status').notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_pay_connections_tenant').on(t.tenantId, t.provider)],
+);
+
+export const paymentIntents = pgTable(
+  'pay_intents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    connectionId: uuid('connection_id').notNull(),
+    orderId: uuid('order_id').notNull(),
+    /** Referencia opaca que viaja a la pasarela y vuelve en el webhook. */
+    reference: text('reference').notNull(),
+    providerRef: text('provider_ref'),
+    status: text('status').notNull().default('pending'),
+    /** Importe esperado. NUMERIC(14,4): jamás float (ADR-0013). */
+    amount: numeric('amount', { precision: 14, scale: 4 }).notNull(),
+    currency: text('currency').notNull().default('PEN'),
+    /** Lo que la pasarela dijo haber cobrado; se guarda aunque NO cuadre. */
+    paidAmount: numeric('paid_amount', { precision: 14, scale: 4 }),
+    mismatchReason: text('mismatch_reason'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_pay_intents_order').on(t.tenantId, t.orderId)],
+);
+
+export const paymentWebhookEvents = pgTable(
+  'pay_webhook_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    connectionId: uuid('connection_id').notNull(),
+    provider: text('provider').notNull(),
+    /** Clave de dedupe junto con (tenant, provider). Es lo que hace idempotente el webhook. */
+    eventId: text('event_id').notNull(),
+    intentId: uuid('intent_id'),
+    payload: jsonb('payload').notNull(),
+    outcome: text('outcome').notNull(),
+    detail: text('detail'),
+    traceId: text('trace_id'),
+    receivedAt: timestamp('received_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_pay_webhook_intent').on(t.tenantId, t.intentId)],
+);

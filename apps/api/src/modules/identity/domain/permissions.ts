@@ -64,6 +64,18 @@ export const PERMISSIONS = [
   // Reportes
   'reports.read',
   'reports.export',
+  // Pagos online (F5)
+  'payments.read',
+  // Crear una intención de cobro es pedirle dinero a alguien: se separa de la
+  // lectura. NO existe un permiso para «confirmar un pago»: eso solo lo hace el
+  // webhook verificado de la pasarela (RN-PAY-01), nunca una persona.
+  'payments.charge',
+  // Devolver dinero es la operación más delicada del módulo: sobre el umbral
+  // exige doble aprobación (RN-PAY-03).
+  'payments.refund',
+  // Configurar la pasarela toca credenciales y decide a qué cuenta llega el
+  // dinero del tenant: queda en propietario/administrador.
+  'payments.manage',
   // Integraciones (F4 con simulador, F7 conectores reales)
   'integrations.read',
   // Crear o pausar una conexión toca credenciales y el flujo de pedidos de un
@@ -141,6 +153,10 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       // separa de la lectura a propósito.
       'messaging.manage',
       'reports.read',
+      // Ve los cobros y puede generar un link de pago; devolver dinero y
+      // configurar la pasarela quedan arriba.
+      'payments.read',
+      'payments.charge',
       // Ve la salud de los canales y la bandeja de excepciones, pero no toca
       // credenciales: gestionar conexiones queda en propietario/administrador.
       'integrations.read',
@@ -162,6 +178,10 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       // autoriza un supervisor, igual que un descuento sobre el umbral.
       'billing.read',
       'billing.issue',
+      // Cobra: puede generar el link de pago del pedido que atiende. Devolver
+      // dinero NO, igual que anular un comprobante.
+      'payments.read',
+      'payments.charge',
     ],
   },
   {

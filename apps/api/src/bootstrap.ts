@@ -26,11 +26,27 @@ export const ROUTES_WITHOUT_PREFIX = ['metrics'];
  */
 export const NEST_APP_OPTIONS = { bodyParser: false } as const;
 
-/** Prefijo de las rutas que reciben webhooks externos firmados. */
-export const WEBHOOK_PATH_PREFIX = '/api/v1/integrations/webhooks';
+/**
+ * Prefijos de las rutas que reciben webhooks externos firmados.
+ *
+ * Toda ruta que verifique un HMAC tiene que estar en esta lista: la firma se
+ * calcula sobre los BYTES EXACTOS que mandó el emisor, y `express.json()` los
+ * pierde al parsear. Olvidar añadir una ruta aquí no da un error claro — da
+ * «firma inválida» en el 100 % de los avisos, y manda a depurar el secreto
+ * equivocado.
+ */
+export const WEBHOOK_PATH_PREFIXES = [
+  '/api/v1/integrations/webhooks',
+  // Pagos (ADR-0016). Confirma cobros: si su firma no se puede verificar, no
+  // se confirma nada.
+  '/api/v1/payments/callbacks',
+] as const;
+
+/** @deprecated Usa `WEBHOOK_PATH_PREFIXES`. Se conserva por compatibilidad. */
+export const WEBHOOK_PATH_PREFIX = WEBHOOK_PATH_PREFIXES[0];
 
 const esWebhook = (req: IncomingMessage): boolean =>
-  (req.url ?? '').startsWith(WEBHOOK_PATH_PREFIX);
+  WEBHOOK_PATH_PREFIXES.some((prefijo) => (req.url ?? '').startsWith(prefijo));
 
 /** Conserva los bytes exactos del cuerpo para poder verificar firmas HMAC. */
 function capturarCuerpoCrudo(

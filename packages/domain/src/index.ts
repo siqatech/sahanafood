@@ -200,3 +200,21 @@ export {
   type BudgetStatus,
   type NotifiableOrderState,
 } from './messaging/whatsapp-window.js';
+
+// --- Pagos online (spec 10, ADR-0016) ---
+export {
+  PAYMENT_STATES,
+  decidePaymentTransition,
+  applyPaymentTransition,
+  PaymentTransitionError,
+  confirmsOrder,
+  isOpen,
+  type PaymentState,
+  type PaymentDecision,
+} from './payments/payment-state.js';
+
+export {
+  verifyPaidAmount,
+  amountConfirms,
+  type AmountVerdict,
+} from './payments/amount-check.js';

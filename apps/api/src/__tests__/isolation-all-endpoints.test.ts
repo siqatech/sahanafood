@@ -14,6 +14,7 @@ import {
   SIMULATOR_PROVIDER,
 } from '../modules/integrations/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
+import { PaymentsService, CULQI_PROVIDER } from '../modules/payments/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -58,6 +59,11 @@ suite('Aislamiento — todos los endpoints', () => {
   let documentoDeB = '';
   /** Pedido del tenant B, para endpoints que operan sobre uno concreto. */
   let pedidoDeB = '';
+  /**
+   * Intención de cobro del tenant B. Si se filtrara, A vería cuánto cobra su
+   * competencia y —peor— tendría la referencia con la que vuelve el webhook.
+   */
+  let intencionDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -252,6 +258,29 @@ suite('Aislamiento — todos los endpoints', () => {
     });
     pedidoDeB = pedidoB.id;
     secretsOfB.push(pedidoDeB);
+
+    // Cobro de B contra ese pedido. La `reference` entra como secreto porque
+    // es con lo que vuelve el webhook de la pasarela: quien la tenga puede
+    // intentar avisos contra un cobro ajeno, y aunque la firma lo pare, no
+    // tiene por qué llegar a saberla.
+    const pasarelaDeB = await app
+      .get(PaymentsService)
+      .createConnection(b.tenantId, {
+        provider: CULQI_PROVIDER,
+        webhookSecret: 'secreto-de-la-pasarela-del-tenant-b',
+      });
+    const cobroDeB = await app.get(PaymentsService).createIntent(b.tenantId, {
+      orderId: pedidoDeB,
+      provider: CULQI_PROVIDER,
+    });
+    intencionDeB = cobroDeB.id;
+    secretsOfB.push(
+      intencionDeB,
+      cobroDeB.reference,
+      pasarelaDeB.id,
+      pasarelaDeB.webhookToken,
+      'secreto-de-la-pasarela-del-tenant-b',
+    );
 
     // B necesita DATOS de analítica y mensajería: dos respuestas de ceros
     // idénticas no demuestran aislamiento, solo que ambos tenants están
@@ -737,6 +766,42 @@ suite('Aislamiento — todos los endpoints', () => {
   // simulada —se declara como "secreto de B" un valor que SÍ está en la
   // respuesta de A— y se exige que la detecte.
   // -------------------------------------------------------------------------
+  it('GET /payments/intents/:id de la intención de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /payments/intents/:id',
+        (r) => r.get(`/api/v1/payments/intents/${intencionDeB}`),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('GET /payments/orders/:orderId/intents del pedido de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /payments/orders/:orderId/intents', (r) =>
+        r.get(`/api/v1/payments/orders/${pedidoDeB}/intents`),
+      ),
+    );
+  });
+
+  it('POST /payments/intents sobre el pedido de B', async () => {
+    // El más peligroso de los tres: si colara, A podría generar un cobro contra
+    // un pedido ajeno y desviar el dinero a SU pasarela.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /payments/intents',
+        (r) =>
+          r
+            .post('/api/v1/payments/intents')
+            .send({ orderId: pedidoDeB, provider: CULQI_PROVIDER }),
+        { expectedStatusForA: [404, 422] },
+      ),
+    );
+  });
+
   it('el harness DETECTA una fuga simulada (prueba del detector)', async () => {
     const conFugaDeliberada: IsolationCase = {
       name: 'GET /organization (fuga simulada)',
