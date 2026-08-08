@@ -29,7 +29,11 @@ import { NotFoundError } from './errors.js';
  */
 
 /** Propósitos válidos. Enum cerrado: ver ADR-0017 §2. */
-export const TOKEN_PURPOSES = ['payment_link', 'order_tracking'] as const;
+export const TOKEN_PURPOSES = [
+  'payment_link',
+  'order_tracking',
+  'cart',
+] as const;
 export type TokenPurpose = (typeof TOKEN_PURPOSES)[number];
 
 export interface ResolvedToken {

@@ -1,0 +1,560 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { Test } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { AppModule } from '../app.module.js';
+import { configureApp, NEST_APP_OPTIONS } from '../bootstrap.js';
+import { createPool } from '../database/pool.js';
+import { withTenant } from '../database/rls.js';
+import { TenancyService } from '../modules/tenancy/index.js';
+import { seedDemoOrganization } from '../modules/organization/index.js';
+import { seedDemoCatalog } from '../modules/catalog/index.js';
+import { StorefrontService } from '../modules/storefront/index.js';
+import { seedPlans } from '../database/seed.js';
+import { INTEGRATION_DB, deleteTenants } from './helpers.js';
+
+/**
+ * Tienda web (spec 11, T5.08–T5.13).
+ *
+ * Los cuatro casos que la spec marca como bloqueantes, más el que hace que este
+ * producto sea vendible como SaaS:
+ *
+ * · **Aislamiento por dominio.** El host de la marca A no sirve el catálogo de
+ *   B. Es LA prueba de este módulo: la tienda es la única superficie del
+ *   sistema que atiende sin sesión, así que el tenant sale del host o no sale
+ *   de ningún sitio. Si esto falla, un competidor ve precios ajenos desde su
+ *   propio dominio.
+ * · **Agotado entre carrito y checkout.** Validar solo al agregar deja cobrar
+ *   comida que no existe (RN-STO-02).
+ * · **Zona sin cobertura.** No es un error: es `pickup` con motivo. Un error
+ *   pierde la venta; «no llegamos, pero puedes recoger» la conserva.
+ * · **Pago fallido → carrito recuperable.** El carrito vive en el servidor
+ *   justo para esto: la gente cierra la pestaña cuando le rebota la tarjeta.
+ */
+const suite = INTEGRATION_DB ? describe : describe.skip;
+
+const HOST_A = 'buensabor.sahana.food';
+const HOST_B = 'wokexpress-otro.sahana.food';
+
+suite('Tienda web', () => {
+  let app: INestApplication;
+  const pool = createPool(INTEGRATION_DB!, { max: 10 });
+  const created: string[] = [];
+
+  let tenantA = '';
+  let tenantB = '';
+  let tokenAdminA = '';
+  let brandA = '';
+  let brandB = '';
+  let orgA: Awaited<ReturnType<typeof seedDemoOrganization>>;
+  let catA: Awaited<ReturnType<typeof seedDemoCatalog>>;
+  let catB: Awaited<ReturnType<typeof seedDemoCatalog>>;
+  let storefront: StorefrontService;
+
+  const alta = async (
+    tenantId: string,
+    brandId: string,
+    host: string,
+  ): Promise<void> => {
+    const dominio = await storefront.registerDomain(tenantId, { brandId, host });
+    await storefront.verifyDomain(tenantId, dominio.id);
+  };
+
+  beforeAll(async () => {
+    process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
+    process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-0123456789';
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleRef.createNestApplication(NEST_APP_OPTIONS);
+    configureApp(app);
+    await app.init();
+    storefront = app.get(StorefrontService);
+
+    await seedPlans(pool);
+
+    // El host es único GLOBALMENTE —es lo que impide el secuestro de tiendas—,
+    // así que una ejecución que se cae a medias deja el dominio reservado y la
+    // siguiente no arranca. Se limpia por nombre para que la suite se pueda
+    // repetir sin tocar la base a mano.
+    await pool.query('DELETE FROM ten_tenants WHERE name LIKE $1', [
+      'Tienda Tenant %',
+    ]);
+
+    const tenancy = app.get(TenancyService);
+
+    const a = await tenancy.provisionTenant({
+      name: 'Tienda Tenant A',
+      planCode: 'growth',
+      owner: {
+        email: 'sto-a@sahana.test',
+        password: 'password-sto-a-1',
+        fullName: 'Dueña Tienda A',
+      },
+    });
+    tenantA = a.tenantId;
+    created.push(tenantA);
+
+    const b = await tenancy.provisionTenant({
+      name: 'Tienda Tenant B',
+      planCode: 'growth',
+      owner: {
+        email: 'sto-b@sahana.test',
+        password: 'password-sto-b-1',
+        fullName: 'Dueño Tienda B',
+      },
+    });
+    tenantB = b.tenantId;
+    created.push(tenantB);
+
+    orgA = await withTenant(pool, tenantA, (ctx) => seedDemoOrganization(ctx));
+    brandA = orgA.brandIds[0]!;
+    catA = await withTenant(pool, tenantA, (ctx) =>
+      seedDemoCatalog(ctx, { brandId: brandA, locationId: orgA.locationId }),
+    );
+
+    const orgB = await withTenant(pool, tenantB, (ctx) =>
+      seedDemoOrganization(ctx),
+    );
+    brandB = orgB.brandIds[0]!;
+    catB = await withTenant(pool, tenantB, (ctx) =>
+      seedDemoCatalog(ctx, { brandId: brandB, locationId: orgB.locationId }),
+    );
+
+    await alta(tenantA, brandA, HOST_A);
+    await alta(tenantB, brandB, HOST_B);
+
+    const login = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'sto-a@sahana.test', password: 'password-sto-a-1' })
+      .expect(201);
+    tokenAdminA = login.body.accessToken;
+  });
+
+  afterAll(async () => {
+    await app?.close();
+    await deleteTenants(pool, created);
+    await pool.end();
+  });
+
+  const http = () => request(app.getHttpServer());
+
+  /** Abre un carrito en un host y devuelve su token público. */
+  const abrirCarrito = async (host: string): Promise<string> => {
+    const r = await http()
+      .post('/api/v1/shop/carts')
+      .set('host', host)
+      .expect(201);
+    return r.body.token as string;
+  };
+
+  // ------------------------------------------------- Aislamiento por dominio
+
+  it('BLOQUEANTE: el host de la marca A no sirve el catálogo de B', async () => {
+    const a = await http().get('/api/v1/shop/context').set('host', HOST_A).expect(200);
+    const b = await http().get('/api/v1/shop/context').set('host', HOST_B).expect(200);
+
+    expect(a.body.brandId).toBe(brandA);
+    expect(b.body.brandId).toBe(brandB);
+    expect(a.body.brandId).not.toBe(b.body.brandId);
+
+    // Y lo que de verdad importa: un producto de B no entra en un carrito de A.
+    // El id existe y es válido —solo que en otro tenant—, así que si el
+    // servicio confiara en el payload en vez de en el host, esto pasaría.
+    const carrito = await abrirCarrito(HOST_A);
+    const cruzado = await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({ productId: catB.polloId, quantity: 1 })
+      .expect(422);
+    expect(cruzado.body.detail).toMatch(/no está disponible/i);
+  });
+
+  it('un host sin tienda no dice si el dominio existe', async () => {
+    // Mismo 404 para «no registrado» y «registrado pero sin verificar»: si
+    // distinguiera, cualquiera sabría qué dominios están a medio configurar.
+    await http().get('/api/v1/shop/context').set('host', 'nadie.example').expect(404);
+
+    const pendiente = await storefront.registerDomain(tenantA, {
+      brandId: brandA,
+      host: 'pendiente.example',
+    });
+    expect(pendiente.status).toBe('pending');
+    await http()
+      .get('/api/v1/shop/context')
+      .set('host', 'pendiente.example')
+      .expect(404);
+  });
+
+  it('dos tenants no pueden reclamar el mismo host', async () => {
+    // La unicidad global del host es lo que hace imposible el secuestro de una
+    // tienda ajena registrando su dominio desde otra cuenta.
+    await expect(
+      storefront.registerDomain(tenantB, { brandId: brandB, host: HOST_A }),
+    ).rejects.toThrow();
+  });
+
+  // ------------------------------------------------------- Carrito y compra
+
+  it('compra de invitado de punta a punta', async () => {
+    const carrito = await abrirCarrito(HOST_A);
+
+    const conLinea = await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 2,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+    // Precio web (32) + «Grande» (5) = 37, × 2. El modificador entra en el
+    // precio del carrito: si no entrara, el cliente vería 64 y pagaría 74.
+    expect(conLinea.body.subtotal).toBe('74.0000');
+    expect(conLinea.body.blockers.map((b: { code: string }) => b.code)).toContain(
+      'NO_ADDRESS',
+    );
+
+    // Dirección DENTRO de la zona céntrica (la barata: gana por RN-ORG-02).
+    const conDireccion = await http()
+      .post(`/api/v1/shop/carts/${carrito}/address`)
+      .send({ address: 'Av. Larco 100, Miraflores', lat: -12.125, lng: -77.02 })
+      .expect(201);
+    expect(conDireccion.body.fulfillment).toBe('delivery');
+    expect(Number(conDireccion.body.deliveryFee)).toBeGreaterThan(0);
+
+    const conCliente = await http()
+      .post(`/api/v1/shop/carts/${carrito}/customer`)
+      .send({ name: 'Ana Compradora', phone: '+51987654321' })
+      .expect(201);
+    expect(conCliente.body.blockers).toHaveLength(0);
+
+    const pedido = await http()
+      .post(`/api/v1/shop/carts/${carrito}/checkout`)
+      .expect(201);
+    expect(pedido.body.orderId).toBeTruthy();
+    expect(pedido.body.total).toBe(conCliente.body.total);
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ status: string; order_id: string }>(
+        `SELECT c.status, c.order_id FROM sto_carts c
+           JOIN pub_tokens t ON t.resource_id = c.id
+          WHERE t.token = $1`,
+        [carrito],
+      );
+      return rows[0]!;
+    });
+    expect(fila.status).toBe('ordered');
+    expect(fila.order_id).toBe(pedido.body.orderId);
+  });
+
+  it('el catálogo público sale del host y respeta el canal web', async () => {
+    const r = await http().get('/api/v1/shop/catalog').set('host', HOST_A).expect(200);
+    expect(r.body.brandId).toBe(brandA);
+    expect(r.body.channel).toBe('web');
+
+    const ids = r.body.products.map((p: { id: string }) => p.id);
+    expect(ids).toContain(catA.polloId);
+    // El producto que solo tiene precio en POS no aparece en la tienda
+    // (RN-CAT-01): enseñarlo sin precio de web sería prometer algo que el
+    // pedido rechazaría después.
+    expect(ids).not.toContain(catA.soloPosId);
+  });
+
+  it('un grupo obligatorio sin elegir se rechaza AL AGREGAR, no en el checkout', async () => {
+    // Enterarse de que faltaba elegir el tamaño con la tarjeta ya en la mano es
+    // el peor momento posible. La validación usa la misma función que el
+    // pedido, así que la tienda y la caja no pueden discrepar.
+    const carrito = await abrirCarrito(HOST_A);
+    const r = await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({ productId: catA.polloId, quantity: 1 })
+      .expect(422);
+    expect(r.body.code).toBe('MODIFIER_MIN_NOT_MET');
+
+    // Y una opción que no es de este producto tampoco cuela: ignorarla dejaría
+    // colar la opción de otro plato y salir con un precio que no existe.
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 1,
+        modifierOptionIds: [catA.optionGrandeId, catB.optionQuesoId],
+      })
+      .expect(422);
+  });
+
+  it('el consentimiento de marketing es una decisión aparte y guarda su texto', async () => {
+    const carrito = await abrirCarrito(HOST_A);
+
+    // Un booleano suelto no acredita nada (Ley 29733): sin el texto exacto, se
+    // rechaza en vez de guardar un consentimiento que no se puede demostrar.
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/customer`)
+      .send({ name: 'Ana', phone: '+51900000000', marketingConsent: true })
+      .expect(422);
+
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/customer`)
+      .send({
+        name: 'Ana',
+        phone: '+51900000000',
+        marketingConsent: true,
+        marketingConsentText: 'Acepto recibir promociones de Pollería El Buen Sabor.',
+      })
+      .expect(201);
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        marketing_consent: boolean;
+        marketing_consent_text: string | null;
+        marketing_consent_at: Date | null;
+      }>(
+        `SELECT c.marketing_consent, c.marketing_consent_text, c.marketing_consent_at
+           FROM sto_carts c JOIN pub_tokens t ON t.resource_id = c.id
+          WHERE t.token = $1`,
+        [carrito],
+      );
+      return rows[0]!;
+    });
+    expect(fila.marketing_consent).toBe(true);
+    expect(fila.marketing_consent_text).toContain('promociones');
+    expect(fila.marketing_consent_at).not.toBeNull();
+  });
+
+  // ------------------------------------------------------------ Bloqueantes
+
+  it('BLOQUEANTE: se agota entre el carrito y el checkout', async () => {
+    const carrito = await abrirCarrito(HOST_A);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 1,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/address`)
+      .send({ address: 'Av. Larco 100', lat: -12.125, lng: -77.02 })
+      .expect(201);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/customer`)
+      .send({ name: 'Ana', phone: '+51987654321' })
+      .expect(201);
+
+    // Se acaba el pollo MIENTRAS el cliente rellena sus datos.
+    await http()
+      .post(`/api/v1/catalog/products/${catA.polloId}/pause`)
+      .set('authorization', `Bearer ${tokenAdminA}`)
+      .send({ channels: ['web'], reason: 'Se acabó' })
+      .expect(201);
+
+    const bloqueado = await http()
+      .post(`/api/v1/shop/carts/${carrito}/checkout`)
+      .expect(422);
+    expect(bloqueado.body.detail).toMatch(/no está disponible/i);
+
+    // La línea NO desaparece: se marca. Borrarla en silencio se siente como un
+    // fallo de la tienda y el cliente no entiende qué pasó.
+    const vista = await http().get(`/api/v1/shop/carts/${carrito}`).expect(200);
+    expect(vista.body.lines).toHaveLength(1);
+    expect(vista.body.lines[0].unavailable).toBe(true);
+    expect(vista.body.subtotal).toBe('0.0000');
+
+    // Quitar la línea agotada devuelve el carrito a un estado comprable.
+    await http()
+      .delete(`/api/v1/shop/carts/${carrito}/lines/${vista.body.lines[0].id}`)
+      .expect(200);
+
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query('DELETE FROM cat_product_pauses WHERE product_id = $1', [
+        catA.polloId,
+      ]),
+    );
+  });
+
+  it('BLOQUEANTE: dirección sin cobertura → recojo, no error', async () => {
+    const carrito = await abrirCarrito(HOST_A);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 1,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+
+    // Cusco: fuera de cualquier zona de Lima.
+    const vista = await http()
+      .post(`/api/v1/shop/carts/${carrito}/address`)
+      .send({ address: 'Plaza de Armas, Cusco', lat: -13.516, lng: -71.978 })
+      .expect(201);
+
+    expect(vista.body.fulfillment).toBe('pickup');
+    expect(vista.body.deliveryFee).toBe('0.0000');
+    // Y sobre todo: sin cobertura NO es un bloqueo de dirección. La venta sigue
+    // viva, solo que el cliente recoge.
+    expect(vista.body.blockers.map((b: { code: string }) => b.code)).not.toContain(
+      'NO_ADDRESS',
+    );
+
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/customer`)
+      .send({ name: 'Ana', phone: '+51987654321' })
+      .expect(201);
+    await http().post(`/api/v1/shop/carts/${carrito}/checkout`).expect(201);
+  });
+
+  it('BLOQUEANTE: pago fallido → el carrito sigue ahí', async () => {
+    // El carrito vive en el servidor. Se comprueba con un token en frío: no hay
+    // sesión, no hay cookie, no hay localStorage — solo el enlace.
+    const carrito = await abrirCarrito(HOST_A);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 3,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/customer`)
+      .send({ name: 'Ana', phone: '+51987654321' })
+      .expect(201);
+
+    // El cliente cierra la pestaña. Vuelve por el enlace y encuentra lo suyo.
+    const recuperado = await http().get(`/api/v1/shop/carts/${carrito}`).expect(200);
+    expect(recuperado.body.status).toBe('open');
+    expect(recuperado.body.lines).toHaveLength(1);
+    expect(recuperado.body.lines[0].quantity).toBe(3);
+  });
+
+  it('un carrito ya convertido no se cobra dos veces', async () => {
+    const carrito = await abrirCarrito(HOST_A);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 1,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/address`)
+      .send({ address: 'Av. Larco 100', lat: -12.125, lng: -77.02 })
+      .expect(201);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/customer`)
+      .send({ name: 'Ana', phone: '+51987654321' })
+      .expect(201);
+
+    await http().post(`/api/v1/shop/carts/${carrito}/checkout`).expect(201);
+    await http().post(`/api/v1/shop/carts/${carrito}/checkout`).expect(422);
+  });
+
+  it('un token de carrito inventado no abre nada', async () => {
+    await http().get('/api/v1/shop/carts/token-que-no-existe').expect(404);
+  });
+
+  // ----------------------------------------------------------------- Cupones
+
+  it('el cupón descuenta, respeta el mínimo y cuenta sus usos', async () => {
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `INSERT INTO sto_coupons
+           (tenant_id, brand_id, code, kind, percent_bps, min_order, max_uses)
+         VALUES ($1,$2,'BIENVENIDO','percent',1000,'50.0000',1)`,
+        [tenantA, brandA],
+      ),
+    );
+
+    const carrito = await abrirCarrito(HOST_A);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 1,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+
+    // 37 < 50: por debajo del mínimo. Se informa, no se aplica en silencio.
+    const bajoMinimo = await http()
+      .post(`/api/v1/shop/carts/${carrito}/coupon`)
+      .send({ code: 'bienvenido' })
+      .expect(201);
+    expect(bajoMinimo.body.coupon.applied).toBe(false);
+    expect(bajoMinimo.body.coupon.reason).toBe('COUPON_BELOW_MINIMUM');
+    expect(bajoMinimo.body.discount).toBe('0.0000');
+
+    // Con dos: 74 ≥ 50. 10 % de 74 = 7,40 — sobre el SUBTOTAL, no sobre el
+    // total con envío: descontar del envío regala el margen del repartidor.
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 1,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+    const aplicado = await http().get(`/api/v1/shop/carts/${carrito}`).expect(200);
+    expect(aplicado.body.coupon.applied).toBe(true);
+    expect(aplicado.body.discount).toBe('7.4000');
+
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/address`)
+      .send({ address: 'Av. Larco 100', lat: -12.125, lng: -77.02 })
+      .expect(201);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/customer`)
+      .send({ name: 'Ana', phone: '+51987654321' })
+      .expect(201);
+    await http().post(`/api/v1/shop/carts/${carrito}/checkout`).expect(201);
+
+    // El contador sube EN LA MISMA transacción que la conversión: uno que se
+    // actualiza después deja pasar cien usos de un cupón de uno.
+    const usos = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ used_count: number }>(
+        "SELECT used_count FROM sto_coupons WHERE code = 'BIENVENIDO'",
+      );
+      return rows[0]!.used_count;
+    });
+    expect(usos).toBe(1);
+
+    // Agotado: el siguiente carrito ya no lo aprovecha.
+    const otro = await abrirCarrito(HOST_A);
+    await http()
+      .post(`/api/v1/shop/carts/${otro}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 2,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+    const agotado = await http()
+      .post(`/api/v1/shop/carts/${otro}/coupon`)
+      .send({ code: 'BIENVENIDO' })
+      .expect(201);
+    expect(agotado.body.coupon.applied).toBe(false);
+    expect(agotado.body.coupon.reason).toBe('COUPON_EXHAUSTED');
+  });
+
+  it('el cupón de un tenant no vale en la tienda del otro', async () => {
+    // Mismo código, otro tenant: RLS hace que ni siquiera se vea.
+    const carrito = await abrirCarrito(HOST_B);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catB.polloId,
+        quantity: 2,
+        modifierOptionIds: [catB.optionGrandeId],
+      })
+      .expect(201);
+    const r = await http()
+      .post(`/api/v1/shop/carts/${carrito}/coupon`)
+      .send({ code: 'BIENVENIDO' })
+      .expect(201);
+    expect(r.body.coupon.applied).toBe(false);
+    expect(r.body.coupon.reason).toBe('COUPON_UNKNOWN');
+  });
+});

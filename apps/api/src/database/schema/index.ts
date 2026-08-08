@@ -1147,3 +1147,106 @@ export const paymentSettlementLines = pgTable(
   },
   (t) => [index('idx_pay_settlement_lines_intent').on(t.tenantId, t.intentId)],
 );
+
+// ---------------------------------------------------------------------------
+// Tienda web (spec 11, F5).
+// ---------------------------------------------------------------------------
+
+export const storefrontDomains = pgTable(
+  'sto_domains',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    host: text('host').notNull(),
+    isSubdomain: boolean('is_subdomain').notNull().default(true),
+    /** Un dominio propio sin verificar NO sirve la tienda (RN-STO-03). */
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    verificationToken: text('verification_token'),
+    status: text('status').notNull().default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_sto_domains_tenant').on(t.tenantId, t.brandId)],
+);
+
+export const storefrontCarts = pgTable(
+  'sto_carts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    locationId: uuid('location_id'),
+    zoneId: uuid('zone_id'),
+    status: text('status').notNull().default('open'),
+    fulfillment: text('fulfillment').notNull().default('delivery'),
+    customerName: text('customer_name'),
+    customerPhone: text('customer_phone'),
+    address: text('address'),
+    addressLat: doublePrecision('address_lat'),
+    addressLng: doublePrecision('address_lng'),
+    notes: text('notes'),
+    /** Consentimiento SEPARADO, con el texto exacto aceptado (RN-T10). */
+    marketingConsent: boolean('marketing_consent').notNull().default(false),
+    marketingConsentText: text('marketing_consent_text'),
+    marketingConsentAt: timestamp('marketing_consent_at', {
+      withTimezone: true,
+    }),
+    couponCode: text('coupon_code'),
+    orderId: uuid('order_id'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_sto_carts_tenant').on(t.tenantId, t.brandId)],
+);
+
+export const storefrontCartLines = pgTable(
+  'sto_cart_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    cartId: uuid('cart_id').notNull(),
+    productId: uuid('product_id').notNull(),
+    quantity: integer('quantity').notNull(),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_sto_cart_lines_carrito').on(t.tenantId, t.cartId)],
+);
+
+export const storefrontCoupons = pgTable(
+  'sto_coupons',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id'),
+    code: text('code').notNull(),
+    kind: text('kind').notNull(),
+    percentBps: integer('percent_bps'),
+    amount: numeric('amount', { precision: 14, scale: 4 }),
+    minOrder: numeric('min_order', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    maxDiscount: numeric('max_discount', { precision: 14, scale: 4 }),
+    validFrom: timestamp('valid_from', { withTimezone: true }),
+    validUntil: timestamp('valid_until', { withTimezone: true }),
+    maxUses: integer('max_uses'),
+    usedCount: integer('used_count').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_sto_coupons_tenant').on(t.tenantId, t.brandId)],
+);

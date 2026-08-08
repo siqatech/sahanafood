@@ -47,6 +47,27 @@ export interface IsolationCase {
   expectedStatusForA?: readonly number[];
   /** Si el endpoint es público, se omiten las comprobaciones de autenticación. */
   isPublic?: boolean;
+  /**
+   * El endpoint no pertenece a ningún tenant (`/health`, `/metrics`).
+   *
+   * Distinto de `isPublic`: la tienda web también es pública, pero SÍ es de un
+   * tenant —lo resuelve por el host—, y ahí la simetría hay que comprobarla.
+   * Marcar esto salta el paso 4 y es una afirmación, no una excusa: si el
+   * endpoint llegara a devolver algo de un tenant, la bandera estaría mintiendo.
+   */
+  tenantless?: boolean;
+  /**
+   * Cómo pide lo MISMO el tenant B, cuando su identidad no viaja en el token.
+   *
+   * La tienda web resuelve el tenant por la cabecera `Host`, así que darle a
+   * `request` el token de B devuelve —correctamente— lo mismo que a A: el
+   * token ni se mira. Sin esta variante, la comprobación de simetría del paso 4
+   * sería un falso positivo en todo endpoint público, y la salida fácil
+   * —saltársela— dejaría precisamente a la tienda sin la comprobación que más
+   * necesita. Aquí se declara la petición equivalente de B (otro host) para que
+   * el paso 4 siga significando algo.
+   */
+  requestAsB?: (agent: TestAgent) => request.Test;
 }
 
 /** Aplana cualquier valor JSON a una lista de cadenas, a cualquier profundidad. */
@@ -153,11 +174,30 @@ export async function assertEndpointIsolation(
       `datos del tenant B (${leaked.join(', ')}). Respuesta: ${JSON.stringify(asA.body).slice(0, 500)}`,
   ).toEqual([]);
 
-  // 4) Con el token de B: tampoco puede ver lo de A (simetría).
-  if (testCase.tokenB) {
-    const asB = await testCase
-      .request(agent())
-      .set('authorization', `Bearer ${testCase.tokenB}`);
+  // Un endpoint público con token de B y sin `requestAsB` no se puede
+  // comprobar: el token no se mira, así que la respuesta sería idéntica por
+  // construcción. Se exige declarar la petición de B en vez de dejar pasar el
+  // caso, que es como un endpoint público acaba sin prueba de aislamiento.
+  if (
+    testCase.isPublic &&
+    !testCase.tenantless &&
+    testCase.tokenB &&
+    !testCase.requestAsB
+  ) {
+    throw new Error(
+      `${testCase.name}: es un endpoint público, así que la simetría no se puede ` +
+        'comprobar con el token de B. Declara `requestAsB` con la petición ' +
+        'equivalente del otro tenant (p. ej. su host), o quita `tokenB`.',
+    );
+  }
+
+  // 4) Desde el lado de B: tampoco puede ver lo de A (simetría).
+  if (!testCase.tenantless && (testCase.requestAsB || testCase.tokenB)) {
+    const asB = testCase.requestAsB
+      ? await testCase.requestAsB(agent())
+      : await testCase
+          .request(agent())
+          .set('authorization', `Bearer ${testCase.tokenB}`);
     // B puede legítimamente obtener 404 (no tiene el recurso) o 200 con lo suyo.
     if (asB.status === 200) {
       const bodyB = JSON.stringify(asB.body);

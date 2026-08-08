@@ -227,3 +227,13 @@ export {
   type CommissionTariff,
   type CommissionVariance,
 } from './payments/commission.js';
+
+// --- Tienda web (spec 11, F5) ---
+export {
+  applyCoupon,
+  CouponError,
+  type Coupon,
+  type CouponKind,
+  type CouponResult,
+  type CouponRejection,
+} from './storefront/coupon.js';

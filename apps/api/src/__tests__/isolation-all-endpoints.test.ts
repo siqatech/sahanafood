@@ -19,6 +19,7 @@ import {
   SettlementsService,
   CULQI_PROVIDER,
 } from '../modules/payments/index.js';
+import { StorefrontService } from '../modules/storefront/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -43,6 +44,10 @@ const suite = INTEGRATION_DB ? describe : describe.skip;
  * hayan hecho con los comprobantes del día de hoy.
  */
 const DIA_SOLO_DE_B = '2026-01-15';
+
+/** Hosts de tienda de cada tenant. El de B es un secreto suyo. */
+const HOST_ISO_A = 'iso-a.sahana.food';
+const HOST_ISO_B = 'iso-b-secreto.sahana.food';
 
 suite('Aislamiento — todos los endpoints', () => {
   let app: INestApplication;
@@ -72,6 +77,8 @@ suite('Aislamiento — todos los endpoints', () => {
   let enlaceDeB = '';
   /** Liquidación de B: revela cuánto le cobra su pasarela. */
   let liquidacionDeB = '';
+  /** Dominio de tienda de B: A no debe poder verlo ni darlo por verificado. */
+  let dominioDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -214,6 +221,22 @@ suite('Aislamiento — todos los endpoints', () => {
       signingSecret: 'secreto-de-firma-del-tenant-b-iso',
     });
 
+    // Tiendas web de ambos: la tienda resuelve el tenant por HOST, no por
+    // token, así que es la única superficie donde una confusión de dominios
+    // enseñaría el catálogo y los precios de un competidor.
+    const storefront = app.get(StorefrontService);
+    const dominioA = await storefront.registerDomain(a.tenantId, {
+      brandId: demoA.brandIds[0],
+      host: HOST_ISO_A,
+    });
+    await storefront.verifyDomain(a.tenantId, dominioA.id);
+    const dominioB = await storefront.registerDomain(b.tenantId, {
+      brandId: demoB.brandIds[0],
+      host: HOST_ISO_B,
+    });
+    await storefront.verifyDomain(b.tenantId, dominioB.id);
+    dominioDeB = dominioB.id;
+
     // Todo lo que identifica al tenant B y jamás debe salir en la respuesta de A.
     secretsOfB = [
       b.tenantId,
@@ -248,6 +271,9 @@ suite('Aislamiento — todos los endpoints', () => {
       conexionB.id,
       conexionB.webhookToken,
       'secreto-de-firma-del-tenant-b-iso',
+      // Tienda del tenant B: el dominio y su host.
+      dominioDeB,
+      HOST_ISO_B,
     ];
 
     const pedido = await app.get(OrderingService).submit(a.tenantId, {
@@ -467,6 +493,8 @@ suite('Aislamiento — todos los endpoints', () => {
       app,
       caseFor('GET /health', (r) => r.get('/api/v1/health'), {
         isPublic: true,
+        // No es de ningún tenant: no hay simetría que comprobar.
+        tenantless: true,
       }),
     );
   });
@@ -898,6 +926,70 @@ suite('Aislamiento — todos los endpoints', () => {
         (r) =>
           r.post(`/api/v1/payments/settlements/${liquidacionDeB}/reconcile`),
         { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('POST /storefront/domains/:id/verify del dominio de B', async () => {
+    // Dar por verificado el dominio de otro es el paso previo a servir su
+    // tienda: no basta con no leerlo, hay que no poder activarlo.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /storefront/domains/:id/verify',
+        (r) => r.post(`/api/v1/storefront/domains/${dominioDeB}/verify`),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('GET /shop/context del host de A no trae nada de B', async () => {
+    // La tienda no lleva token: el tenant sale del HOST. Es la única superficie
+    // del sistema donde una confusión de dominios enseñaría la marca de otro.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /shop/context',
+        (r) => r.get('/api/v1/shop/context').set('host', HOST_ISO_A),
+        {
+          isPublic: true,
+          requestAsB: (r) =>
+            r.get('/api/v1/shop/context').set('host', HOST_ISO_B),
+        },
+      ),
+    );
+  });
+
+  it('GET /shop/catalog del host de A no trae el catálogo de B', async () => {
+    // El caso que hace vendible el producto: si el catálogo se resolviera por
+    // otra cosa que el host, un competidor leería precios ajenos desde su
+    // propio dominio.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /shop/catalog',
+        (r) => r.get('/api/v1/shop/catalog').set('host', HOST_ISO_A),
+        {
+          isPublic: true,
+          requestAsB: (r) =>
+            r.get('/api/v1/shop/catalog').set('host', HOST_ISO_B),
+        },
+      ),
+    );
+  });
+
+  it('POST /shop/carts del host de A abre un carrito que no es de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /shop/carts',
+        (r) => r.post('/api/v1/shop/carts').set('host', HOST_ISO_A),
+        {
+          isPublic: true,
+          expectedStatusForA: [201],
+          requestAsB: (r) =>
+            r.post('/api/v1/shop/carts').set('host', HOST_ISO_B),
+        },
       ),
     );
   });

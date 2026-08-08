@@ -23,6 +23,7 @@ import { CommonModule } from './common/common.module.js';
 import { MessagingModule } from './modules/messaging/index.js';
 import { AnalyticsModule } from './modules/analytics/index.js';
 import { CashModule } from './modules/cash/index.js';
+import { StorefrontModule } from './modules/storefront/index.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 
 /**
@@ -69,6 +70,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     MessagingModule,
     AnalyticsModule,
     CashModule,
+    StorefrontModule,
     ObservabilityModule,
   ],
 })
