@@ -129,7 +129,15 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Análisis de composición (SCA): dependencias con vulnerabilidades conocidas.
-  # No bloquea (aún); se endurecerá como gate en la Fase 5 (pentest).
+  #
+  # BLOQUEA desde el gate de F4. Estuvo en modo informativo mientras había
+  # avisos altos heredados que nadie había mirado (DT-01); al saldarlos —una
+  # inyección SQL en drizzle-orm, cuatro DoS en multer, cuatro crashes en los
+  # exportadores de OTel— dejar el gate en `|| true` solo servía para que la
+  # siguiente entrara igual de callada. Un gate que nunca falla no es un gate.
+  #
+  # `--audit-level high`: moderadas y bajas siguen sin romper el build. La línea
+  # se sube cuando el pentest de F5 diga dónde ponerla, no antes.
   # ---------------------------------------------------------------------------
   sca:
     name: SCA (pnpm audit)
@@ -142,5 +150,5 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Auditoría de dependencias (informativa)
-        run: pnpm audit --audit-level high || true
+      - name: Auditoría de dependencias (bloqueante en alto)
+        run: pnpm audit --audit-level high

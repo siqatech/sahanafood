@@ -4,6 +4,7 @@ import { PG_POOL } from '../../../database/database.module.js';
 import { withSystem, withTenant } from '../../../database/rls.js';
 import * as schema from '../../../database/schema/index.js';
 import { DomainError } from '../../../common/errors.js';
+import { ModifierError, PricingError } from '@sahana/domain';
 import { currentTraceId, withSpan } from '../../../observability/tracing.js';
 import { OrderingService, type SubmitLineInput } from '../../ordering/index.js';
 import {
@@ -414,11 +415,29 @@ export class IngestionService {
       });
       return { orderId: pedido.id, aparted: false };
     } catch (error) {
-      if (error instanceof DomainError) {
-        // Fuera de cobertura, producto no disponible, bajo el mínimo... El
-        // canal ya le prometió la comida a alguien: la decisión de rechazar es
-        // del negocio, con el pedido delante, no de un catch.
-        return aBandeja(`Pedido rechazado por validación: ${error.detail}`);
+      // Fuera de cobertura, producto no disponible, bajo el mínimo, modificador
+      // obligatorio sin elegir... El canal ya le prometió la comida a alguien:
+      // la decisión de rechazar es del negocio, con el pedido delante, no de un
+      // catch.
+      //
+      // Los errores de `@sahana/domain` (`ModifierError`, `PricingError`) NO
+      // heredan de `DomainError`, que es la jerarquía de la API. Cuando el
+      // `catch` solo miraba `DomainError`, un pedido de marketplace con un
+      // grupo obligatorio sin elegir se escapaba por la vía de los fallos
+      // TRANSITORIOS: se reintentaba cinco veces contra un payload que jamás
+      // iba a mejorar y acababa en la cola de muertos en lugar de en la
+      // bandeja de excepciones. Eso rompe RN-INT-02 y el criterio de T4.13
+      // —«webhook aceptado → pedido o `needs_review`, nunca otra cosa»— y lo
+      // destapó la prueba de carga: 133 envíos en `failed` con el mismo texto.
+      const atribuibleAlContenido =
+        error instanceof DomainError ||
+        error instanceof ModifierError ||
+        error instanceof PricingError;
+
+      if (atribuibleAlContenido) {
+        const motivo =
+          error instanceof DomainError ? error.detail : error.message;
+        return aBandeja(`Pedido rechazado por validación: ${motivo}`);
       }
       throw error;
     }

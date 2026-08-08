@@ -1,7 +1,9 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+// En OTel 2.x `Resource` pasó a ser un TIPO y el recurso se construye con esta
+// función; `new Resource({...})` era la forma de la 1.x y ya no compila.
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -37,7 +39,7 @@ export function startTracing(options: {
   if (!options.endpoint) return;
 
   sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: options.serviceName ?? 'sahana-api',
       [ATTR_SERVICE_VERSION]: options.serviceVersion ?? '0.1.0',
     }),

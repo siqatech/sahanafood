@@ -585,11 +585,22 @@ export class CashService {
   }
 }
 
-/** ¿Es una violación de índice único de Postgres? */
+/**
+ * ¿Es una violación de índice único de Postgres?
+ *
+ * Se recorre la cadena de `cause`. Desde Drizzle 0.45 el error del driver ya no
+ * llega pelado: viene envuelto en un `DrizzleQueryError` cuyo `message` es
+ * «Failed query: …» y que guarda el error de `pg` —con su `code`— en `cause`.
+ * Mirando solo el nivel de arriba, el `23505` deja de reconocerse y en vez de
+ * «esta terminal ya tiene una sesión abierta» al cajero le sale un volcado de
+ * SQL con los parámetros dentro. Recorrer la cadena funciona con las dos
+ * formas, así que no hay que volver aquí en la próxima subida de versión.
+ */
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: string }).code === '23505'
-  );
+  for (let actual = error, saltos = 0; actual != null && saltos < 5; saltos++) {
+    if (typeof actual !== 'object') return false;
+    if ((actual as { code?: string }).code === '23505') return true;
+    actual = (actual as { cause?: unknown }).cause;
+  }
+  return false;
 }

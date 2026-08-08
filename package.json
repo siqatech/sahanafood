@@ -36,6 +36,11 @@
       "esbuild",
       "@swc/core",
       "argon2"
-    ]
+    ],
+    "overrides": {
+      "multer": ">=2.2.0",
+      "@opentelemetry/propagator-jaeger": ">=2.9.0",
+      "@opentelemetry/exporter-prometheus": ">=0.217.0"
+    }
   }
 }

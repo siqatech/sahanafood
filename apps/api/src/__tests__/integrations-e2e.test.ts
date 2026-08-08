@@ -381,6 +381,45 @@ suite('Integraciones e2e — simulador de marketplace', () => {
     expect(rows[0]!.order_id).toBeTruthy();
   });
 
+  it('un MODIFICADOR OBLIGATORIO sin elegir va a la bandeja, no a la cola de muertos', async () => {
+    // `SIM-POLLO` mapea a un producto con un grupo obligatorio («Tamaño»,
+    // mínimo 1). Un marketplace que no manda la opción produce un pedido
+    // inválido — y eso es un problema del CONTENIDO, que jamás va a mejorar
+    // por reintentar.
+    //
+    // Lo destapó la prueba de carga de T4.30: 133 envíos acabaron en `failed`
+    // tras cinco intentos idénticos. La causa era sutil: `ModifierError` vive
+    // en `@sahana/domain` y NO hereda de `DomainError`, la jerarquía de la
+    // API, así que se escapaba por la rama de los fallos transitorios. El
+    // resultado violaba RN-INT-02 y el criterio de T4.13: un webhook aceptado
+    // solo puede acabar en pedido o en `needs_review`, nunca en la cola de
+    // muertos.
+    const raw = pedidoCrudo({ items: [{ sku: 'SIM-POLLO', qty: 1 }] });
+    const ref = (JSON.parse(raw) as { order_id: string }).order_id;
+
+    await enviar(conexionA.token, raw).expect(202);
+    const resultado = await ingestion.processPending();
+    expect(resultado.toReview).toBeGreaterThan(0);
+    expect(resultado.failed, 'se trató como fallo transitorio').toBe(0);
+
+    const rows = await sql<{
+      status: string;
+      attempts: number;
+      order_id: string;
+    }>(
+      tenantA,
+      'SELECT status, attempts, order_id FROM int_webhook_events WHERE external_ref = $1',
+      [ref],
+    );
+    expect(rows[0]!.status).toBe('done');
+    expect(rows[0]!.order_id).toBeTruthy();
+    // Un solo intento: reintentar un payload inválido es trabajo tirado.
+    expect(rows[0]!.attempts).toBe(1);
+
+    const timeline = await ordering.getTimeline(tenantA, rows[0]!.order_id);
+    expect(timeline[0]!.reason).toContain('Tamaño');
+  });
+
   it('la bandeja conserva el payload crudo para poder resolverla', async () => {
     const raw = pedidoCrudo({ items: [{ sku: 'OTRO-SKU-ROTO', qty: 2 }] });
     const ref = (JSON.parse(raw) as { order_id: string }).order_id;

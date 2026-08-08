@@ -158,6 +158,26 @@ describe('Cola de sincronización offline', () => {
     ).toEqual(['01J000000000000000000000B', '01J000000000000000000000C']);
   });
 
+  it('marcar un clientId que ya no está en la cola no revienta', () => {
+    // Pasa de verdad: la PWA purga lo sincronizado y, un instante después,
+    // llega la respuesta del envío anterior y marca un id que ya no existe. Si
+    // eso lanzara, la excepción subiría por el bucle de sincronización y
+    // dejaría el resto del lote sin marcar — venta cobrada, cola atascada.
+    const cola = colaConVentas();
+    const fantasma = '01J0000000000000000000ZZZ';
+
+    expect(() => {
+      cola.markSynced(fantasma);
+      cola.markNeedsAttention(fantasma, 'ojo');
+      cola.markFailed(fantasma, 'sin red', T0);
+      cola.markInFlight([fantasma]);
+    }).not.toThrow();
+
+    // Y no lo inventa: marcar un desconocido no lo mete en la cola.
+    expect(cola.get(fantasma)).toBeUndefined();
+    expect(cola.all()).toHaveLength(3);
+  });
+
   it('sobrevive al reinicio: se serializa y se restaura entera', () => {
     const cola = colaConVentas();
     cola.markFailed('01J000000000000000000000A', 'sin red', T0);

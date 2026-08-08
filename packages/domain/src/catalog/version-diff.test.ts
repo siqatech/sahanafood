@@ -94,6 +94,37 @@ describe('Diff entre versiones de catálogo', () => {
     expect(d.identical).toBe(true);
   });
 
+  it('compara por CONTENIDO los campos que son objetos', () => {
+    // `categoryId` es lo habitual, pero una instantánea puede traer estructuras
+    // (etiquetas, alérgenos). Si se compararan por identidad, dos objetos
+    // iguales recién deserializados saldrían como «cambio» y la PWA se bajaría
+    // el catálogo entero en cada publicación — que es justo lo que el diff
+    // existe para evitar.
+    const igual = diffCatalogVersions(
+      snapshot([producto('a', { categoryId: { id: 1, tags: ['pollo'] } })]),
+      snapshot([producto('a', { categoryId: { id: 1, tags: ['pollo'] } })]),
+    );
+    expect(igual.identical).toBe(true);
+
+    const distinto = diffCatalogVersions(
+      snapshot([producto('a', { categoryId: { id: 1, tags: ['pollo'] } })]),
+      snapshot([producto('a', { categoryId: { id: 1, tags: ['carne'] } })]),
+    );
+    expect(distinto.changed[0]!.changes.map((c) => c.field)).toEqual([
+      'categoryId',
+    ]);
+  });
+
+  it('un cambio de TIPO cuenta como cambio', () => {
+    // Un `prepMinutes` que pasa de 15 a "15" no es lo mismo: el POS haría
+    // aritmética con una cadena y el tiempo de preparación saldría concatenado.
+    const d = diffCatalogVersions(
+      snapshot([producto('a', { prepMinutes: 15 })]),
+      snapshot([producto('a', { prepMinutes: '15' })]),
+    );
+    expect(d.changed[0]!.changes.map((c) => c.field)).toEqual(['prepMinutes']);
+  });
+
   it('acumula varios cambios del mismo producto', () => {
     const d = diffCatalogVersions(
       snapshot([producto('a', { name: 'Antiguo', priceMinor: 100_000 })]),
