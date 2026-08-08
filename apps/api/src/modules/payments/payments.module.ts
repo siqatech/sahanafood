@@ -2,12 +2,14 @@ import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../database/database.module.js';
 import { OrderingModule } from '../ordering/index.js';
 import { PaymentsService } from './app/payments.service.js';
+import { SettlementsService } from './app/settlements.service.js';
 import { CulqiSandboxProvider } from './app/providers/culqi-sandbox.provider.js';
 import { MercadoPagoSandboxProvider } from './app/providers/mercadopago-sandbox.provider.js';
 import {
   PaymentsController,
   PaymentLinkController,
   PaymentWebhookController,
+  SettlementsController,
 } from './api/payments.controller.js';
 import { PAYMENT_PROVIDERS } from './payments.tokens.js';
 
@@ -28,11 +30,13 @@ import { PAYMENT_PROVIDERS } from './payments.tokens.js';
   imports: [DatabaseModule, OrderingModule],
   controllers: [
     PaymentsController,
+    SettlementsController,
     PaymentLinkController,
     PaymentWebhookController,
   ],
   providers: [
     PaymentsService,
+    SettlementsService,
     CulqiSandboxProvider,
     MercadoPagoSandboxProvider,
     {
@@ -44,6 +48,11 @@ import { PAYMENT_PROVIDERS } from './payments.tokens.js';
       inject: [CulqiSandboxProvider, MercadoPagoSandboxProvider],
     },
   ],
-  exports: [PaymentsService, CulqiSandboxProvider, MercadoPagoSandboxProvider],
+  exports: [
+    PaymentsService,
+    SettlementsService,
+    CulqiSandboxProvider,
+    MercadoPagoSandboxProvider,
+  ],
 })
 export class PaymentsModule {}

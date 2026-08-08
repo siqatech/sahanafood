@@ -15,6 +15,7 @@ import {
   timestamp,
   integer,
   numeric,
+  date,
   doublePrecision,
   primaryKey,
   index,
@@ -995,6 +996,15 @@ export const paymentIntents = pgTable(
       precision: 14,
       scale: 4,
     }),
+    /** Comisión estimada al aceptar y liquidada al conciliar (RN-BIL-04). */
+    commissionEstimated: numeric('commission_estimated', {
+      precision: 14,
+      scale: 4,
+    }),
+    commissionSettled: numeric('commission_settled', {
+      precision: 14,
+      scale: 4,
+    }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1056,4 +1066,84 @@ export const publicTokens = pgTable(
       t.resourceId,
     ),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// Tarifario de canal y conciliación de liquidaciones (T5.07, RN-BIL-04).
+// ---------------------------------------------------------------------------
+
+export const paymentChannelTariffs = pgTable(
+  'pay_channel_tariffs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    channel: text('channel').notNull(),
+    provider: text('provider'),
+    brandId: uuid('brand_id'),
+    /** Puntos básicos enteros: 350 = 3,5 %. Nunca un decimal (ADR-0013). */
+    percentBps: integer('percent_bps').notNull().default(0),
+    fixedAmount: numeric('fixed_amount', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    minimumAmount: numeric('minimum_amount', { precision: 14, scale: 4 })
+      .notNull()
+      .default('0'),
+    currency: text('currency').notNull().default('PEN'),
+    /** Cerrar y abrir, nunca editar: renegociar en marzo no cambia enero. */
+    effectiveFrom: timestamp('effective_from', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    effectiveTo: timestamp('effective_to', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_pay_tariffs_tenant').on(t.tenantId, t.channel)],
+);
+
+export const paymentSettlements = pgTable(
+  'pay_settlements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    provider: text('provider').notNull(),
+    externalRef: text('external_ref').notNull(),
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    grossAmount: numeric('gross_amount', { precision: 14, scale: 4 }).notNull(),
+    feeAmount: numeric('fee_amount', { precision: 14, scale: 4 }).notNull(),
+    netAmount: numeric('net_amount', { precision: 14, scale: 4 }).notNull(),
+    currency: text('currency').notNull().default('PEN'),
+    depositedAt: timestamp('deposited_at', { withTimezone: true }),
+    status: text('status').notNull().default('imported'),
+    matchedLines: integer('matched_lines').notNull().default(0),
+    unmatchedLines: integer('unmatched_lines').notNull().default(0),
+    missingLines: integer('missing_lines').notNull().default(0),
+    reconciledAt: timestamp('reconciled_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_pay_settlements_tenant').on(t.tenantId, t.provider)],
+);
+
+export const paymentSettlementLines = pgTable(
+  'pay_settlement_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    settlementId: uuid('settlement_id').notNull(),
+    /** Clave con la que se casa contra `pay_intents.provider_ref`. */
+    providerRef: text('provider_ref').notNull(),
+    intentId: uuid('intent_id'),
+    grossAmount: numeric('gross_amount', { precision: 14, scale: 4 }).notNull(),
+    feeAmount: numeric('fee_amount', { precision: 14, scale: 4 }).notNull(),
+    netAmount: numeric('net_amount', { precision: 14, scale: 4 }).notNull(),
+    status: text('status').notNull().default('pending'),
+    detail: text('detail'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_pay_settlement_lines_intent').on(t.tenantId, t.intentId)],
 );

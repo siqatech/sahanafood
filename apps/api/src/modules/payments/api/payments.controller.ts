@@ -19,6 +19,10 @@ import {
   type PaymentIntentView,
   type WebhookOutcome,
 } from '../app/payments.service.js';
+import {
+  SettlementsService,
+  type ReconciliationReport,
+} from '../app/settlements.service.js';
 
 // Mismo helper local que el resto de controladores del repo. Está duplicado en
 // los once: candidato claro a extraer a `common/`, pero no en el commit de un
@@ -179,6 +183,85 @@ export class PaymentsController {
  * acabara marcando el endpoint como caído — y entonces sí se perderían avisos
  * que importan.
  */
+const tariffSchema = z.object({
+  channel: z.string().min(1),
+  provider: z.string().min(1).optional(),
+  brandId: z.string().uuid().optional(),
+  /** Puntos básicos enteros: 350 = 3,5 %. Nunca un decimal (ADR-0013). */
+  percentBps: z.number().int().min(0).max(10_000),
+  fixedAmount: z.string().optional(),
+  minimumAmount: z.string().optional(),
+});
+
+const settlementSchema = z.object({
+  provider: z.string().min(1),
+  externalRef: z.string().min(1),
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  grossAmount: z.string(),
+  feeAmount: z.string(),
+  netAmount: z.string(),
+  currency: z.string().length(3).optional(),
+  lines: z
+    .array(
+      z.object({
+        providerRef: z.string().min(1),
+        grossAmount: z.string(),
+        feeAmount: z.string(),
+        netAmount: z.string(),
+      }),
+    )
+    .min(1),
+});
+
+/**
+ * Conciliación de liquidaciones (T5.07, RN-BIL-04).
+ *
+ * Permiso `payments.manage`: quien importa un informe de liquidación está
+ * declarando cuánto cobró de verdad el canal, y ese número acaba en el margen
+ * que el dueño usa para decidir si una marca sigue abierta.
+ */
+@Controller({ path: 'payments', version: '1' })
+export class SettlementsController {
+  constructor(private readonly settlements: SettlementsService) {}
+
+  @Post('tariffs')
+  @RequirePermission('payments.manage')
+  async setTariff(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<{ id: string }> {
+    const input = parse(tariffSchema, body);
+    return this.settlements.setTariff(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  @Post('settlements')
+  @RequirePermission('payments.manage')
+  async importSettlement(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<{ id: string; alreadyImported: boolean }> {
+    const input = parse(settlementSchema, body);
+    return this.settlements.importSettlement(
+      req.auth!.tid,
+      input,
+      req.auth!.sub,
+    );
+  }
+
+  @Post('settlements/:id/reconcile')
+  @RequirePermission('payments.manage')
+  async reconcile(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<ReconciliationReport> {
+    return this.settlements.reconcile(req.auth!.tid, id);
+  }
+}
+
 /**
  * Apertura de un link de pago. PÚBLICO: quien llama no tiene cuenta (ADR-0017).
  *

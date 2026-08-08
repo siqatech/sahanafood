@@ -37,6 +37,7 @@ import {
   PublicTokensService,
   PublicTokenError,
 } from '../../../common/public-tokens.service.js';
+import { SettlementsService } from './settlements.service.js';
 
 /**
  * Pagos online (spec 10 parte F5, ADR-0016).
@@ -160,6 +161,7 @@ export class PaymentsService {
     @Inject(PAYMENT_PROVIDERS) providers: PaymentProvider[],
     private readonly ordering: OrderingService,
     private readonly publicTokens: PublicTokensService,
+    private readonly settlements: SettlementsService,
   ) {
     this.cipher = new CredentialCipher(config.credentialsMasterKey);
     for (const p of providers) this.providers.set(p.name, p);
@@ -793,6 +795,24 @@ export class PaymentsService {
             noHonorable,
           ],
         );
+
+        if (decision.to === 'captured') {
+          // La comisión se estima AQUÍ y no al aceptar el pedido, porque hasta
+          // que el cobro no se captura no se sabe cuánto se cobró de verdad: un
+          // pago parcial o un importe distinto cambiarían la base. Sin tarifa
+          // configurada se deja NULL, que es distinto de cero (RN-BIL-04).
+          try {
+            await this.settlements.estimateForIntent(ctx, intencion.id);
+          } catch (error) {
+            // Estimar mal no puede tumbar un cobro que ya ocurrió: el dinero
+            // está, y la comisión se puede recalcular al conciliar.
+            this.logger.warn(
+              `No se pudo estimar la comisión del cobro ${intencion.id}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
 
         if (noHonorable !== null) {
           // El dinero está cobrado y hay que devolverlo. Se registra como

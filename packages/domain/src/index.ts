@@ -218,3 +218,12 @@ export {
   amountConfirms,
   type AmountVerdict,
 } from './payments/amount-check.js';
+
+export {
+  estimateCommission,
+  compareCommission,
+  assertValidTariff,
+  CommissionError,
+  type CommissionTariff,
+  type CommissionVariance,
+} from './payments/commission.js';

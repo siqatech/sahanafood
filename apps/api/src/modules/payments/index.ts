@@ -19,6 +19,12 @@ export {
   type WebhookOutcome,
 } from './app/payments.service.js';
 export {
+  SettlementsService,
+  type SettlementInput,
+  type SettlementLineInput,
+  type ReconciliationReport,
+} from './app/settlements.service.js';
+export {
   WebhookParseError,
   type PaymentProvider,
   type ChargeRequest,

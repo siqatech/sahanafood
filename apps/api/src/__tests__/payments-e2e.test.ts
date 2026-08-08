@@ -12,6 +12,7 @@ import { seedDemoCatalog } from '../modules/catalog/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
 import {
   PaymentsService,
+  SettlementsService,
   CulqiSandboxProvider,
   MercadoPagoSandboxProvider,
   CULQI_PROVIDER,
@@ -53,6 +54,7 @@ suite('Pagos online', () => {
   let cat: Awaited<ReturnType<typeof seedDemoCatalog>>;
   let ordering: OrderingService;
   let payments: PaymentsService;
+  let settlements: SettlementsService;
   let culqi: CulqiSandboxProvider;
   let mercadopago: MercadoPagoSandboxProvider;
 
@@ -73,6 +75,7 @@ suite('Pagos online', () => {
     await app.init();
     ordering = app.get(OrderingService);
     payments = app.get(PaymentsService);
+    settlements = app.get(SettlementsService);
     culqi = app.get(CulqiSandboxProvider);
     mercadopago = app.get(MercadoPagoSandboxProvider);
 
@@ -1053,6 +1056,351 @@ suite('Pagos online', () => {
       return rows[0]!;
     });
     expect(fila.status).toBe('refunded');
+  });
+
+  // ------------------- Comisiones y conciliación (T5.07, RN-BIL-04)
+
+  it('SIN TARIFA configurada la comisión queda NULL, no cero', async () => {
+    // Es la distinción que arregla esta tarea: un cero escrito sería
+    // indistinguible de «este canal no cobra comisión», y el panel enseñaría
+    // margen BRUTO con cara de margen neto.
+    const { reference, amount } = await crearIntencion();
+    await enviarCulqi(cuerpoCulqi(reference, amount)).expect(200);
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        commission_estimated: string | null;
+      }>('SELECT commission_estimated FROM pay_intents WHERE reference = $1', [
+        reference,
+      ]);
+      return rows[0]!;
+    });
+    expect(fila.commission_estimated).toBeNull();
+  });
+
+  it('con tarifa, la comisión se estima al CAPTURAR', async () => {
+    await settlements.setTariff(tenantA, {
+      channel: 'web',
+      percentBps: 2500,
+      fixedAmount: '0.5000',
+    });
+
+    const { reference, amount } = await crearIntencion();
+    await enviarCulqi(cuerpoCulqi(reference, amount)).expect(200);
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ commission_estimated: string }>(
+        'SELECT commission_estimated FROM pay_intents WHERE reference = $1',
+        [reference],
+      );
+      return rows[0]!;
+    });
+    // 25 % del total + 0,50.
+    const esperado = Number(amount) * 0.25 + 0.5;
+    expect(Number(fila.commission_estimated)).toBeCloseTo(esperado, 2);
+  });
+
+  it('cambiar el tarifario NO reescribe lo ya estimado', async () => {
+    // Renegociar la comisión en marzo no puede cambiar el margen de enero: si
+    // se editara la fila, los informes de meses cerrados cambiarían solos.
+    const { reference, amount } = await crearIntencion();
+    await enviarCulqi(cuerpoCulqi(reference, amount)).expect(200);
+    const antes = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ commission_estimated: string }>(
+        'SELECT commission_estimated FROM pay_intents WHERE reference = $1',
+        [reference],
+      );
+      return rows[0]!.commission_estimated;
+    });
+
+    await settlements.setTariff(tenantA, { channel: 'web', percentBps: 100 });
+
+    const despues = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ commission_estimated: string }>(
+        'SELECT commission_estimated FROM pay_intents WHERE reference = $1',
+        [reference],
+      );
+      return rows[0]!.commission_estimated;
+    });
+    expect(despues).toBe(antes);
+
+    // Y la tarifa anterior queda CERRADA, no borrada.
+    const vigentes = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ n: string }>(
+        "SELECT count(*) AS n FROM pay_channel_tariffs WHERE channel = 'web' AND effective_to IS NULL",
+      );
+      return Number(rows[0]!.n);
+    });
+    expect(vigentes).toBe(1);
+  });
+
+  it('LA CONCILIACIÓN CUADRA y escribe la comisión liquidada', async () => {
+    await settlements.setTariff(tenantA, {
+      channel: 'web',
+      percentBps: 2500,
+      fixedAmount: '0.5000',
+    });
+    const { reference, amount } = await crearIntencion();
+    await enviarCulqi(cuerpoCulqi(reference, amount)).expect(200);
+
+    const cobro = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        id: string;
+        provider_ref: string;
+        commission_estimated: string;
+      }>(
+        'SELECT id, provider_ref, commission_estimated FROM pay_intents WHERE reference = $1',
+        [reference],
+      );
+      return rows[0]!;
+    });
+    const comision = cobro.commission_estimated;
+    const neto = (Number(amount) - Number(comision)).toFixed(4);
+
+    const imp = await settlements.importSettlement(tenantA, {
+      provider: CULQI_PROVIDER,
+      externalRef: `dep-${reference}`,
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      grossAmount: amount,
+      feeAmount: comision,
+      netAmount: neto,
+      lines: [
+        {
+          providerRef: cobro.provider_ref,
+          grossAmount: amount,
+          feeAmount: comision,
+          netAmount: neto,
+        },
+      ],
+    });
+
+    const informe = await settlements.reconcile(tenantA, imp.id);
+    expect(informe.matched).toBe(1);
+    expect(informe.unmatched).toBe(0);
+    expect(informe.totalsMatch).toBe(true);
+    expect(informe.significantVariances).toHaveLength(0);
+
+    const liquidada = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ commission_settled: string }>(
+        'SELECT commission_settled FROM pay_intents WHERE id = $1',
+        [cobro.id],
+      );
+      return rows[0]!.commission_settled;
+    });
+    expect(Number(liquidada)).toBeCloseTo(Number(comision), 2);
+  });
+
+  it('UNA LÍNEA SIN COBRO DETRÁS es el hallazgo más serio', async () => {
+    // La pasarela declara un cargo que aquí no consta: dinero movido sin pedido
+    // detrás. Puede ser otro sistema, un fraude o una referencia mal casada, y
+    // ninguna de las tres se resuelve sola.
+    const imp = await settlements.importSettlement(tenantA, {
+      provider: CULQI_PROVIDER,
+      externalRef: 'dep-fantasma',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      grossAmount: '50.0000',
+      feeAmount: '5.0000',
+      netAmount: '45.0000',
+      lines: [
+        {
+          providerRef: 'chr_que_nadie_conoce',
+          grossAmount: '50.0000',
+          feeAmount: '5.0000',
+          netAmount: '45.0000',
+        },
+      ],
+    });
+
+    const informe = await settlements.reconcile(tenantA, imp.id);
+    expect(informe.unmatched).toBe(1);
+    expect(informe.status).toBe('discrepant');
+
+    const linea = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ status: string; detail: string }>(
+        `SELECT l.status, l.detail FROM pay_settlement_lines l
+          WHERE l.settlement_id = $1`,
+        [imp.id],
+      );
+      return rows[0]!;
+    });
+    expect(linea.status).toBe('unmatched');
+    expect(linea.detail).toContain('no existe en el sistema');
+  });
+
+  it('un BRUTO que no coincide se marca, no se acepta', async () => {
+    await settlements.setTariff(tenantA, { channel: 'web', percentBps: 2500 });
+    const { reference, amount } = await crearIntencion();
+    await enviarCulqi(cuerpoCulqi(reference, amount)).expect(200);
+    const cobro = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ provider_ref: string }>(
+        'SELECT provider_ref FROM pay_intents WHERE reference = $1',
+        [reference],
+      );
+      return rows[0]!;
+    });
+
+    const imp = await settlements.importSettlement(tenantA, {
+      provider: CULQI_PROVIDER,
+      externalRef: `dep-bruto-${reference}`,
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      grossAmount: '999.0000',
+      feeAmount: '10.0000',
+      netAmount: '989.0000',
+      lines: [
+        {
+          providerRef: cobro.provider_ref,
+          grossAmount: '999.0000',
+          feeAmount: '10.0000',
+          netAmount: '989.0000',
+        },
+      ],
+    });
+
+    const informe = await settlements.reconcile(tenantA, imp.id);
+    expect(informe.status).toBe('discrepant');
+    const linea = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ status: string }>(
+        'SELECT status FROM pay_settlement_lines WHERE settlement_id = $1',
+        [imp.id],
+      );
+      return rows[0]!;
+    });
+    expect(linea.status).toBe('amount_mismatch');
+  });
+
+  it('una COMISIÓN fuera de tolerancia se reporta, no se silencia', async () => {
+    await settlements.setTariff(tenantA, { channel: 'web', percentBps: 1000 });
+    const { reference, amount } = await crearIntencion();
+    await enviarCulqi(cuerpoCulqi(reference, amount)).expect(200);
+    const cobro = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        provider_ref: string;
+        commission_estimated: string;
+      }>(
+        'SELECT provider_ref, commission_estimated FROM pay_intents WHERE reference = $1',
+        [reference],
+      );
+      return rows[0]!;
+    });
+
+    // La pasarela cobró el DOBLE de lo estimado. Es lo que se lleva a
+    // renegociar, y por eso se guardan las dos cifras en vez de pisar una.
+    const cobrada = (Number(cobro.commission_estimated) * 2).toFixed(4);
+    const imp = await settlements.importSettlement(tenantA, {
+      provider: CULQI_PROVIDER,
+      externalRef: `dep-varianza-${reference}`,
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      grossAmount: amount,
+      feeAmount: cobrada,
+      netAmount: (Number(amount) - Number(cobrada)).toFixed(4),
+      lines: [
+        {
+          providerRef: cobro.provider_ref,
+          grossAmount: amount,
+          feeAmount: cobrada,
+          netAmount: (Number(amount) - Number(cobrada)).toFixed(4),
+        },
+      ],
+    });
+
+    const informe = await settlements.reconcile(tenantA, imp.id);
+    expect(informe.significantVariances).toHaveLength(1);
+    expect(informe.significantVariances[0]!.differenceBps).toBeGreaterThan(0);
+    expect(informe.status).toBe('discrepant');
+
+    // Las DOS cifras siguen ahí: sin la estimada no hay con qué reclamar.
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        commission_estimated: string;
+        commission_settled: string;
+      }>(
+        'SELECT commission_estimated, commission_settled FROM pay_intents WHERE provider_ref = $1',
+        [cobro.provider_ref],
+      );
+      return rows[0]!;
+    });
+    expect(Number(fila.commission_estimated)).toBeGreaterThan(0);
+    expect(Number(fila.commission_settled)).toBeCloseTo(Number(cobrada), 2);
+  });
+
+  it('IMPORTAR DOS VECES el mismo depósito no duplica comisiones', async () => {
+    const payload = {
+      provider: CULQI_PROVIDER,
+      externalRef: 'dep-idempotente',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      grossAmount: '10.0000',
+      feeAmount: '1.0000',
+      netAmount: '9.0000',
+      lines: [
+        {
+          providerRef: 'chr_x',
+          grossAmount: '10.0000',
+          feeAmount: '1.0000',
+          netAmount: '9.0000',
+        },
+      ],
+    };
+    const primera = await settlements.importSettlement(tenantA, payload);
+    const segunda = await settlements.importSettlement(tenantA, payload);
+
+    expect(segunda.alreadyImported).toBe(true);
+    expect(segunda.id).toBe(primera.id);
+
+    const lineas = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ n: string }>(
+        'SELECT count(*) AS n FROM pay_settlement_lines WHERE settlement_id = $1',
+        [primera.id],
+      );
+      return Number(rows[0]!.n);
+    });
+    expect(lineas).toBe(1);
+  });
+
+  it('si los totales del informe NO cuadran consigo mismos, se dice', async () => {
+    // Se guardan bruto, comisión y neto de la cabecera aunque neto = bruto −
+    // comisión precisamente para esto: si la pasarela no cuadra consigo misma,
+    // eso mismo es el hallazgo.
+    const imp = await settlements.importSettlement(tenantA, {
+      provider: CULQI_PROVIDER,
+      externalRef: 'dep-descuadrado',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      // La cabecera dice 100 pero la única línea suma 10.
+      grossAmount: '100.0000',
+      feeAmount: '10.0000',
+      netAmount: '90.0000',
+      lines: [
+        {
+          providerRef: 'chr_y',
+          grossAmount: '10.0000',
+          feeAmount: '1.0000',
+          netAmount: '9.0000',
+        },
+      ],
+    });
+    const informe = await settlements.reconcile(tenantA, imp.id);
+    expect(informe.totalsMatch).toBe(false);
+    expect(informe.status).toBe('discrepant');
+  });
+
+  it('una liquidación sin líneas se rechaza', async () => {
+    await expect(
+      settlements.importSettlement(tenantA, {
+        provider: CULQI_PROVIDER,
+        externalRef: 'dep-vacio',
+        periodStart: '2026-08-01',
+        periodEnd: '2026-08-31',
+        grossAmount: '0',
+        feeAmount: '0',
+        netAmount: '0',
+        lines: [],
+      }),
+    ).rejects.toThrow(/sin líneas/i);
   });
 
   // ------------------------------------------------------------ Robustez

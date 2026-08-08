@@ -14,7 +14,11 @@ import {
   SIMULATOR_PROVIDER,
 } from '../modules/integrations/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
-import { PaymentsService, CULQI_PROVIDER } from '../modules/payments/index.js';
+import {
+  PaymentsService,
+  SettlementsService,
+  CULQI_PROVIDER,
+} from '../modules/payments/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -66,6 +70,8 @@ suite('Aislamiento — todos los endpoints', () => {
   let intencionDeB = '';
   /** Enlace público de pago de B: quien lo tenga puede cobrar en su nombre. */
   let enlaceDeB = '';
+  /** Liquidación de B: revela cuánto le cobra su pasarela. */
+  let liquidacionDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -284,6 +290,32 @@ suite('Aislamiento — todos los endpoints', () => {
         provider: CULQI_PROVIDER,
       });
     enlaceDeB = linkDeB.token;
+
+    const liquidacion = await app
+      .get(SettlementsService)
+      .importSettlement(b.tenantId, {
+        provider: CULQI_PROVIDER,
+        externalRef: 'deposito-SECRETO-de-B',
+        periodStart: '2026-01-01',
+        periodEnd: '2026-01-31',
+        grossAmount: '5000.0000',
+        feeAmount: '750.0000',
+        netAmount: '4250.0000',
+        lines: [
+          {
+            providerRef: 'chr_SECRETO_de_B',
+            grossAmount: '5000.0000',
+            feeAmount: '750.0000',
+            netAmount: '4250.0000',
+          },
+        ],
+      });
+    liquidacionDeB = liquidacion.id;
+    secretsOfB.push(
+      liquidacionDeB,
+      'deposito-SECRETO-de-B',
+      'chr_SECRETO_de_B',
+    );
 
     secretsOfB.push(
       enlaceDeB,
@@ -852,6 +884,20 @@ suite('Aislamiento — todos los endpoints', () => {
         'POST /payments/links/:token/revoke',
         (r) => r.post(`/api/v1/payments/links/${enlaceDeB}/revoke`),
         { expectedStatusForA: [404, 204] },
+      ),
+    );
+  });
+
+  it('POST /payments/settlements/:id/reconcile de la liquidación de B', async () => {
+    // La conciliación de B dice cuánto le cobra su pasarela: es su estructura
+    // de costes, y con ella se sabe con qué margen puede competir.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /payments/settlements/:id/reconcile',
+        (r) =>
+          r.post(`/api/v1/payments/settlements/${liquidacionDeB}/reconcile`),
+        { expectedStatusForA: [404] },
       ),
     );
   });
