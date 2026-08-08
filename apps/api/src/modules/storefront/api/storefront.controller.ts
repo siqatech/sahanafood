@@ -69,7 +69,7 @@ export class StorefrontAdminController {
   constructor(private readonly storefront: StorefrontService) {}
 
   @Post('domains')
-  @RequirePermission('catalog.manage')
+  @RequirePermission('storefront.manage_domains')
   async registerDomain(
     @Req() req: AuthenticatedRequest,
     @Body() body: unknown,
@@ -87,7 +87,7 @@ export class StorefrontAdminController {
   }
 
   @Post('domains/:id/verify')
-  @RequirePermission('catalog.manage')
+  @RequirePermission('storefront.manage_domains')
   async verifyDomain(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,

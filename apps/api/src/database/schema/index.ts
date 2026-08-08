@@ -1250,3 +1250,72 @@ export const storefrontCoupons = pgTable(
   },
   (t) => [index('idx_sto_coupons_tenant').on(t.tenantId, t.brandId)],
 );
+
+// ---------------------------------------------------------------------------
+// Delivery (spec 09, F5).
+// ---------------------------------------------------------------------------
+
+export const deliveryCouriers = pgTable(
+  'dlv_couriers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    locationId: uuid('location_id').notNull(),
+    fullName: text('full_name').notNull(),
+    /** Lo ÚNICO del repartidor que ve el cliente en el tracking público. */
+    firstName: text('first_name').notNull(),
+    phone: text('phone'),
+    vehicle: text('vehicle'),
+    status: text('status').notNull().default('off'),
+    userId: uuid('user_id'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_dlv_couriers_local').on(t.tenantId, t.locationId)],
+);
+
+export const deliveryCourierZones = pgTable('dlv_courier_zones', {
+  tenantId: uuid('tenant_id').notNull(),
+  courierId: uuid('courier_id').notNull(),
+  zoneId: uuid('zone_id').notNull(),
+});
+
+export const deliveryShipments = pgTable(
+  'dlv_shipments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    orderId: uuid('order_id').notNull(),
+    courierId: uuid('courier_id'),
+    zoneId: uuid('zone_id'),
+    status: text('status').notNull().default('pending'),
+    externalCourier: text('external_courier'),
+    handoffAt: timestamp('handoff_at', { withTimezone: true }),
+    /** Dinero: NUMERIC(14,4), nunca `number`. */
+    codAmount: numeric('cod_amount', { precision: 14, scale: 4 }),
+    codCollected: boolean('cod_collected').notNull().default(false),
+    settledSessionId: uuid('settled_session_id'),
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+    promisedAt: timestamp('promised_at', { withTimezone: true }),
+    etaAt: timestamp('eta_at', { withTimezone: true }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
+    pickedUpAt: timestamp('picked_up_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    failedAt: timestamp('failed_at', { withTimezone: true }),
+    failReason: text('fail_reason'),
+    attempts: integer('attempts').notNull().default(0),
+    evidence: jsonb('evidence'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_dlv_shipments_cola').on(t.tenantId, t.status)],
+);

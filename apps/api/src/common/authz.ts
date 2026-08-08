@@ -1,5 +1,6 @@
 import { SetMetadata, type CustomDecorator } from '@nestjs/common';
 import type { Request } from 'express';
+import type { Permission } from './permissions.js';
 
 /**
  * Contrato de autorización transversal (solo metadatos y tipos).
@@ -49,9 +50,21 @@ export interface AuthenticatedRequest extends Request {
  *
  *   @RequirePermission('orders.cancel')
  *   @RequirePermission('cash.close', { scopeType: 'location', param: 'locationId' })
+ *
+ * El parámetro está tipado contra el catálogo de `Permission`, y no es `string`
+ * como estaba antes. El motivo es concreto: con `string`, escribir
+ * `@RequirePermission('catalog.manage')` —un permiso que no existe— compilaba,
+ * pasaba las pruebas y dejaba el endpoint accesible SOLO para quien tiene el
+ * comodín. Falla cerrado, así que nadie se entera hasta que un supervisor dice
+ * «no me deja» y el permiso que le falta no existe en ninguna parte.
+ *
+ * El catálogo vive en `common/permissions.ts` justo para que este tipo sea
+ * posible: importarlo de Identity crearía el ciclo que el comentario de arriba
+ * evita, y `dependency-cruiser` lo rechaza —con razón— incluso si la
+ * importación es solo de tipo.
  */
 export function RequirePermission(
-  permission: string,
+  permission: Permission,
   scope?: ScopeRequirement,
 ): CustomDecorator<string> {
   return SetMetadata(PERMISSION_KEY, { permission, scope });

@@ -1,89 +1,15 @@
 /**
- * Catálogo de permisos y roles del sistema (RN-IDN-01, docs/03, docs/14).
+ * Roles del sistema (RN-IDN-01, docs/03, docs/14).
  *
- * Un permiso es `modulo.accion`. La ASIGNACIÓN usuario–rol lleva el ámbito
- * (tenant | company | brand | location | kitchen), de modo que el mismo rol
- * "supervisor" puede aplicar a locales distintos para usuarios distintos.
- *
- * Este catálogo es la fuente de verdad: los guards validan contra él y los
- * roles del sistema se siembran a partir de aquí al provisionar un tenant.
+ * El CATÁLOGO de permisos vive en `common/permissions.ts` —es un contrato
+ * transversal que todos los módulos nombran—; aquí queda lo que es política de
+ * negocio: qué permisos lleva cada rol. La ASIGNACIÓN usuario–rol lleva el
+ * ámbito (tenant | company | brand | location | kitchen), de modo que el mismo
+ * rol "supervisor" puede aplicar a locales distintos para usuarios distintos.
  */
 
-export const PERMISSIONS = [
-  // Tenancy y configuración
-  'tenant.read',
-  'tenant.update',
-  'tenant.billing',
-  // Identidad
-  'users.read',
-  'users.write',
-  'roles.read',
-  'roles.write',
-  // Auditoría
-  'audit.read',
-  // Catálogo (F4)
-  'catalog.read',
-  'catalog.write',
-  // Pedidos (F4)
-  'orders.read',
-  'orders.create',
-  'orders.transition',
-  'orders.cancel',
-  // Cancelar un pedido YA en preparación: hay costo de insumos (RN-ORD-06).
-  'orders.cancel_in_progress',
-  'orders.modify',
-  // Vaciar la bandeja de excepciones cambia el importe que se cobrará: no es
-  // una lectura, es una decisión de negocio (RN-ORD-10).
-  'orders.review_exceptions',
-  'orders.discount',
-  // Caja (F4)
-  'cash.open',
-  'cash.close',
-  'cash.read',
-  // Cocina (F4)
-  'kitchen.read',
-  'kitchen.transition',
-  // Entregas (F4-5)
-  'delivery.read',
-  'delivery.assign',
-  // Inventario (F4/F6)
-  'inventory.read',
-  'inventory.adjust',
-  // Facturación electrónica (F4)
-  'billing.read',
-  // Emitir y reenviar un comprobante: lo hace el cajero al cobrar.
-  'billing.issue',
-  // Anular con nota de crédito NO es emitir. Un comprobante ya declarado se
-  // revierte, y quien lo revierte responde ante SUNAT: se separa a propósito.
-  'billing.void',
-  // Mensajería WhatsApp (F4 avisos, F5 bot)
-  'messaging.read',
-  // Registrar consentimiento y bajas toca datos personales (RN-T10): se
-  // separa de la lectura a propósito.
-  'messaging.manage',
-  // Reportes
-  'reports.read',
-  'reports.export',
-  // Pagos online (F5)
-  'payments.read',
-  // Crear una intención de cobro es pedirle dinero a alguien: se separa de la
-  // lectura. NO existe un permiso para «confirmar un pago»: eso solo lo hace el
-  // webhook verificado de la pasarela (RN-PAY-01), nunca una persona.
-  'payments.charge',
-  // Devolver dinero es la operación más delicada del módulo: sobre el umbral
-  // exige doble aprobación (RN-PAY-03).
-  'payments.refund',
-  // Configurar la pasarela toca credenciales y decide a qué cuenta llega el
-  // dinero del tenant: queda en propietario/administrador.
-  'payments.manage',
-  // Integraciones (F4 con simulador, F7 conectores reales)
-  'integrations.read',
-  // Crear o pausar una conexión toca credenciales y el flujo de pedidos de un
-  // canal entero: se separa de la lectura a propósito.
-  'integrations.manage',
-] as const;
-
-export type Permission = (typeof PERMISSIONS)[number];
+export { PERMISSIONS, type Permission } from '../../../common/permissions.js';
+import type { Permission } from '../../../common/permissions.js';
 
 /** Comodín: acceso total dentro del tenant. Solo para propietario/administrador. */
 export const WILDCARD = '*';
@@ -142,6 +68,12 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'kitchen.transition',
       'delivery.read',
       'delivery.assign',
+      // Liquida el efectivo del repartidor al cierre de su turno: es la misma
+      // persona que cuadra la caja (RN-DLV-02).
+      'delivery.settle',
+      // Ve la tienda; registrar un dominio decide a qué host se sirve el
+      // catálogo de quién y queda en propietario/administrador.
+      'storefront.read',
       'inventory.read',
       'inventory.adjust',
       'billing.read',
@@ -199,7 +131,12 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
     code: 'courier',
     name: 'Repartidor',
     // El filtro "solo sus envíos" es una condición de datos del módulo Delivery (F5).
-    permissions: ['delivery.read', 'orders.read'],
+    //
+    // `delivery.operate` es lo que le permite marcar recogido, entregado o
+    // fallido: sin él el rol existe pero no puede hacer su trabajo, y alguien
+    // acabaría dándole permisos de supervisor «mientras tanto». NO lleva
+    // `delivery.assign` —no se reparte el trabajo a sí mismo— ni nada de caja.
+    permissions: ['delivery.read', 'delivery.operate', 'orders.read'],
   },
   {
     code: 'call_center',

@@ -237,3 +237,24 @@ export {
   type CouponResult,
   type CouponRejection,
 } from './storefront/coupon.js';
+
+// --- Delivery (spec 09, F5) ---
+export {
+  SHIPMENT_STATES,
+  SHIPMENT_EVENTS,
+  SHIPMENT_TERMINAL,
+  shipmentStateMachine,
+  applyShipmentEvent,
+  isShipmentTerminal,
+  type ShipmentState,
+  type ShipmentEvent,
+} from './delivery/shipment-state.js';
+
+export {
+  rankCouriers,
+  pickCourier,
+  AssignmentError,
+  type CourierLoad,
+  type AssignmentRequest,
+  type RankedCourier,
+} from './delivery/assignment.js';

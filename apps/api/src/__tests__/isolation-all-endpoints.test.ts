@@ -20,6 +20,7 @@ import {
   CULQI_PROVIDER,
 } from '../modules/payments/index.js';
 import { StorefrontService } from '../modules/storefront/index.js';
+import { DeliveryService } from '../modules/delivery/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -79,6 +80,11 @@ suite('Aislamiento — todos los endpoints', () => {
   let liquidacionDeB = '';
   /** Dominio de tienda de B: A no debe poder verlo ni darlo por verificado. */
   let dominioDeB = '';
+  /** Repartidor y envío de B: sus nombres y su deuda de efectivo son suyos. */
+  let repartidorDeB = '';
+  let envioDeB = '';
+  /** Enlace de seguimiento de B: quien lo tenga sabe dónde va un pedido ajeno. */
+  let seguimientoDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -351,6 +357,30 @@ suite('Aislamiento — todos los endpoints', () => {
       pasarelaDeB.id,
       pasarelaDeB.webhookToken,
       'secreto-de-la-pasarela-del-tenant-b',
+    );
+
+    // Reparto de B: un repartidor con nombre reconocible y un envío con cobro
+    // contra entrega, que es deuda de efectivo y por tanto dato sensible.
+    const deliveryB = app.get(DeliveryService);
+    const repartidor = await deliveryB.createCourier(b.tenantId, {
+      locationId: demoB.locationId,
+      fullName: 'Repartidor SECRETO de B',
+      phone: '+51999000111',
+    });
+    repartidorDeB = repartidor.id;
+    const envio = await deliveryB.createShipment(b.tenantId, {
+      orderId: pedidoDeB,
+      codAmountMinor: 777_000,
+    });
+    envioDeB = envio.id;
+    const seguimiento = await deliveryB.issueTrackingLink(b.tenantId, envioDeB);
+    seguimientoDeB = seguimiento.token;
+    secretsOfB.push(
+      repartidorDeB,
+      'Repartidor SECRETO de B',
+      '+51999000111',
+      envioDeB,
+      seguimientoDeB,
     );
 
     // B necesita DATOS de analítica y mensajería: dos respuestas de ceros
@@ -992,6 +1022,91 @@ suite('Aislamiento — todos los endpoints', () => {
         },
       ),
     );
+  });
+
+  it('GET /delivery/couriers no trae los repartidores de B', async () => {
+    // Los nombres y teléfonos de los repartidores de otro son datos personales
+    // de terceros, no solo información de negocio.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /delivery/couriers', (r) => r.get('/api/v1/delivery/couriers')),
+    );
+  });
+
+  it('GET /delivery/shipments no trae los envíos de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /delivery/shipments', (r) => r.get('/api/v1/delivery/shipments')),
+    );
+  });
+
+  it('GET /delivery/shipments/:id del envío de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /delivery/shipments/:id',
+        (r) => r.get(`/api/v1/delivery/shipments/${envioDeB}`),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('POST /delivery/shipments/:id/assign sobre el envío de B', async () => {
+    // Meterle un repartidor propio al envío de otro sería mandar a alguien a
+    // una dirección que no debería conocer.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /delivery/shipments/:id/assign',
+        (r) =>
+          r
+            .post(`/api/v1/delivery/shipments/${envioDeB}/assign`)
+            .send({ courierId: demoA.locationId }),
+        { expectedStatusForA: [404, 422] },
+      ),
+    );
+  });
+
+  it('GET /delivery/couriers/balances no trae la deuda de los de B', async () => {
+    // Cuánto efectivo lleva encima cada repartidor de la competencia.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /delivery/couriers/balances', (r) =>
+        r.get('/api/v1/delivery/couriers/balances'),
+      ),
+    );
+  });
+
+  it('POST /delivery/couriers/:id/settle del repartidor de B', async () => {
+    // Liquidar al repartidor de otro contra la caja propia mete su efectivo en
+    // el cajón equivocado: es el peor resultado posible de una fuga aquí.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /delivery/couriers/:id/settle',
+        (r) =>
+          r
+            .post(`/api/v1/delivery/couriers/${repartidorDeB}/settle`)
+            .send({ sessionId: demoA.locationId }),
+        { expectedStatusForA: [200, 201, 404, 422] },
+      ),
+    );
+  });
+
+  it('el seguimiento público de B no dice de quién es el pedido', async () => {
+    // Es público a propósito —quien compra no tiene cuenta—, así que aquí no
+    // se comprueba que A no pueda abrirlo: se comprueba que abrirlo NO revele
+    // de quién es. Estado, ETA y un nombre de pila; ni tenant, ni envío, ni
+    // importe, ni apellido.
+    const r = await request(app.getHttpServer())
+      .get(`/api/v1/tracking/${seguimientoDeB}`)
+      .expect(200);
+    const cuerpo = JSON.stringify(r.body);
+    for (const secreto of [envioDeB, 'Repartidor SECRETO de B', '+51999000111']) {
+      expect(cuerpo, `el seguimiento público filtró "${secreto}"`).not.toContain(
+        secreto,
+      );
+    }
   });
 
   it('el harness DETECTA una fuga simulada (prueba del detector)', async () => {
