@@ -108,7 +108,7 @@ jobs:
       - name: Cliente psql
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Crear roles (app/migrator SIN BYPASSRLS)
-        run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/01-roles.sql
+        run: PGHOST=localhost PGPASSWORD=sahana_dev POSTGRES_USER=sahana POSTGRES_DB=sahana bash infra/docker/init/01-roles.sh
       - name: Migraciones
         run: pnpm --filter @sahana/api migrate
       # Paso PROPIO y a propósito duplicado dentro de la suite completa (T5.31).
@@ -202,7 +202,7 @@ jobs:
       - name: Cliente psql
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Crear roles (app/migrator SIN BYPASSRLS)
-        run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/01-roles.sql
+        run: PGHOST=localhost PGPASSWORD=sahana_dev POSTGRES_USER=sahana POSTGRES_DB=sahana bash infra/docker/init/01-roles.sh
       - name: Extensiones (pgvector, con superusuario)
         run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/02-extensions.sql
       - name: Migraciones
@@ -230,6 +230,41 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Imágenes de producción. Que compilen es parte del contrato: un Dockerfile
+  # roto no se descubre al desplegar un viernes.
+  #
+  # Ya cazó dos fallos que `pnpm build` no puede ver, porque solo existen dentro
+  # de la imagen: un `.tsbuildinfo` colado en el contexto hacía que `tsc` no
+  # emitiera nada —construcción en verde, `dist` vacío— y pnpm se quedaba
+  # esperando una confirmación interactiva que en un runner no llega nunca.
+  # ---------------------------------------------------------------------------
+  images:
+    name: Imágenes (api · web)
+    runs-on: ubuntu-latest
+    needs: [static]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Imagen de API y worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.api
+          push: false
+          tags: sahana/api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Imagen de la tienda
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.web
+          push: false
+          tags: sahana/web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------------
   # Análisis de composición (SCA): dependencias con vulnerabilidades conocidas.

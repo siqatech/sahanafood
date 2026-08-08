@@ -1,0 +1,116 @@
+# API y WORKER de Sahana Food — una sola imagen, dos comandos.
+#
+# Que compartan imagen no es un ahorro de disco: es lo que garantiza que el
+# worker y la API corran EXACTAMENTE el mismo código de dominio. Con dos
+# imágenes, un despliegue a medias deja al worker calculando totales con una
+# versión y a la API con otra, y la diferencia aparece en el importe de un
+# comprobante ya emitido.
+#
+#   API     → node dist/main.js        (por defecto)
+#   Worker  → node dist/workers/main.js
+#
+# Construcción desde la RAÍZ del repositorio:
+#   docker build -f infra/docker/Dockerfile.api -t sahana/api .
+
+# ---------------------------------------------------------------------------
+# 1. Dependencias. Capa propia para que un cambio de código no reinstale nada.
+# ---------------------------------------------------------------------------
+FROM node:22-bookworm-slim AS deps
+WORKDIR /app
+
+# `CI=true`: pnpm no es interactivo. Sin esto, reinstalar solo producción se
+# queda esperando una confirmación que nadie va a teclear —«Aborted removal of
+# modules directory due to no TTY»— y la construcción falla sin motivo
+# aparente.
+ENV CI=true
+
+# `corepack` fija la versión de pnpm que declara el repositorio. Instalar «la
+# última» reproduce el árbol de dependencias de otro día, y entonces la imagen
+# deja de ser reproducible sin que nadie haya cambiado un lockfile.
+RUN corepack enable
+
+# argon2 se compila: sin herramientas de compilación, el hash de contraseñas y
+# el de los PIN del POS fallan en el arranque, no en la instalación.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY apps/print-agent/package.json apps/print-agent/
+COPY packages/domain/package.json packages/domain/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/ai-prompts/package.json packages/ai-prompts/
+
+# `--frozen-lockfile`: si el lockfile no cuadra con los manifiestos, la
+# construcción FALLA en vez de resolver por su cuenta. Una imagen que instala
+# versiones distintas a las probadas no es la que se probó.
+# Certificado de una CA corporativa, OPCIONAL.
+#
+# Muchas redes de empresa terminan el TLS en un proxy con su propia CA, y sin
+# ella `pnpm install` falla con `SELF_SIGNED_CERT_IN_CHAIN`. Va como SECRETO de
+# BuildKit y no como `COPY`: así no queda en ninguna capa de la imagen ni en el
+# historial. Si no se pasa, el archivo llega vacío y no se toca nada — nunca se
+# desactiva la verificación.
+#
+#   docker build --secret id=ca_bundle,src=/ruta/ca.crt ...
+RUN --mount=type=secret,id=ca_bundle,target=/tmp/ca-bundle.crt \
+  sh -c 'if [ -s /tmp/ca-bundle.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/ca-bundle.crt; fi; pnpm install --frozen-lockfile'
+
+# ---------------------------------------------------------------------------
+# 2. Compilación.
+# ---------------------------------------------------------------------------
+FROM deps AS build
+WORKDIR /app
+COPY . .
+RUN pnpm --filter @sahana/domain build \
+  && pnpm --filter @sahana/contracts build \
+  && pnpm --filter @sahana/ai-prompts build \
+  && pnpm --filter @sahana/api build
+
+# Se reinstala solo producción: fuera TypeScript, Vitest, SWC y compañía. No es
+# tamaño, es superficie — cada dependencia de desarrollo dentro de la imagen es
+# una más que auditar cuando salga su CVE.
+RUN --mount=type=secret,id=ca_bundle,target=/tmp/ca-bundle.crt \
+  sh -c 'if [ -s /tmp/ca-bundle.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/ca-bundle.crt; fi; pnpm install --frozen-lockfile --prod'
+
+# ---------------------------------------------------------------------------
+# 3. Runtime.
+# ---------------------------------------------------------------------------
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+# `--enable-source-maps`: sin esto, una traza de producción apunta a JavaScript
+# compilado y depurar un incidente empieza por adivinar qué línea era.
+ENV NODE_OPTIONS=--enable-source-maps
+
+# Usuario sin privilegios. La imagen de Node trae `node` (uid 1000) ya creado.
+USER node
+
+COPY --chown=node:node --from=build /app/node_modules ./node_modules
+COPY --chown=node:node --from=build /app/apps/api/node_modules ./apps/api/node_modules
+COPY --chown=node:node --from=build /app/apps/api/dist ./apps/api/dist
+COPY --chown=node:node --from=build /app/apps/api/package.json ./apps/api/
+COPY --chown=node:node --from=build /app/packages ./packages
+
+# Las migraciones VIAJAN con la imagen, y de eso depende el rollback (T5.35):
+# la sonda `/health/ready` compara el esquema aplicado contra la última
+# migración que trae la imagen. Una imagen antigua trae su lista antigua, y por
+# eso una base por delante del código se da por lista al revertir.
+COPY --chown=node:node --from=build /app/infra/migrations ./infra/migrations
+
+WORKDIR /app/apps/api
+
+EXPOSE 3000
+
+# Comprobación de vida, no de disponibilidad: `/health` dice si el proceso
+# responde. La de disponibilidad —`/health/ready`, que además mira la base y el
+# esquema— la consulta el balanceador, no Docker: si Docker reiniciara el
+# contenedor cada vez que la base parpadea, un incidente de red se convertiría
+# en un reinicio en cascada.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||3000)+'/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "dist/main.js"]

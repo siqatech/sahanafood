@@ -11,6 +11,11 @@
  */
 const nextConfig = {
   reactStrictMode: true,
+  // Salida autónoma para la imagen de producción: Next copia solo los módulos
+  // que el servidor usa de verdad. Sin esto habría que meter `node_modules`
+  // entero —cientos de megas de dependencias de compilación— en una imagen que
+  // solo tiene que servir HTML.
+  output: 'standalone',
   // El id de compilación no lleva marca de tiempo: dos compilaciones del mismo
   // commit tienen que dar el mismo resultado para que la comprobación de
   // presupuesto compare peras con peras.

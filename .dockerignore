@@ -1,0 +1,25 @@
+# Lo que NO entra en el contexto de construcción.
+#
+# No es solo velocidad: `.env` con secretos reales dentro de una imagen es una
+# fuga que viaja al registro y de ahí a cualquiera que pueda descargarla.
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+**/.next
+# Estado incremental de TypeScript. Es lo más traicionero de esta lista: un
+# `.tsbuildinfo` de otra máquina hace que `tsc` decida que ya está todo
+# compilado y NO emita nada. La construcción termina en verde, sin `dist`, y el
+# fallo aparece dos capas después como «no encuentro @sahana/domain».
+**/*.tsbuildinfo
+**/coverage
+**/test-results
+**/playwright-report
+.env
+.env.*
+!.env.example
+docs
+specs
+tests/load/results
+*.log

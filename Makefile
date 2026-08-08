@@ -133,3 +133,25 @@ e2e-web: ## Pruebas de navegador de la tienda (ADR-0018). Requiere docker up + m
 	@echo "Levanta la API en otra terminal (make api) y vuelve a ejecutar si falla."
 	pnpm --filter @sahana/web build
 	pnpm --filter @sahana/web test:browser
+
+.PHONY: images
+images: ## Construye las imágenes de producción (api/worker y tienda)
+	DOCKER_BUILDKIT=1 docker build -f infra/docker/Dockerfile.api -t sahana/api:local .
+	DOCKER_BUILDKIT=1 docker build -f infra/docker/Dockerfile.web -t sahana/web:local .
+
+.PHONY: prod-up
+prod-up: ## Levanta el stack de producción en esta máquina (necesita .env)
+	docker compose -f infra/docker/docker-compose.prod.yml --env-file .env up -d
+
+.PHONY: prod-down
+prod-down: ## Detiene el stack de producción (conserva los datos)
+	docker compose -f infra/docker/docker-compose.prod.yml --env-file .env down
+
+.PHONY: prod-logs
+prod-logs: ## Sigue los logs del stack de producción
+	docker compose -f infra/docker/docker-compose.prod.yml --env-file .env logs -f
+
+.PHONY: provision
+provision: ## Da de alta un cliente. Ej: make provision NOMBRE="Pollería" EMAIL=d@p.pe DUENO="Rosa Quispe"
+	docker compose -f infra/docker/docker-compose.prod.yml --env-file .env run --rm api \
+		node dist/database/provision.js --nombre "$(NOMBRE)" --email "$(EMAIL)" --nombre-dueno "$(DUENO)"

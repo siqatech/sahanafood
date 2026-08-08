@@ -233,4 +233,22 @@ El corazón de la fase son **T6.03 (costo promedio móvil)** y **T6.11 (cierre m
 
 **dependency-cruiser: cero violaciones y cero advertencias, por primera vez.** Las que quedaban eran huérfanos por definición —rutas de Next, que descubre el framework, y configuraciones— y una lista de avisos que nunca baja a cero enseña a ignorarla entera.
 
+## Puesta en marcha — el sistema ya se puede levantar
+
+**No había Dockerfiles.** Toda la fase 5 se cerró sin que existiera una imagen que desplegar: el sistema se ejecutaba con `pnpm dev` y nada más. Ahora hay `infra/docker/Dockerfile.api` (API **y worker**: una imagen, dos comandos, para que no puedan divergir en el cálculo de totales), `Dockerfile.web` con salida autónoma de Next, y `docker-compose.prod.yml` para una máquina. Todo **verificado de verdad**: imágenes construidas, stack arrancado, 30 migraciones aplicadas por el servicio `migrate`, `/health/ready` en verde y sesión iniciada.
+
+**Y faltaba lo más básico: no se podía crear el primer cliente.** `provisionTenant` estaba escrito y probado desde T3.07, sin endpoint —correcto: sin autenticar sería una puerta abierta, y autenticado no serviría porque en un despliegue nuevo no existe ningún usuario— y sin CLI en la imagen, porque los guiones de semilla son TypeScript que la imagen de producción no lleva. Un servidor recién levantado arrancaba sano y **vacío para siempre**. Ahora `node dist/database/provision.js` da de alta un cliente; se probó contra el stack desplegado y la dueña entra al panel.
+
+**Tres defectos que solo aparecen al construir y arrancar de verdad:**
+
+· **Un `.tsbuildinfo` en el contexto de construcción.** TypeScript leía estado de compilación de OTRA máquina, decidía que ya estaba todo hecho y **no emitía nada**. La imagen terminaba en verde, sin `dist`, y el fallo salía dos capas después como «no encuentro `@sahana/domain`». Ya está en `.dockerignore`, con el porqué escrito.
+
+· **Una variable opcional VACÍA impedía arrancar.** En un `.env` se declara «no lo uso» dejándolo en blanco, y `docker compose` propaga la cadena vacía; zod, con razón, no acepta `''` como URL. Resultado: quien no usa OpenTelemetry **no podía levantar la API**, con un «Invalid url» sobre algo ni siquiera obligatorio. Ahora vacío equivale a no puesto, con pruebas del borde.
+
+· **Las contraseñas de los roles de base de datos estaban escritas en el repositorio.** `01-roles.sql` creaba `sahana_app` —el rol que lee los pedidos de todos los clientes— con una contraseña pública. Ahora es un script que las toma del entorno, y el compose de producción las **exige**: sin ellas no levanta.
+
+**Las imágenes se construyen en CI.** Un Dockerfile roto no se descubre desplegando un viernes; los dos fallos de construcción de arriba son exactamente lo que ese job caza y `pnpm build` no puede ver.
+
+**Lo que este despliegue NO trae, dicho por adelantado** (`docs/34-puesta-en-marcha.md` §9): alta disponibilidad, copias gestionadas —hay comando, pero **hacerlas es de quien levanta**—, escalado del Postgres local, canario con reparto de tráfico y certificados. Todo eso sigue siendo **DT-02**.
+
 **Próxima acción de Claude Code:** esperar decisión del propietario

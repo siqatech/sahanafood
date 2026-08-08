@@ -18,7 +18,8 @@
     "test:integration": "vitest run",
     "seed:load": "node --import @swc-node/register/esm-register src/database/seed-load.ts",
     "seed:shop": "node --import @swc-node/register/esm-register src/database/seed-shop.ts",
-    "test:golden": "vitest run src/__tests__/ai-golden-suite.test.ts"
+    "test:golden": "vitest run src/__tests__/ai-golden-suite.test.ts",
+    "provision": "node --import @swc-node/register/esm-register src/database/provision.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

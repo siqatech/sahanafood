@@ -1,0 +1,59 @@
+# Tienda web de Sahana Food (Next.js).
+#
+# Construcción desde la RAÍZ del repositorio:
+#   docker build -f infra/docker/Dockerfile.web -t sahana/web .
+
+FROM node:22-bookworm-slim AS deps
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY apps/print-agent/package.json apps/print-agent/
+COPY packages/domain/package.json packages/domain/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/ai-prompts/package.json packages/ai-prompts/
+# Certificado de una CA corporativa, OPCIONAL.
+#
+# Muchas redes de empresa terminan el TLS en un proxy con su propia CA, y sin
+# ella `pnpm install` falla con `SELF_SIGNED_CERT_IN_CHAIN`. Va como SECRETO de
+# BuildKit y no como `COPY`: así no queda en ninguna capa de la imagen ni en el
+# historial. Si no se pasa, el archivo llega vacío y no se toca nada — nunca se
+# desactiva la verificación.
+#
+#   docker build --secret id=ca_bundle,src=/ruta/ca.crt ...
+RUN --mount=type=secret,id=ca_bundle,target=/tmp/ca-bundle.crt \
+  sh -c 'if [ -s /tmp/ca-bundle.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/ca-bundle.crt; fi; pnpm install --frozen-lockfile --ignore-scripts'
+
+FROM deps AS build
+WORKDIR /app
+COPY . .
+# El dominio se compila ANTES: la tienda formatea importes con `Money`, y ese
+# cálculo no se duplica en el navegador — es la regla de «cálculo solo en
+# @sahana/domain», que es lo que impide que la tienda y la caja cobren distinto.
+RUN pnpm --filter @sahana/domain build \
+  && pnpm --filter @sahana/web build
+
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV HOSTNAME=0.0.0.0
+
+USER node
+
+# Salida autónoma: el servidor y solo los módulos que usa.
+COPY --chown=node:node --from=build /app/apps/web/.next/standalone ./
+COPY --chown=node:node --from=build /app/apps/web/.next/static ./apps/web/.next/static
+COPY --chown=node:node --from=build /app/apps/web/public ./apps/web/public
+
+EXPOSE 3001
+
+# La tienda resuelve la marca por el `Host` del visitante, así que la sonda va
+# por IP y SIN nombre: pedirle a la sonda que use un dominio de cliente ataría
+# la salud del contenedor a que ese cliente siga siendo cliente.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "apps/web/server.js"]

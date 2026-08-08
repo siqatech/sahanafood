@@ -74,14 +74,29 @@ const configSchema = z.object({
 
 export type AppConfig = z.infer<typeof configSchema>;
 
+/**
+ * Una variable vacía es una variable NO PUESTA.
+ *
+ * En un `.env` se declara lo opcional dejándolo en blanco —`OTEL_...=`— y
+ * `docker compose` propaga esa cadena vacía tal cual. Zod, con razón, no
+ * considera `''` una URL válida: `optional()` permite `undefined`, no vacío. El
+ * resultado era que un despliegue que no usa OpenTelemetry **no arrancaba**,
+ * con un «Invalid url» sobre algo que ni siquiera es obligatorio. Costó
+ * encontrarlo porque el `.env` se veía correcto.
+ */
+function sinVacios(valor: string | undefined): string | undefined {
+  const limpio = valor?.trim();
+  return limpio ? limpio : undefined;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = configSchema.safeParse({
     nodeEnv: env.NODE_ENV,
     apiPort: env.API_PORT,
-    logLevel: env.LOG_LEVEL,
+    logLevel: sinVacios(env.LOG_LEVEL),
     databaseUrl: env.DATABASE_URL,
-    migrationDatabaseUrl: env.MIGRATION_DATABASE_URL,
-    redisUrl: env.REDIS_URL,
+    migrationDatabaseUrl: sinVacios(env.MIGRATION_DATABASE_URL),
+    redisUrl: sinVacios(env.REDIS_URL),
     worker: {
       outboxIntervalMs: env.WORKER_OUTBOX_INTERVAL_MS,
       acceptanceIntervalMs: env.WORKER_ACCEPTANCE_INTERVAL_MS,
@@ -92,13 +107,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       refundIntervalMs: env.WORKER_REFUND_INTERVAL_MS,
       saturationIntervalMs: env.WORKER_SATURATION_INTERVAL_MS,
     },
-    otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    otelEndpoint: sinVacios(env.OTEL_EXPORTER_OTLP_ENDPOINT),
     credentialsMasterKey:
-      env.CREDENTIALS_MASTER_KEY ?? 'dev-only-credentials-master-key-change-me',
+      sinVacios(env.CREDENTIALS_MASTER_KEY) ??
+      'dev-only-credentials-master-key-change-me',
     jwt: {
-      accessSecret: env.JWT_ACCESS_SECRET ?? 'dev-only-access-secret-change-me',
+      accessSecret:
+        sinVacios(env.JWT_ACCESS_SECRET) ?? 'dev-only-access-secret-change-me',
       refreshSecret:
-        env.JWT_REFRESH_SECRET ?? 'dev-only-refresh-secret-change-me',
+        sinVacios(env.JWT_REFRESH_SECRET) ??
+        'dev-only-refresh-secret-change-me',
       accessTtl: env.JWT_ACCESS_TTL,
       refreshTtl: env.JWT_REFRESH_TTL,
     },

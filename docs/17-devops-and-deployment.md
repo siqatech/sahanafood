@@ -9,6 +9,11 @@
 - Versionado semántico de la API y de `@sahana/domain`. Ramas: trunk-based con ramas cortas.
 - Gestión de incidentes: severidades S1–S4, on-call desde GA, postmortem sin culpa obligatorio S1/S2 en 72 h → acciones a `docs/23-technical-debt.md`.
 
+Puesta en marcha paso a paso —desde un servidor vacío hasta el primer cliente
+vendiendo—: **`docs/34-puesta-en-marcha.md`**. Imágenes en `infra/docker/`
+(`Dockerfile.api` sirve a la API y al worker: la misma imagen con dos comandos,
+para que no puedan divergir en el cálculo de totales).
+
 ## Canario y reversión (T5.35)
 
 El criterio de la fase 5 es concreto: **un despliegue malo se revierte sin tocar
