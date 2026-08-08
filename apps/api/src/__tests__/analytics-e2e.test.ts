@@ -336,6 +336,27 @@ suite('Analítica — rentabilidad y conciliación', () => {
     expect(Number(r.analyticsTotal)).toBeGreaterThan(0);
   });
 
+  it('corta el día de negocio en la zona del local, no en UTC', async () => {
+    // 23:40 en Lima del día 7 es 04:40 UTC del día 8. La conciliación tiene que
+    // preguntar por el 7: es el día que el dueño está cerrando.
+    //
+    // Esto NO es una hipótesis. `aFechaNegocio` usaba `toISOString()`, que da el
+    // día UTC, mientras la proyección guarda `business_date` en hora de Lima.
+    // Entre las 19:00 y la medianoche de Lima —las horas de más venta— la
+    // conciliación miraba el día siguiente, encontraba cero de los dos lados y
+    // respondía «cuadra». Un cuadre que solo cuadra porque no mira nada.
+    //
+    // La fecha va FIJA en la prueba a propósito: con `new Date()` esto pasaría
+    // en verde 19 horas de cada 24, que es como el fallo sobrevivió hasta que
+    // la suite corrió de madrugada.
+    const casiMedianocheEnLima = new Date('2026-08-08T04:40:00Z');
+    const r = await analytics.reconcileWithBilling(
+      tenantA,
+      casiMedianocheEnLima,
+    );
+    expect(r.businessDate).toBe('2026-08-07');
+  });
+
   it('detecta una venta SIN comprobante: es la divergencia que importa', async () => {
     // Un total que no cuadra apunta a un cálculo; un pedido sin comprobante
     // apunta a una venta que no se declaró, que es mucho peor.
@@ -365,6 +386,19 @@ suite('Analítica — rentabilidad y conciliación', () => {
     ).expect(200);
     expect(conciliacion.body).toHaveProperty('matches');
     expect(conciliacion.body).toHaveProperty('difference');
+
+    // `?date=` es un DÍA y se responde por ESE día. Con `new Date('2026-01-15')`
+    // —medianoche UTC, 19:00 del 14 en Lima— la respuesta salía fechada el 14
+    // aunque se hubiera pedido el 15: el panel enseñaría la conciliación de la
+    // víspera bajo el título del día pedido, que es la peor forma de estar mal.
+    const delDia = await auth(
+      http().get('/api/v1/analytics/reconciliation?date=2026-01-15'),
+    ).expect(200);
+    expect(delDia.body.businessDate).toBe('2026-01-15');
+
+    await auth(
+      http().get('/api/v1/analytics/reconciliation?date=15-01-2026'),
+    ).expect(422);
 
     await auth(
       http().get('/api/v1/analytics/profitability?from=no-es-fecha'),

@@ -27,6 +27,7 @@ import {
   INVENTORY_CONSUMER,
 } from '../modules/inventory/index.js';
 import { BillingService } from '../modules/billing/index.js';
+import { IngestionService } from '../modules/integrations/index.js';
 import {
   MessagingEventHandlers,
   MESSAGING_CONSUMER,
@@ -79,6 +80,7 @@ async function bootstrap(): Promise<void> {
   const pool = app.get<Pool>(PG_POOL);
   const acceptance = app.get(AcceptanceService);
   const billing = app.get(BillingService);
+  const ingestion = app.get(IngestionService);
 
   const redis = createRedis(config.redisUrl);
   const publisher = createQueuePublisher(redis);
@@ -211,13 +213,45 @@ async function bootstrap(): Promise<void> {
     },
   });
 
+  /**
+   * Ingesta de marketplace (RN-INT-02).
+   *
+   * El webhook responde 202 en cuanto GUARDA el envío; convertirlo en pedido es
+   * trabajo de después, y este es el «después». Hasta T4.30 no existía: los
+   * envíos se acumulaban en `int_webhook_events` con status 'pending' y solo se
+   * procesaban desde las pruebas, que llamaban a `processPending` a mano. En
+   * producción, un pedido de Rappi habría entrado, devuelto 202 y no habría
+   * llegado nunca a la cocina. Lo destapó la prueba de carga: 669 webhooks
+   * aceptados, 669 sin procesar.
+   *
+   * Cada segundo, y en lotes: un marketplace no manda de uno en uno, y el
+   * compromiso de la spec es que el pedido esté en el KDS en menos de 5 s.
+   */
+  const ingesta = new PeriodicJob({
+    name: 'ingestion-sweep',
+    intervalMs: config.worker.ingestionIntervalMs,
+    initialDelayMs: 2_000,
+    run: async () => {
+      const r = await ingestion.processPending(
+        config.worker.ingestionBatchSize,
+      );
+      if (r.processed > 0) {
+        logger.log(
+          `Ingesta: ${r.processed} envíos — ${r.toOrder} a pedido, ${r.toReview} a revisión, ${r.failed} fallidos.`,
+        );
+      }
+    },
+  });
+
   relay.start();
   aceptacion.start();
   facturacion.start();
+  ingesta.start();
   logger.log(
     `Worker activo — relay cada ${config.worker.outboxIntervalMs} ms, ` +
       `aceptación cada ${config.worker.acceptanceIntervalMs} ms, ` +
       `facturación cada ${config.worker.billingIntervalMs} ms, ` +
+      `ingesta cada ${config.worker.ingestionIntervalMs} ms, ` +
       `consumidores [${consumidores.map((c) => c.nombre).join(', ')}] escuchando eventos de dominio.`,
   );
 
@@ -229,7 +263,12 @@ async function bootstrap(): Promise<void> {
     // El orden importa: primero se dejan de programar vueltas y se espera a la
     // que esté viva, y solo entonces se cierran cola, Redis y pool. Cerrarlos
     // antes abortaría una transacción a medias en cada despliegue.
-    await Promise.all([relay.stop(), aceptacion.stop(), facturacion.stop()]);
+    await Promise.all([
+      relay.stop(),
+      aceptacion.stop(),
+      facturacion.stop(),
+      ingesta.stop(),
+    ]);
     // `close()` del consumidor espera a que termine el job en curso: matarlo a
     // mitad dejaría una transacción abortada y el evento por reintentar.
     await consumer.close();

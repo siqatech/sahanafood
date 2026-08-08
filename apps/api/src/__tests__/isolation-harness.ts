@@ -165,7 +165,11 @@ export async function assertEndpointIsolation(
       expect(
         bodyB === bodyA && bodyA !== '{}' && bodyA !== '[]',
         `${testCase.name}: los tenants A y B reciben EXACTAMENTE la misma respuesta, ` +
-          'lo que sugiere que el endpoint no filtra por tenant.',
+          'lo que sugiere que el endpoint no filtra por tenant. ' +
+          // El cuerpo va en el mensaje porque sin él este fallo no se puede
+          // diagnosticar: hay que saber si coinciden porque hay fuga o porque
+          // los dos tenants no tienen datos y comparten el estado vacío.
+          `Respuesta (idéntica en A y B): ${bodyA.slice(0, 500)}`,
       ).toBe(false);
     }
   }

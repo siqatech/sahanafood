@@ -31,6 +31,18 @@ const configSchema = z.object({
     // OSE y no gastar un plazo que SUNAT cuenta en horas (RN-BIL-03).
     billingIntervalMs: z.coerce.number().int().positive().default(30_000),
     outboxBatchSize: z.coerce.number().int().positive().max(1_000).default(100),
+    /**
+     * Ingesta de marketplace. Va al ritmo del relay y no al de la facturación:
+     * lo que espera al otro lado es una cocina, y el SLO de docs/06 pide el
+     * pedido en el KDS en menos de 5 s desde que el canal lo manda.
+     */
+    ingestionIntervalMs: z.coerce.number().int().positive().default(1_000),
+    ingestionBatchSize: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(1_000)
+      .default(50),
   }),
 
   /** Colector OTLP. Sin él no se arranca el tracing (ver observability/tracing). */
@@ -66,6 +78,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       acceptanceIntervalMs: env.WORKER_ACCEPTANCE_INTERVAL_MS,
       billingIntervalMs: env.WORKER_BILLING_INTERVAL_MS,
       outboxBatchSize: env.WORKER_OUTBOX_BATCH_SIZE,
+      ingestionIntervalMs: env.WORKER_INGESTION_INTERVAL_MS,
+      ingestionBatchSize: env.WORKER_INGESTION_BATCH_SIZE,
     },
     otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
     credentialsMasterKey:

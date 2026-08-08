@@ -30,6 +30,15 @@ import {
  */
 const suite = INTEGRATION_DB ? describe : describe.skip;
 
+/**
+ * Día de negocio en el que SOLO el tenant B tiene facturación.
+ *
+ * Fijo y en el pasado: así el caso de `/analytics/reconciliation` no depende de
+ * la hora a la que se ejecute la suite ni de lo que las pruebas anteriores
+ * hayan hecho con los comprobantes del día de hoy.
+ */
+const DIA_SOLO_DE_B = '2026-01-15';
+
 suite('Aislamiento — todos los endpoints', () => {
   let app: INestApplication;
   const pool = createPool(INTEGRATION_DB!, { max: 5 });
@@ -145,6 +154,33 @@ suite('Aislamiento — todos los endpoints', () => {
       );
       return rows[0]!.id;
     });
+
+    // Facturación de B en un día CERRADO del pasado. Es lo que da contenido al
+    // caso de `/analytics/reconciliation`: A no facturó nada ese día, B sí, y
+    // ninguna prueba posterior lo toca (las que emiten notas de crédito o
+    // reintentan van contra `documentoDeB`, que es de hoy).
+    //
+    // La hora es de tarde en Lima a propósito: a las 18:00 UTC son las 13:00 en
+    // Lima, así que el día de negocio es el mismo mire quien lo mire. Con una
+    // hora de madrugada, UTC y Lima caerían en días distintos y la prueba
+    // volvería a depender de en qué zona se hace la cuenta.
+    // Va en la MISMA serie B900: solo puede haber una serie activa por tipo de
+    // comprobante (índice `idx_bil_series_activa`), que es la regla que impide
+    // dos correlativos en paralelo para el mismo tipo.
+    await withTenant(pool, b.tenantId, ({ client }) =>
+      client.query(
+        `INSERT INTO bil_documents
+           (tenant_id, company_id, doc_type, status,
+            series_id, series, correlative, number,
+            subtotal, taxable_base, tax, total, customer_name, issued_at)
+         SELECT $1, $2, 'boleta', 'accepted', s.id, 'B900', 8, 'B900-00000008',
+                '84.7458','84.7458','15.2542','100.0000','Cliente SECRETO de B',
+                $3::timestamptz
+           FROM bil_series s
+          WHERE s.tenant_id = $1 AND s.series = 'B900'`,
+        [b.tenantId, demoB.companyId, `${DIA_SOLO_DE_B}T18:00:00Z`],
+      ),
+    );
 
     // Conexiones de integración: el token de webhook de B identifica su canal y
     // permitiría dirigirle pedidos, así que cuenta como secreto suyo.
@@ -604,10 +640,22 @@ suite('Aislamiento — todos los endpoints', () => {
   });
 
   it('GET /analytics/reconciliation', async () => {
+    // Se pide un día CONCRETO, y uno en el que solo B tiene facturación.
+    //
+    // Sin fecha fija, el caso preguntaba por «hoy» y dependía de dos cosas
+    // frágiles: la hora a la que corre la suite y lo que las pruebas anteriores
+    // le hubieran hecho al comprobante de B (`retry`, `credit-note`). Cuando el
+    // resultado salía vacío para los dos tenants, el detector veía dos
+    // respuestas idénticas y cantaba fuga donde no la había — y, peor, el caso
+    // no comprobaba nada: un endpoint que devuelve ceros a todo el mundo no
+    // puede filtrar mal.
+    //
+    // Con `DIA_SOLO_DE_B`, A responde ceros y B responde su facturación. Si
+    // algún día coinciden, esta vez sí significa que algo se está cruzando.
     await assertEndpointIsolation(
       app,
       caseFor('GET /analytics/reconciliation', (r) =>
-        r.get('/api/v1/analytics/reconciliation'),
+        r.get(`/api/v1/analytics/reconciliation?date=${DIA_SOLO_DE_B}`),
       ),
     );
   });

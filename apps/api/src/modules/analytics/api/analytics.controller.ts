@@ -64,10 +64,17 @@ export class AnalyticsController {
     @Req() req: AuthenticatedRequest,
     @Query('date') date?: string,
   ): Promise<ReconciliationResult> {
-    const fecha = date ? new Date(date) : new Date();
-    if (Number.isNaN(fecha.getTime())) {
-      throw new ValidationError('Fecha inválida: usa formato ISO 8601.');
+    // `?date=2026-01-15` es un DÍA, no un instante, y se pasa tal cual.
+    // Convertirlo con `new Date(...)` lo interpreta como medianoche UTC —las
+    // 19:00 del día anterior en Lima— y la conciliación acabaría respondiendo
+    // por la víspera mientras enseña la fecha pedida. Sin `date`, se concilia
+    // «ahora», y ahí sí hay que deducir el día en la zona del local.
+    if (date !== undefined) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new ValidationError('Fecha inválida: usa el formato AAAA-MM-DD.');
+      }
+      return this.analytics.reconcileWithBilling(req.auth!.tid, date);
     }
-    return this.analytics.reconcileWithBilling(req.auth!.tid, fecha);
+    return this.analytics.reconcileWithBilling(req.auth!.tid, new Date());
   }
 }

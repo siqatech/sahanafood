@@ -91,6 +91,32 @@ export default tseslint.config(
     },
   },
   {
+    /**
+     * Pruebas de carga (T4.30). Dos entornos distintos en la misma carpeta:
+     * los `.js` los ejecuta k6 —su propio runtime, con `__VU`, `__ITER` y
+     * `__ENV` como globales— y los `.mjs` los ejecuta Node. En ambos, la
+     * consola ES la salida de la prueba: no hay logger detrás.
+     */
+    files: ['tests/load/**/*.{js,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        __VU: 'readonly',
+        __ITER: 'readonly',
+        __ENV: 'readonly',
+        console: 'readonly',
+        process: 'readonly',
+        setTimeout: 'readonly',
+        Buffer: 'readonly',
+        URL: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     // Los tests pueden usar console y helpers laxos.
     files: ['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**'],
     rules: {

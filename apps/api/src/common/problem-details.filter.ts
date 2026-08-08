@@ -1,6 +1,7 @@
 import {
   Catch,
   HttpException,
+  Logger,
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
@@ -50,6 +51,8 @@ function omitReservedFields(
 
 @Catch()
 export class ProblemDetailsFilter implements ExceptionFilter {
+  private static readonly logger = new Logger('ProblemDetails');
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
@@ -133,6 +136,22 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       problem.status <= 599
         ? problem.status
         : 500;
+
+    // Un 5xx SE REGISTRA con su traza y su causa real.
+    //
+    // Sin esto, el cliente se lleva un `traceId` y en el servidor no queda
+    // nada que correlacionar: soporte recibe «me salió error, traza
+    // 01KZF…» y no hay dónde buscarla. Los 4xx no se registran —son
+    // peticiones mal formadas, ocurren todo el rato y llenarían el log de
+    // ruido—, pero un 500 es siempre algo que no previmos.
+    if (status >= 500) {
+      const causa =
+        exception instanceof Error ? exception : new Error(String(exception));
+      ProblemDetailsFilter.logger.error(
+        `${req.method} ${req.originalUrl} → ${status} [${traceId ?? 'sin traza'}]: ${causa.message}`,
+        causa.stack,
+      );
+    }
 
     res
       .status(status)

@@ -69,3 +69,59 @@ dev: up ## Levanta infra y arranca la API en modo watch
 .PHONY: worker
 worker: up ## Arranca el worker de fondo (relay de outbox + vencimientos)
 	pnpm --filter @sahana/api worker:dev
+
+# ---------------------------------------------------------------------------
+# Pruebas de carga (T4.30). El perfil sale de docs/06: 2 000 pedidos/hora
+# sostenidos, pico 10× durante 15 min, p95 de submit < 500 ms.
+#
+# k6 corre en contenedor para no obligar a instalarlo: una prueba que exige
+# instalar un binario a mano se ejecuta una vez y nunca más.
+# ---------------------------------------------------------------------------
+K6_IMAGE ?= grafana/k6:0.49.0
+BASE_URL ?= http://localhost:3000
+PEAK_DURATION ?= 15m
+# El mismo del compose local (infra/docker/init/01-roles.sql). Se pone por
+# defecto para que `make load-verify` funcione recién clonado el repo: una
+# verificación que exige exportar una variable a mano se salta.
+DATABASE_URL ?= postgres://sahana_app:sahana_app_dev@localhost:5432/sahana
+# Tiene que ser LA MISMA con la que corre la API: el secreto de firma del
+# webhook se guarda cifrado con una clave derivada de esta. Si no coinciden, la
+# ingesta devuelve 500 al descifrar y el motivo no se ve desde fuera.
+CREDENTIALS_MASTER_KEY ?= dev-only-credentials-master-key-change-me
+
+.PHONY: load-seed
+load-seed: ## Siembra el escenario de carga y deja su JSON en tests/load/results/
+	@mkdir -p tests/load/results
+	@DATABASE_URL="$(DATABASE_URL)" \
+	 CREDENTIALS_MASTER_KEY="$(CREDENTIALS_MASTER_KEY)" \
+	 pnpm --silent --filter @sahana/api seed:load > tests/load/results/scenario.json
+	@echo "Escenario listo en tests/load/results/scenario.json"
+
+.PHONY: load-peak
+load-peak: ## Pico 10× durante 15 min contra la API (requiere API y worker vivos)
+	@test -f tests/load/results/scenario.json || (echo "Ejecuta antes: make load-seed"; exit 1)
+	docker run --rm --network host \
+		--user "$(shell id -u):$(shell id -g)" \
+		-v "$(PWD)/tests/load:/scripts" \
+		-e BASE_URL="$(BASE_URL)" \
+		-e PEAK_DURATION="$(PEAK_DURATION)" \
+		-e SCENARIO="$$(cat tests/load/results/scenario.json)" \
+		-w /scripts $(K6_IMAGE) run submit-orders.js
+
+.PHONY: load-ingest
+load-ingest: ## Ingesta de marketplace bajo carga (webhooks firmados, ack < 250 ms)
+	@test -f tests/load/results/scenario.json || (echo "Ejecuta antes: make load-seed"; exit 1)
+	docker run --rm --network host \
+		--user "$(shell id -u):$(shell id -g)" \
+		-v "$(PWD)/tests/load:/scripts" \
+		-e BASE_URL="$(BASE_URL)" \
+		-e PEAK_DURATION="$(PEAK_DURATION)" \
+		-e SCENARIO="$$(cat tests/load/results/scenario.json)" \
+		-w /scripts $(K6_IMAGE) run ingest-webhooks.js
+
+.PHONY: load-verify
+load-verify: ## Comprueba la CERO PÉRDIDA contra la base tras la carga
+	DATABASE_URL="$(DATABASE_URL)" node tests/load/verify-zero-loss.mjs
+
+.PHONY: load
+load: load-seed load-peak load-verify ## Prueba de carga completa + verificación

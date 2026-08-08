@@ -5,3 +5,8 @@ coverage
 .next
 pnpm-lock.yaml
 *.md
+
+# Resultados de las pruebas de carga: son datos de una corrida, no código.
+# No se versionan (ver tests/load/results/.gitignore) y formatearlos solo
+# rompería el gate cada vez que alguien ejecuta una prueba.
+tests/load/results

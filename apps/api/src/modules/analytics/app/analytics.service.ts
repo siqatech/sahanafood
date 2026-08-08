@@ -20,6 +20,17 @@ import { ValidationError } from '../../../common/errors.js';
  * `reconcileWithBilling()` y por eso hay una prueba que la ejecuta.
  */
 
+/**
+ * Zona en la que se corta el día de negocio.
+ *
+ * Un pedido de las 23:40 en Lima es del día 7, no del 8: en UTC, el cierre de
+ * caja del viernes y las ventas del viernes no cuadrarían y nadie sabría por
+ * qué. La proyección permite además la zona propia del local
+ * (`COALESCE(l.timezone, …)`); esta constante es el valor por defecto y el que
+ * usan las consultas que agregan varios locales.
+ */
+const ZONA_HORARIA_NEGOCIO = 'America/Lima';
+
 export interface BrandChannelProfitability {
   brandId: string;
   brandName: string;
@@ -346,10 +357,22 @@ export class AnalyticsService {
    */
   async reconcileWithBilling(
     tenantId: string,
-    businessDate: Date,
+    /**
+     * Un INSTANTE (`Date`, del que se deduce el día en zona del local) o un día
+     * de negocio ya decidido (`'2026-01-15'`).
+     *
+     * La distinción no es cosmética. `new Date('2026-01-15')` es medianoche
+     * UTC, o sea las 19:00 del día 14 en Lima: pasar por la zona horaria una
+     * fecha que ya venía sin hora la mueve un día atrás, y el panel enseñaría
+     * la conciliación de la víspera con la fecha de hoy en el título.
+     */
+    businessDate: Date | string,
   ): Promise<ReconciliationResult> {
     return withTenant(this.pool, tenantId, async (ctx) => {
-      const fecha = this.aFechaNegocio(businessDate);
+      const fecha =
+        typeof businessDate === 'string'
+          ? businessDate
+          : this.aFechaNegocio(businessDate);
 
       const { rows: analitica } = await ctx.client.query<{ total: string }>(
         `SELECT COALESCE(sum(gross_revenue), 0)::text AS total
@@ -364,8 +387,8 @@ export class AnalyticsService {
         `SELECT COALESCE(sum(total), 0)::text AS total
            FROM bil_documents
           WHERE status = 'accepted' AND doc_type <> 'nota_credito'
-            AND (issued_at AT TIME ZONE 'America/Lima')::date = $1`,
-        [fecha],
+            AND (issued_at AT TIME ZONE $2)::date = $1`,
+        [fecha, ZONA_HORARIA_NEGOCIO],
       );
 
       const { rows: huerfanos } = await ctx.client.query<{
@@ -381,13 +404,13 @@ export class AnalyticsService {
                )) AS sin_documento,
            (SELECT count(*)::text FROM bil_documents d
              WHERE d.status = 'accepted' AND d.doc_type <> 'nota_credito'
-               AND (d.issued_at AT TIME ZONE 'America/Lima')::date = $1
+               AND (d.issued_at AT TIME ZONE $2)::date = $1
                AND d.order_id IS NOT NULL
                AND NOT EXISTS (
                  SELECT 1 FROM ana_counted_orders c
                   WHERE c.order_id = d.order_id AND c.fact = 'sale'
                )) AS sin_venta`,
-        [fecha],
+        [fecha, ZONA_HORARIA_NEGOCIO],
       );
 
       const proyeccion = this.aMoney(analitica[0]?.total ?? '0');
@@ -473,7 +496,28 @@ export class AnalyticsService {
     return Money.fromMinor(negativo ? -minor : minor, 'PEN');
   }
 
+  /**
+   * Fecha de negocio a partir de un instante.
+   *
+   * En la zona del local, NO en UTC. `toISOString().slice(0, 10)` —lo que había
+   * aquí antes— devuelve el día UTC, y la proyección guarda `business_date`
+   * convertido a `America/Lima` (ver `datosDelPedido`), igual que la
+   * conciliación filtra los comprobantes. Entre las 19:00 y la medianoche de
+   * Lima esas dos fechas NO coinciden: `reconcileWithBilling(new Date())`
+   * preguntaba por el día siguiente, encontraba cero ventas y cero
+   * comprobantes, y respondía `matches: true`.
+   *
+   * O sea: la conciliación daba «todo cuadra» justo en las horas de más venta,
+   * que es cuando una divergencia importa. Lo destapó la suite corriendo a la
+   * 01:37 UTC — a otra hora del día habría pasado en verde.
+   */
   private aFechaNegocio(fecha: Date): string {
-    return fecha.toISOString().slice(0, 10);
+    // 'en-CA' formatea como YYYY-MM-DD, que es justo lo que espera la columna.
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: ZONA_HORARIA_NEGOCIO,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(fecha);
   }
 }
