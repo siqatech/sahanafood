@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { OrderingModule } from '../ordering/index.js';
 import { OrganizationModule } from '../organization/index.js';
 import { KitchenService } from './app/kitchen.service.js';
+import { SaturationService } from './app/saturation.service.js';
 import { KitchenEventHandlers } from './app/kitchen-event-handlers.js';
 import { KitchenController } from './api/kitchen.controller.js';
 
@@ -14,7 +15,7 @@ import { KitchenController } from './api/kitchen.controller.js';
 @Module({
   imports: [OrderingModule, OrganizationModule],
   controllers: [KitchenController],
-  providers: [KitchenService, KitchenEventHandlers],
-  exports: [KitchenService, KitchenEventHandlers],
+  providers: [KitchenService, SaturationService, KitchenEventHandlers],
+  exports: [KitchenService, SaturationService, KitchenEventHandlers],
 })
 export class KitchenModule {}

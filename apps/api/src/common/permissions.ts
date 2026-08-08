@@ -54,6 +54,10 @@ export const PERMISSIONS = [
   // Cocina (F4)
   'kitchen.read',
   'kitchen.transition',
+  // Fijar los umbrales de capacidad (RN-KIT-04). NO es operación: quien los
+  // toca decide cuántas ventas se dejan de aceptar en hora punta, así que va
+  // con el dueño y no con el encargado de turno.
+  'kitchen.manage_capacity',
   // Entregas (F4-5)
   'delivery.read',
   'delivery.assign',

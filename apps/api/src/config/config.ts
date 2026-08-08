@@ -48,6 +48,10 @@ const configSchema = z.object({
      * cambia nada para el cliente, y machacar a la pasarela con reintentos sí.
      */
     refundIntervalMs: z.coerce.number().int().positive().default(60_000),
+    // Saturación: cada 30 s. Más lento deja la cocina desbordada media hora
+    // aceptando pedidos; más rápido no cambia nada, porque una cocina no pasa
+    // de holgada a crítica en diez segundos.
+    saturationIntervalMs: z.coerce.number().int().positive().default(30_000),
   }),
 
   /** Colector OTLP. Sin él no se arranca el tracing (ver observability/tracing). */
@@ -86,6 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       ingestionIntervalMs: env.WORKER_INGESTION_INTERVAL_MS,
       ingestionBatchSize: env.WORKER_INGESTION_BATCH_SIZE,
       refundIntervalMs: env.WORKER_REFUND_INTERVAL_MS,
+      saturationIntervalMs: env.WORKER_SATURATION_INTERVAL_MS,
     },
     otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
     credentialsMasterKey:

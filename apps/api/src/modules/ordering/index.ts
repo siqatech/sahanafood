@@ -13,6 +13,7 @@ export {
   OrderProductUnavailableError,
   OrderBelowMinimumError,
   OrderBrandNotServedError,
+  ChannelPausedError,
   OrderVersionConflictError,
   OrderNotModifiableError,
   DiscountRequiresApprovalError,

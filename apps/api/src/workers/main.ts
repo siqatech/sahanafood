@@ -29,6 +29,7 @@ import {
 import { BillingService } from '../modules/billing/index.js';
 import { IngestionService } from '../modules/integrations/index.js';
 import { PaymentsService } from '../modules/payments/index.js';
+import { SaturationService } from '../modules/kitchen/index.js';
 import {
   MessagingEventHandlers,
   MESSAGING_CONSUMER,
@@ -83,6 +84,7 @@ async function bootstrap(): Promise<void> {
   const billing = app.get(BillingService);
   const ingestion = app.get(IngestionService);
   const payments = app.get(PaymentsService);
+  const saturation = app.get(SaturationService);
 
   const redis = createRedis(config.redisUrl);
   const publisher = createQueuePublisher(redis);
@@ -282,17 +284,44 @@ async function bootstrap(): Promise<void> {
     },
   });
 
+  /**
+   * Saturación de cocina (RN-KIT-04, T5.18).
+   *
+   * Existe porque el efecto de la saturación tiene que ocurrir SIN que nadie
+   * mire: si dependiera de que el encargado abra el panel, la cocina seguiría
+   * aceptando pedidos justo cuando está más ocupada para mirar pantallas.
+   *
+   * Cada 30 s. Es idempotente por diseño —extiende promesas solo al empeorar
+   * de nivel—, así que dos vueltas seguidas con la misma carga no alejan la
+   * promesa del cliente dos veces.
+   */
+  const saturacion = new PeriodicJob({
+    name: 'kitchen-saturation',
+    intervalMs: config.worker.saturationIntervalMs,
+    initialDelayMs: 20_000,
+    run: async () => {
+      const r = await saturation.sweep();
+      if (r.changed > 0) {
+        logger.log(
+          `Saturación: ${r.evaluated} cocina(s) evaluadas, ${r.changed} cambiaron de nivel.`,
+        );
+      }
+    },
+  });
+
   relay.start();
   aceptacion.start();
   facturacion.start();
   ingesta.start();
   devoluciones.start();
+  saturacion.start();
   logger.log(
     `Worker activo — relay cada ${config.worker.outboxIntervalMs} ms, ` +
       `aceptación cada ${config.worker.acceptanceIntervalMs} ms, ` +
       `facturación cada ${config.worker.billingIntervalMs} ms, ` +
       `ingesta cada ${config.worker.ingestionIntervalMs} ms, ` +
       `devoluciones cada ${config.worker.refundIntervalMs} ms, ` +
+      `saturación cada ${config.worker.saturationIntervalMs} ms, ` +
       `consumidores [${consumidores.map((c) => c.nombre).join(', ')}] escuchando eventos de dominio.`,
   );
 
@@ -307,6 +336,7 @@ async function bootstrap(): Promise<void> {
     await Promise.all([
       relay.stop(),
       aceptacion.stop(),
+      saturacion.stop(),
       facturacion.stop(),
       ingesta.stop(),
       devoluciones.stop(),

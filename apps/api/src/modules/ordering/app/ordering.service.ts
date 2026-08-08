@@ -93,6 +93,21 @@ export class OrderBrandNotServedError extends DomainError {
   readonly code = 'ORDER_BRAND_NOT_SERVED';
 }
 
+/**
+ * El canal está pausado en ese local (RN-KIT-04, T5.18).
+ *
+ * 409 y no 422: el pedido es correcto, lo que pasa es que la cocina no da
+ * abasto ahora mismo. Y **lleva `retryAfterMinutes`** porque el cliente que
+ * recibe esto —un marketplace, la tienda web— tiene que poder decir «vuelve en
+ * un rato» en vez de «error»: la venta no está perdida, solo aplazada.
+ */
+export class ChannelPausedError extends DomainError {
+  readonly status = 409;
+  readonly type = 'https://errors.sahana.food/channel-paused';
+  readonly title = 'El canal no acepta pedidos ahora mismo';
+  readonly code = 'CHANNEL_PAUSED';
+}
+
 export class IdempotencyPayloadMismatchError extends DomainError {
   readonly status = 422;
   readonly type = 'https://errors.sahana.food/idempotency-payload-mismatch';
@@ -300,6 +315,13 @@ export class OrderingService {
 
     // 3) La marca tiene que producirse en el local destino (RN-ORD-09).
     await this.assertBrandServedAt(tenantId, input.brandId, input.locationId);
+
+    // 3b) El canal tiene que estar aceptando (RN-KIT-04). Va DESPUÉS del
+    //     dedupe y la idempotencia a propósito: un reintento de un pedido que
+    //     ya entró tiene que seguir devolviendo ese pedido aunque el canal se
+    //     haya pausado entre medias. Rechazarlo dejaría al marketplace
+    //     creyendo que no entró comida que ya está en la plancha.
+    await this.assertChannelAccepting(tenantId, input.locationId, input.channel);
 
     // 4) Resolver catálogo y precios para el canal (RN-ORD-09).
     const { domainLines, porId } = await this.resolveLines(tenantId, input);
@@ -1543,6 +1565,126 @@ export class OrderingService {
         { brandId, locationId },
       );
     }
+  }
+
+  /**
+   * Comprueba que el canal está aceptando en ese local (RN-KIT-04).
+   *
+   * La pausa la escribe Kitchen cuando la cocina se satura, y se consulta
+   * aquí. La tabla es de Ordering justamente para que esta consulta no
+   * obligue a depender de Kitchen —que ya depende de Ordering—.
+   */
+  private async assertChannelAccepting(
+    tenantId: string,
+    locationId: string,
+    channel: string,
+  ): Promise<void> {
+    const pausa = await withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ reason: string | null; until: Date | null }>(
+        `SELECT reason, until FROM ord_channel_pauses
+          WHERE location_id = $1 AND channel = $2
+            AND (until IS NULL OR until > now())`,
+        [locationId, channel],
+      );
+      return rows[0];
+    });
+    if (!pausa) return;
+
+    const minutos =
+      pausa.until === null
+        ? null
+        : Math.max(1, Math.ceil((pausa.until.getTime() - Date.now()) / 60_000));
+
+    throw new ChannelPausedError(
+      pausa.reason ??
+        'La cocina no da abasto ahora mismo y este canal está pausado.',
+      {
+        channel,
+        // Que el cliente pueda decir «vuelve en 20 min» en vez de «error» es la
+        // diferencia entre aplazar la venta y perderla.
+        ...(minutos !== null ? { retryAfterMinutes: minutos } : {}),
+      },
+    );
+  }
+
+  /**
+   * Pausa o reabre un canal en un local.
+   *
+   * Público en la API del módulo porque quien lo llama es **Kitchen**, al
+   * saturarse. `paused_by` distingue el origen y no es cosmético: el
+   * despausado automático NO levanta una pausa que puso una persona. Si el
+   * encargado cerró Rappi porque se quedó sin pollo, que la cocina se
+   * descongestione no significa que ya haya pollo.
+   */
+  async setChannelPause(
+    tenantId: string,
+    input: {
+      locationId: string;
+      channel: string;
+      paused: boolean;
+      pausedBy: 'kitchen' | 'manual';
+      reason?: string | undefined;
+      until?: Date | undefined;
+    },
+  ): Promise<void> {
+    await withTenant(this.pool, tenantId, async ({ client }) => {
+      if (input.paused) {
+        await client.query(
+          `INSERT INTO ord_channel_pauses
+             (tenant_id, location_id, channel, paused_by, reason, until)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (tenant_id, location_id, channel) DO UPDATE
+             SET reason = EXCLUDED.reason,
+                 until = EXCLUDED.until,
+                 paused_at = now(),
+                 -- Una pausa manual GANA sobre una automática: si ya la había
+                 -- puesto una persona, la cocina no puede degradarla a
+                 -- automática y luego levantarla sola.
+                 paused_by = CASE
+                   WHEN ord_channel_pauses.paused_by = 'manual' THEN 'manual'
+                   ELSE EXCLUDED.paused_by END`,
+          [
+            tenantId,
+            input.locationId,
+            input.channel,
+            input.pausedBy,
+            input.reason ?? null,
+            input.until ?? null,
+          ],
+        );
+      } else {
+        await client.query(
+          `DELETE FROM ord_channel_pauses
+            WHERE location_id = $1 AND channel = $2
+              AND ($3 = 'manual' OR paused_by = 'kitchen')`,
+          [input.locationId, input.channel, input.pausedBy],
+        );
+      }
+    });
+  }
+
+  /** Canales pausados de un local. Para el panel y el KDS. */
+  async pausedChannels(
+    tenantId: string,
+    locationId: string,
+  ): Promise<Array<{ channel: string; pausedBy: string; reason: string | null }>> {
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{
+        channel: string;
+        paused_by: string;
+        reason: string | null;
+      }>(
+        `SELECT channel, paused_by, reason FROM ord_channel_pauses
+          WHERE location_id = $1 AND (until IS NULL OR until > now())
+          ORDER BY channel`,
+        [locationId],
+      );
+      return rows.map((r) => ({
+        channel: r.channel,
+        pausedBy: r.paused_by,
+        reason: r.reason,
+      }));
+    });
   }
 
   /**

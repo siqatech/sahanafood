@@ -22,3 +22,8 @@ export {
   type DomainEventHandler,
   type DomainEventMessage,
 } from './app/kitchen-event-handlers.js';
+export {
+  SaturationService,
+  type CapacityConfig,
+  type SaturationResult,
+} from './app/saturation.service.js';

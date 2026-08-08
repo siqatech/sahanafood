@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { z } from 'zod';
 import {
   RequirePermission,
@@ -6,6 +15,11 @@ import {
 } from '../../../common/authz.js';
 import { ValidationError } from '../../../common/errors.js';
 import { KitchenService, type TicketView } from '../app/kitchen.service.js';
+import {
+  SaturationService,
+  type CapacityConfig,
+  type SaturationResult,
+} from '../app/saturation.service.js';
 
 /** Formas de respuesta derivadas del servicio, para no duplicarlas aquí. */
 type KitchenLoad = Awaited<ReturnType<KitchenService['load']>>;
@@ -42,7 +56,10 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T {
 
 @Controller({ path: 'kitchen', version: '1' })
 export class KitchenController {
-  constructor(private readonly kitchen: KitchenService) {}
+  constructor(
+    private readonly kitchen: KitchenService,
+    private readonly saturation: SaturationService,
+  ) {}
 
   /**
    * Cola de la estación. CERO toques para verla (criterio de aceptación): el
@@ -77,6 +94,84 @@ export class KitchenController {
       throw new ValidationError('Se requiere el parámetro kitchen.');
     }
     return this.kitchen.load(req.auth!.tid, kitchen);
+  }
+
+  // ------------------------------------------------ Capacidad (RN-KIT-04)
+
+  /** Política de capacidad de una cocina y su nivel de saturación vigente. */
+  @Get('capacity')
+  @RequirePermission('kitchen.read')
+  capacity(
+    @Req() req: AuthenticatedRequest,
+    @Query('kitchen') kitchen?: string,
+  ): Promise<CapacityConfig> {
+    if (!kitchen) {
+      throw new ValidationError('Se requiere el parámetro kitchen.');
+    }
+    return this.saturation.getCapacity(req.auth!.tid, kitchen);
+  }
+
+  /**
+   * Fija los umbrales. Es configuración de negocio, no de operación: quien la
+   * toca decide cuántas ventas se dejan de aceptar en hora punta.
+   */
+  @Put('capacity/:kitchenId')
+  @RequirePermission('kitchen.manage_capacity')
+  setCapacity(
+    @Req() req: AuthenticatedRequest,
+    @Param('kitchenId') kitchenId: string,
+    @Body() body: unknown,
+  ): Promise<CapacityConfig> {
+    const schema = z.object({
+      maxConcurrentItems: z.number().int().positive().max(10_000),
+      extendMinutes: z.number().int().positive().max(240),
+      pauseThresholdItems: z.number().int().positive().max(10_000).nullable().optional(),
+      channelPauseOrder: z.array(z.string().min(1).max(40)).optional(),
+      enabled: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      throw new ValidationError(
+        parsed.error.issues.map((i) => i.message).join(' '),
+        { errors: parsed.error.issues },
+      );
+    }
+    return this.saturation.setCapacity(req.auth!.tid, kitchenId, {
+      ...parsed.data,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  /** Orden de pausa SUGERIDO por comisión. Sugerencia, no imposición. */
+  @Get('capacity/suggested-order')
+  @RequirePermission('kitchen.read')
+  suggestedOrder(@Req() req: AuthenticatedRequest): Promise<string[]> {
+    return this.saturation.suggestChannelOrder(req.auth!.tid);
+  }
+
+  /**
+   * Evalúa la saturación ahora mismo y aplica lo que toque.
+   *
+   * Existe además del barrido periódico para que el encargado pueda forzar la
+   * comprobación cuando ve la cocina desbordada sin esperar al siguiente ciclo.
+   */
+  @Post('capacity/:kitchenId/evaluate')
+  @RequirePermission('kitchen.transition')
+  evaluate(
+    @Req() req: AuthenticatedRequest,
+    @Param('kitchenId') kitchenId: string,
+  ): Promise<SaturationResult> {
+    return this.saturation.evaluate(req.auth!.tid, kitchenId);
+  }
+
+  /** Historial de saturación: para discutir el umbral con datos, no a ojo. */
+  @Get('capacity/:kitchenId/history')
+  @RequirePermission('kitchen.read')
+  history(
+    @Req() req: AuthenticatedRequest,
+    @Param('kitchenId') kitchenId: string,
+  ): Promise<unknown> {
+    return this.saturation.history(req.auth!.tid, kitchenId);
   }
 
   @Get('tickets/:id')

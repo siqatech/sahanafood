@@ -258,3 +258,15 @@ export {
   type AssignmentRequest,
   type RankedCourier,
 } from './delivery/assignment.js';
+
+// --- Cocina: saturación (spec 07 RN-KIT-04, F5) ---
+export {
+  evaluateSaturation,
+  suggestPauseOrder,
+  assertValidPolicy,
+  SaturationError,
+  type KitchenLoad,
+  type SaturationPolicy,
+  type SaturationLevel,
+  type SaturationDecision,
+} from './kitchen/saturation.js';
