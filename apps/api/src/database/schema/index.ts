@@ -1402,3 +1402,107 @@ export const quickReplies = pgTable('cnv_quick_replies', {
     .notNull()
     .defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Plataforma de IA (spec 19, ADR-0011, F5).
+//
+// `ai_source_chunks.embedding` no se declara aquí: Drizzle no tiene tipo para
+// `vector` y el módulo consulta esa tabla con SQL directo. Declararla a medias
+// —con el resto de columnas y sin el embedding— daría un tipo que miente.
+// ---------------------------------------------------------------------------
+
+export const aiAgentConfigs = pgTable(
+  'ai_agent_configs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    brandId: uuid('brand_id').notNull(),
+    version: integer('version').notNull(),
+    status: text('status').notNull().default('draft'),
+    identity: jsonb('identity').notNull().default({}),
+    guidelines: jsonb('guidelines').notNull().default([]),
+    limits: jsonb('limits').notNull().default({}),
+    enabled: boolean('enabled').notNull().default(false),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    publishedBy: uuid('published_by'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_ai_configs_marca').on(t.tenantId, t.brandId)],
+);
+
+export const aiRules = pgTable(
+  'ai_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    configId: uuid('config_id').notNull(),
+    name: text('name').notNull(),
+    priority: integer('priority').notNull().default(100),
+    matchMode: text('match_mode').notNull().default('any'),
+    conditions: jsonb('conditions').notNull(),
+    actions: jsonb('actions').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    activeFromMinute: integer('active_from_minute'),
+    activeToMinute: integer('active_to_minute'),
+    hitCount: integer('hit_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_ai_rules_config').on(t.tenantId, t.configId)],
+);
+
+export const aiSources = pgTable('ai_sources', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  brandId: uuid('brand_id'),
+  title: text('title').notNull(),
+  topic: text('topic'),
+  body: text('body').notNull(),
+  version: integer('version').notNull().default(1),
+  useCount: integer('use_count').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const aiBudgets = pgTable('ai_budgets', {
+  tenantId: uuid('tenant_id').primaryKey(),
+  limitCredits: integer('limit_credits').notNull().default(0),
+  usedCredits: integer('used_credits').notNull().default(0),
+  periodStart: text('period_start').notNull(),
+  warnedAt: timestamp('warned_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const aiTraces = pgTable(
+  'ai_traces',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    conversationId: uuid('conversation_id'),
+    configId: uuid('config_id'),
+    inboundText: text('inbound_text').notNull(),
+    outboundText: text('outbound_text'),
+    resolution: text('resolution').notNull(),
+    ruleId: uuid('rule_id'),
+    toolsCalled: jsonb('tools_called').notNull().default([]),
+    validator: jsonb('validator'),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    credits: integer('credits').notNull().default(0),
+    latencyMs: integer('latency_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index('idx_ai_traces_conv').on(t.tenantId, t.conversationId)],
+);

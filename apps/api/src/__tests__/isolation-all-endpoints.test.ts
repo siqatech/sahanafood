@@ -22,6 +22,7 @@ import {
 import { StorefrontService } from '../modules/storefront/index.js';
 import { DeliveryService } from '../modules/delivery/index.js';
 import { ConversationsService } from '../modules/conversations/index.js';
+import { KnowledgeService, AgentService } from '../modules/ai/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 import {
@@ -88,6 +89,8 @@ suite('Aislamiento — todos los endpoints', () => {
   let seguimientoDeB = '';
   /** Conversación de B: lo que sus clientes le escriben es lo más privado que tiene. */
   let conversacionDeB = '';
+  /** Fuente de conocimiento de B: su know-how, indexado para el agente. */
+  let fuenteDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -402,6 +405,26 @@ suite('Aislamiento — todos los endpoints', () => {
       '+51999888777',
       'Reclamo SECRETO de un cliente de B',
       'Cliente que escribe a B',
+    );
+
+    // Fuente de conocimiento de B. El RAG busca por SIMILITUD, no por id: si el
+    // filtro por tenant fallara, el material de B saldría ordenado por parecido
+    // en la respuesta del agente de A, sin error y sin rastro.
+    const fuente = await app.get(KnowledgeService).upsertSource(b.tenantId, {
+      title: 'Receta SECRETA de B',
+      body: 'El secreto de B es marinar el pollo doce horas con chicha de jora.',
+    });
+    fuenteDeB = fuente.id;
+
+    // Presupuesto de IA propio de B. Sin él, A y B devolverían el mismo cero y
+    // el caso de `/ai/budget` pasaría en verde sin demostrar nada: dos
+    // respuestas vacías idénticas no son aislamiento, son dos tenants vacíos.
+    await app.get(AgentService).setBudget(b.tenantId, 987_654);
+    secretsOfB.push('987654');
+    secretsOfB.push(
+      fuenteDeB,
+      'Receta SECRETA de B',
+      'chicha de jora',
     );
 
     // B necesita DATOS de analítica y mensajería: dos respuestas de ceros
@@ -1175,6 +1198,33 @@ suite('Aislamiento — todos los endpoints', () => {
             .send({ kind: 'text', text: 'Mensaje intruso' }),
         { expectedStatusForA: [404, 422] },
       ),
+    );
+  });
+
+  it('GET /ai/sources no trae las fuentes de B', async () => {
+    // El know-how del negocio: recetas, políticas, respuestas a lo que más le
+    // preguntan. Es de lo más valioso que carga un tenant en el sistema.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /ai/sources', (r) => r.get('/api/v1/ai/sources')),
+    );
+  });
+
+  it('DELETE /ai/sources/:id de la fuente de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'DELETE /ai/sources/:id',
+        (r) => r.delete(`/api/v1/ai/sources/${fuenteDeB}`),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('GET /ai/budget no revela el consumo de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /ai/budget', (r) => r.get('/api/v1/ai/budget')),
     );
   });
 

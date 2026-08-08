@@ -94,6 +94,11 @@ export const PERMISSIONS = [
   'conversations.reply',
   // Repartir el trabajo entre agentes. Es de supervisión, no de atención.
   'conversations.assign',
+  // Agente de IA (F5)
+  'ai.read',
+  // Configurar el agente, sus reglas y sus fuentes. Es lo que decide QUÉ dice
+  // el negocio por escrito a sus clientes: queda arriba, no en atención.
+  'ai.manage',
   // Reportes
   'reports.read',
   'reports.export',

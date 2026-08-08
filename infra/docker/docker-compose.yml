@@ -5,7 +5,12 @@ name: sahana-food
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector sobre Postgres 16: la misma versión de siempre, con la extensión
+    # que necesita el RAG del agente (T5.23, ADR-0011). Se cambia la imagen y no
+    # se instala la extensión a mano porque el entorno tiene que ser
+    # reproducible desde cero: un `CREATE EXTENSION` que falla en la máquina de
+    # otro es una migración que no se puede aplicar.
+    image: pgvector/pgvector:pg16
     container_name: sahana-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sahana}

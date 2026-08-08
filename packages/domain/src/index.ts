@@ -278,3 +278,35 @@ export {
   type WindowState,
   type WindowCountdown,
 } from './conversations/window-countdown.js';
+
+// --- Agente de IA (spec 19, ADR-0011, F5) ---
+export {
+  validateOutput,
+  extractFacts,
+  type FactKind,
+  type AssertedFact,
+  type ToolEvidence,
+  type ValidationVerdict,
+  type ValidatorOptions,
+} from './ai/output-validator.js';
+
+export {
+  matchRule,
+  detectNegativeSentiment,
+  type ConditionKind,
+  type Condition,
+  type ActionKind,
+  type Action,
+  type DeterministicRule,
+  type MessageContext,
+  type RuleMatch,
+} from './ai/deterministic-actions.js';
+
+export {
+  checkAiBudget,
+  creditsForTokens,
+  WARNING_RATIO,
+  type BudgetState,
+  type AiBudget,
+  type BudgetDecision,
+} from './ai/budget.js';
