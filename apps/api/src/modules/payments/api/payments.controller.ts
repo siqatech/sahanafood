@@ -48,6 +48,18 @@ const intentSchema = z.object({
   ttlMinutes: z.number().int().positive().max(1440).optional(),
 });
 
+const linkSchema = intentSchema;
+
+const refundSchema = z.object({
+  reason: z.string().min(5),
+  /**
+   * Quién aprueba, cuando el importe supera el umbral (RN-PAY-03). Va en el
+   * cuerpo y no se deduce del token: el que pulsa el botón es quien PIDE, y
+   * quien aprueba es otra persona.
+   */
+  approvedBy: z.string().uuid().optional(),
+});
+
 /**
  * API de pagos online (spec 10, ADR-0016).
  *
@@ -95,6 +107,55 @@ export class PaymentsController {
     return this.payments.getIntent(req.auth!.tid, id);
   }
 
+  @Post('links')
+  @RequirePermission('payments.charge')
+  async createLink(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<{
+    token: string;
+    url: string;
+    expiresAt: string;
+    intentId: string;
+  }> {
+    const input = parse(linkSchema, body);
+    return this.payments.createPaymentLink(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  @Post('links/:token/revoke')
+  @RequirePermission('payments.charge')
+  @HttpCode(204)
+  async revokeLink(
+    @Req() req: AuthenticatedRequest,
+    @Param('token') token: string,
+  ): Promise<void> {
+    await this.payments.revokePaymentLink(req.auth!.tid, token);
+  }
+
+  /**
+   * Devolver dinero (RN-PAY-03). Permiso propio y separado de `payments.charge`:
+   * cobrar y devolver son operaciones opuestas y no las hace la misma gente.
+   */
+  @Post('intents/:id/refund')
+  @RequirePermission('payments.refund')
+  async refund(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<{ status: 'queued'; requiresApproval: boolean }> {
+    const input = parse(refundSchema, body);
+    return this.payments.requestRefund(req.auth!.tid, id, {
+      reason: input.reason,
+      requestedBy: req.auth!.sub,
+      ...(input.approvedBy !== undefined
+        ? { approvedBy: input.approvedBy }
+        : {}),
+    });
+  }
+
   @Get('orders/:orderId/intents')
   @RequirePermission('payments.read')
   async listForOrder(
@@ -118,6 +179,29 @@ export class PaymentsController {
  * acabara marcando el endpoint como caído — y entonces sí se perderían avisos
  * que importan.
  */
+/**
+ * Apertura de un link de pago. PÚBLICO: quien llama no tiene cuenta (ADR-0017).
+ *
+ * Devuelve lo mínimo para pagar y nada más. Ni el id del pedido, ni el del
+ * cobro, ni el nombre de nadie: quien abre el enlace puede no ser a quien se lo
+ * mandaron — se reenvía por WhatsApp, se pega en chats y acaba en capturas.
+ */
+@Controller({ path: 'payments', version: '1' })
+export class PaymentLinkController {
+  constructor(private readonly payments: PaymentsService) {}
+
+  @Get('links/:token')
+  async open(@Param('token') token: string): Promise<{
+    status: string;
+    amount: string;
+    currency: string;
+    checkoutUrl: string | null;
+    expiresAt: string;
+  }> {
+    return this.payments.openPaymentLink(token);
+  }
+}
+
 @Controller({ path: 'payments', version: '1' })
 export class PaymentWebhookController {
   constructor(private readonly payments: PaymentsService) {}

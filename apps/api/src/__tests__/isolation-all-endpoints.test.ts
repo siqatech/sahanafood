@@ -64,6 +64,8 @@ suite('Aislamiento — todos los endpoints', () => {
    * competencia y —peor— tendría la referencia con la que vuelve el webhook.
    */
   let intencionDeB = '';
+  /** Enlace público de pago de B: quien lo tenga puede cobrar en su nombre. */
+  let enlaceDeB = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -274,7 +276,18 @@ suite('Aislamiento — todos los endpoints', () => {
       provider: CULQI_PROVIDER,
     });
     intencionDeB = cobroDeB.id;
+
+    const linkDeB = await app
+      .get(PaymentsService)
+      .createPaymentLink(b.tenantId, {
+        orderId: pedidoDeB,
+        provider: CULQI_PROVIDER,
+      });
+    enlaceDeB = linkDeB.token;
+
     secretsOfB.push(
+      enlaceDeB,
+      linkDeB.intentId,
       intencionDeB,
       cobroDeB.reference,
       pasarelaDeB.id,
@@ -798,6 +811,47 @@ suite('Aislamiento — todos los endpoints', () => {
             .post('/api/v1/payments/intents')
             .send({ orderId: pedidoDeB, provider: CULQI_PROVIDER }),
         { expectedStatusForA: [404, 422] },
+      ),
+    );
+  });
+
+  it('POST /payments/links sobre el pedido de B', async () => {
+    // Si colara, A generaría un cobro contra un pedido ajeno y desviaría el
+    // dinero a SU pasarela — con un enlace que además puede mandar por WhatsApp.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /payments/links',
+        (r) =>
+          r
+            .post('/api/v1/payments/links')
+            .send({ orderId: pedidoDeB, provider: CULQI_PROVIDER }),
+        { expectedStatusForA: [404, 422] },
+      ),
+    );
+  });
+
+  it('POST /payments/intents/:id/refund sobre el cobro de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /payments/intents/:id/refund',
+        (r) =>
+          r
+            .post(`/api/v1/payments/intents/${intencionDeB}/refund`)
+            .send({ reason: 'Intento de devolver plata ajena' }),
+        { expectedStatusForA: [404, 422] },
+      ),
+    );
+  });
+
+  it('POST /payments/links/:token/revoke del enlace de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /payments/links/:token/revoke',
+        (r) => r.post(`/api/v1/payments/links/${enlaceDeB}/revoke`),
+        { expectedStatusForA: [404, 204] },
       ),
     );
   });

@@ -184,3 +184,32 @@ export async function withPaymentLookup<T>(
 ): Promise<T> {
   return inTransaction(pool, [['app.payment_lookup', 'on']], work);
 }
+
+/**
+ * Contexto de RESOLUCIÓN DE TOKEN PÚBLICO (ADR-0017).
+ *
+ * El quinto escape, y el que existe para que no haya un sexto. Links de pago,
+ * tracking de pedido y todo lo que venga después —recuperación de carrito,
+ * encuestas, confirmación de correo— comparten forma: una URL que llega a
+ * alguien SIN cuenta y que tiene que resolver un tenant antes de enseñar nada.
+ *
+ * La alternativa era un escape por caso. Con dos casos ya serían seis políticas
+ * que auditar, y cada una una tabla de negocio más legible sin contexto de
+ * tenant: la frase que sostiene ADR-0014 se volvería falsa por acumulación, sin
+ * que ninguna decisión individual pareciera mala.
+ *
+ * Restricciones, iguales a las de sus cuatro hermanos y una más:
+ *  - Solo lectura: la política `public_token_lookup` es `FOR SELECT`.
+ *  - Solo `pub_tokens`: ninguna otra tabla consulta este flag.
+ *  - Uso acotado: solo el paso de resolver el token. Leer el recurso va por
+ *    `withTenant` con el tenant ya resuelto.
+ *  - **Y la tabla no contiene datos de negocio**: contiene referencias. Aunque
+ *    el flag se activara donde no debe, lo que expone es «existe un token del
+ *    tenant T sobre el recurso R», no el pedido ni el cobro.
+ */
+export async function withPublicToken<T>(
+  pool: Pool,
+  work: (ctx: { db: Db; client: PoolClient }) => Promise<T>,
+): Promise<T> {
+  return inTransaction(pool, [['app.public_token', 'on']], work);
+}

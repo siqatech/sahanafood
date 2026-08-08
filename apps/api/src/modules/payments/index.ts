@@ -12,6 +12,9 @@ export {
   WebhookSignatureError,
   PaymentConnectionError,
   WEBHOOK_SECRET_FIELD,
+  RefundRequiresApprovalError,
+  MAX_REFUND_ATTEMPTS,
+  DEFAULT_REFUND_APPROVAL_THRESHOLD_MINOR,
   type PaymentIntentView,
   type WebhookOutcome,
 } from './app/payments.service.js';

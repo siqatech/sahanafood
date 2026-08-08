@@ -6,6 +6,7 @@ import { CulqiSandboxProvider } from './app/providers/culqi-sandbox.provider.js'
 import { MercadoPagoSandboxProvider } from './app/providers/mercadopago-sandbox.provider.js';
 import {
   PaymentsController,
+  PaymentLinkController,
   PaymentWebhookController,
 } from './api/payments.controller.js';
 import { PAYMENT_PROVIDERS } from './payments.tokens.js';
@@ -25,7 +26,11 @@ import { PAYMENT_PROVIDERS } from './payments.tokens.js';
  */
 @Module({
   imports: [DatabaseModule, OrderingModule],
-  controllers: [PaymentsController, PaymentWebhookController],
+  controllers: [
+    PaymentsController,
+    PaymentLinkController,
+    PaymentWebhookController,
+  ],
   providers: [
     PaymentsService,
     CulqiSandboxProvider,

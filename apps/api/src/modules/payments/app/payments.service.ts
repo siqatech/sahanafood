@@ -6,6 +6,7 @@ import {
   decidePaymentTransition,
   verifyPaidAmount,
   amountConfirms,
+  isOpen,
   type PaymentState,
 } from '@sahana/domain';
 import { PG_POOL } from '../../../database/database.module.js';
@@ -32,6 +33,10 @@ import {
   type WebhookEvent,
 } from '../domain/payment-provider.js';
 import { PAYMENT_PROVIDERS } from '../payments.tokens.js';
+import {
+  PublicTokensService,
+  PublicTokenError,
+} from '../../../common/public-tokens.service.js';
 
 /**
  * Pagos online (spec 10 parte F5, ADR-0016).
@@ -69,6 +74,28 @@ const NO_ACEPTAN_PAGO: ReadonlySet<string> = new Set(['rejected', 'cancelled']);
  * nadie mire el problema.
  */
 export const MAX_REFUND_ATTEMPTS = 5;
+
+/**
+ * Umbral por defecto sobre el que un reembolso manual exige doble aprobación
+ * (RN-PAY-03), en unidades menores a escala 4. S/ 100.
+ *
+ * Configurable por tenant en F6; el valor por defecto está aquí y no en la base
+ * porque un umbral ausente NO puede significar «sin control»: significa el
+ * valor conservador.
+ */
+export const DEFAULT_REFUND_APPROVAL_THRESHOLD_MINOR = 1_000_000;
+
+/** Cuánto vive un link de pago si nadie dice otra cosa. */
+const DEFAULT_LINK_TTL_MINUTES = 60 * 24;
+
+export class RefundRequiresApprovalError extends ForbiddenError {
+  constructor(threshold: string, amount: string) {
+    super(
+      `Un reembolso de ${amount} supera el umbral de ${threshold} y necesita la aprobación de un supervisor.`,
+      { requiredPermission: 'payments.refund', threshold, amount },
+    );
+  }
+}
 
 export interface PaymentIntentView {
   id: string;
@@ -132,6 +159,7 @@ export class PaymentsService {
     @Inject(CONFIG) config: AppConfig,
     @Inject(PAYMENT_PROVIDERS) providers: PaymentProvider[],
     private readonly ordering: OrderingService,
+    private readonly publicTokens: PublicTokensService,
   ) {
     this.cipher = new CredentialCipher(config.credentialsMasterKey);
     for (const p of providers) this.providers.set(p.name, p);
@@ -311,6 +339,260 @@ export class PaymentsService {
       checkoutUrl: cargo.checkoutUrl,
       expiresAt: preparado.expiresAt.toISOString(),
     };
+  }
+
+  // ------------------------------------------------------- Links de pago
+
+  /**
+   * Genera un link de pago para un pedido (T5.05).
+   *
+   * Lo usa el agente desde la bandeja —«te paso el link»— y el panel. La URL
+   * lleva un token público (ADR-0017), **nunca el id del pedido ni el de la
+   * intención**: ese enlace se reenvía por WhatsApp, se pega en chats y acaba
+   * en capturas de pantalla, y un identificador interno ahí es un identificador
+   * publicado para siempre.
+   *
+   * El token y la intención se crean en la MISMA transacción: un link que
+   * apunta a un cobro que no existe es un 404 para el cliente que ya recibió el
+   * mensaje.
+   */
+  async createPaymentLink(
+    tenantId: string,
+    input: {
+      orderId: string;
+      provider: string;
+      ttlMinutes?: number | undefined;
+      actorId?: string | undefined;
+    },
+  ): Promise<{
+    token: string;
+    url: string;
+    expiresAt: string;
+    intentId: string;
+  }> {
+    const ttl = input.ttlMinutes ?? DEFAULT_LINK_TTL_MINUTES;
+    const intencion = await this.createIntent(tenantId, {
+      orderId: input.orderId,
+      provider: input.provider,
+      ttlMinutes: ttl,
+      ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+    });
+
+    const expiresAt = new Date(intencion.expiresAt);
+    const token = await withTenant(this.pool, tenantId, async (ctx) => {
+      const t = await this.publicTokens.issue(ctx, {
+        purpose: 'payment_link',
+        resourceType: 'payment_intent',
+        resourceId: intencion.id,
+        expiresAt,
+        ...(input.actorId !== undefined ? { createdBy: input.actorId } : {}),
+      });
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        action: 'payment.link_created',
+        resourceType: 'payment_intent',
+        resourceId: intencion.id,
+        // El token NO entra en auditoría: quien lea la auditoría podría cobrar
+        // en nombre de otro. Basta con saber que se generó y para qué pedido.
+        data: { orderId: input.orderId, expiresAt: expiresAt.toISOString() },
+      });
+      return t;
+    });
+
+    return {
+      token,
+      url: `/pay/${token}`,
+      expiresAt: expiresAt.toISOString(),
+      intentId: intencion.id,
+    };
+  }
+
+  /**
+   * Abre un link de pago. Endpoint PÚBLICO: quien llama no tiene cuenta.
+   *
+   * Devuelve lo mínimo para pagar —cuánto, en qué moneda, a dónde ir— y NADA
+   * más. Ni el id del pedido, ni el del cobro, ni el nombre del cliente: el que
+   * abre el enlace puede no ser a quien se lo mandaron.
+   */
+  async openPaymentLink(token: string): Promise<{
+    status: PaymentState;
+    amount: string;
+    currency: string;
+    checkoutUrl: string | null;
+    expiresAt: string;
+  }> {
+    const resuelto = await this.publicTokens.resolve(token, 'payment_link');
+
+    const vista = await withTenant(
+      this.pool,
+      resuelto.tenantId,
+      async (ctx) => {
+        const { rows } = await ctx.client.query<{
+          status: PaymentState;
+          amount: string;
+          currency: string;
+          provider_ref: string | null;
+          expires_at: Date;
+          connection_id: string;
+        }>(
+          `SELECT status, amount, currency, provider_ref, expires_at, connection_id
+             FROM pay_intents WHERE id = $1`,
+          [resuelto.resourceId],
+        );
+        return rows[0];
+      },
+    );
+    // El token existe pero el cobro no: solo puede pasar si alguien borró la
+    // intención. Mismo error opaco que el resto.
+    if (!vista) throw new PublicTokenError();
+
+    // Se registra la apertura, pero NO se bloquea la siguiente (ADR-0017): un
+    // link que muere al abrirse pierde la venta del cliente al que le sonó el
+    // teléfono.
+    await this.publicTokens.markUsed(resuelto.tenantId, token);
+
+    const providerName = await this.providerNameOf(
+      resuelto.tenantId,
+      vista.connection_id,
+    );
+    const provider = providerName ? this.providers.get(providerName) : null;
+
+    return {
+      status: vista.status,
+      amount: vista.amount,
+      currency: vista.currency,
+      // Solo se ofrece dónde pagar si el cobro sigue abierto. Un enlace de un
+      // pago ya hecho enseña «pagado», no un botón que cobraría otra vez.
+      checkoutUrl:
+        isOpen(vista.status) && provider && vista.provider_ref
+          ? `https://checkout.${provider.name}.test/${vista.provider_ref}`
+          : null,
+      expiresAt: vista.expires_at.toISOString(),
+    };
+  }
+
+  /** Corta un enlace que se mandó a quien no era. */
+  async revokePaymentLink(tenantId: string, token: string): Promise<void> {
+    await this.publicTokens.revoke(tenantId, token);
+  }
+
+  // ------------------------------------------------- Reembolsos manuales
+
+  /**
+   * Devuelve dinero a petición de una persona (T5.06, RN-PAY-03).
+   *
+   * Distinto de la devolución automática de T5.04, que la pide el sistema
+   * porque el cobro no debió confirmarse. Aquí decide alguien, y por eso hay
+   * control: **sobre el umbral hacen falta dos personas**, quien lo pide y
+   * quien lo aprueba.
+   *
+   * No es burocracia. Es lo que impide que una sola cuenta comprometida vacíe
+   * la caja del tenant en devoluciones a cuentas ajenas — el mismo motivo por
+   * el que un descuento sobre umbral pide PIN de supervisor (RN-POS-03).
+   */
+  async requestRefund(
+    tenantId: string,
+    intentId: string,
+    input: {
+      reason: string;
+      requestedBy: string;
+      approvedBy?: string | undefined;
+      thresholdMinor?: number | undefined;
+    },
+  ): Promise<{ status: 'queued'; requiresApproval: boolean }> {
+    if (input.reason.trim().length < 5) {
+      throw new ValidationError(
+        'Un reembolso necesita un motivo: es lo que verá quien lo audite.',
+      );
+    }
+
+    const umbralMinor =
+      input.thresholdMinor ?? DEFAULT_REFUND_APPROVAL_THRESHOLD_MINOR;
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        id: string;
+        status: PaymentState;
+        amount: string;
+        currency: string;
+        paid_amount: string | null;
+        refund_required: boolean;
+      }>(
+        `SELECT id, status, amount, currency, paid_amount, refund_required
+           FROM pay_intents WHERE id = $1 FOR UPDATE`,
+        [intentId],
+      );
+      const intencion = rows[0];
+      if (!intencion) throw new NotFoundError('Cobro no encontrado.');
+
+      if (intencion.status !== 'captured') {
+        throw new ValidationError(
+          `Solo se puede devolver un cobro capturado; este está en "${intencion.status}".`,
+        );
+      }
+      if (intencion.refund_required) {
+        // Ya estaba en cola. Pedirlo otra vez no crea una segunda devolución.
+        return { status: 'queued' as const, requiresApproval: false };
+      }
+
+      const importe = Money.parse(
+        intencion.paid_amount ?? intencion.amount,
+        intencion.currency as 'PEN',
+      );
+      const umbral = Money.fromMinor(umbralMinor, intencion.currency as 'PEN');
+      const sobreUmbral = importe.minorUnits > umbral.minorUnits;
+
+      if (sobreUmbral) {
+        if (!input.approvedBy) {
+          throw new RefundRequiresApprovalError(
+            umbral.toDecimalString(),
+            importe.toDecimalString(),
+          );
+        }
+        if (input.approvedBy === input.requestedBy) {
+          // DOS personas, no una con dos sombreros. Sin esto, el control es
+          // teatro: la misma cuenta comprometida se aprueba a sí misma.
+          throw new ForbiddenError(
+            'Quien aprueba un reembolso no puede ser quien lo pide: hacen falta dos personas.',
+          );
+        }
+      }
+
+      await ctx.client.query(
+        `UPDATE pay_intents
+            SET refund_required = true, refund_reason = $2,
+                refund_requested_by = $3, refund_approved_by = $4,
+                refund_threshold_applied = $5, updated_at = now()
+          WHERE id = $1`,
+        [
+          intentId,
+          input.reason,
+          input.requestedBy,
+          input.approvedBy ?? null,
+          umbral.toDecimalString(),
+        ],
+      );
+
+      await recordAudit(ctx, {
+        actorType: 'user',
+        actorId: input.requestedBy,
+        action: 'payment.refund_requested',
+        resourceType: 'payment_intent',
+        resourceId: intentId,
+        reason: input.reason,
+        data: {
+          amount: importe.toDecimalString(),
+          threshold: umbral.toDecimalString(),
+          overThreshold: sobreUmbral,
+          approvedBy: input.approvedBy ?? null,
+        },
+      });
+
+      // El dinero lo devuelve el barrido, igual que en T5.04: es una llamada de
+      // red a un tercero y no puede colgar la petición de quien pulsó el botón.
+      return { status: 'queued' as const, requiresApproval: sobreUmbral };
+    });
   }
 
   // --------------------------------------------------------------- Webhook

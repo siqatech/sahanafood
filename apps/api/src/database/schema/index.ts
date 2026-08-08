@@ -987,6 +987,14 @@ export const paymentIntents = pgTable(
     refundProviderRef: text('refund_provider_ref'),
     refundAttempts: integer('refund_attempts').notNull().default(0),
     refundLastError: text('refund_last_error'),
+    /** Quién pidió y quién aprobó una devolución manual (RN-PAY-03). */
+    refundRequestedBy: uuid('refund_requested_by'),
+    refundApprovedBy: uuid('refund_approved_by'),
+    /** Umbral vigente al aprobar: cambiarlo después no reescribe la historia. */
+    refundThresholdApplied: numeric('refund_threshold_applied', {
+      precision: 14,
+      scale: 4,
+    }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1016,4 +1024,36 @@ export const paymentWebhookEvents = pgTable(
       .defaultNow(),
   },
   (t) => [index('idx_pay_webhook_intent').on(t.tenantId, t.intentId)],
+);
+
+// ---------------------------------------------------------------------------
+// Tokens públicos de acceso acotado (ADR-0017).
+// ---------------------------------------------------------------------------
+
+export const publicTokens = pgTable(
+  'pub_tokens',
+  {
+    token: text('token').primaryKey(),
+    tenantId: uuid('tenant_id').notNull(),
+    /** Enum cerrado: un token solo abre aquello para lo que se emitió. */
+    purpose: text('purpose').notNull(),
+    resourceType: text('resource_type').notNull(),
+    resourceId: uuid('resource_id').notNull(),
+    /** NOT NULL: no hay tokens públicos eternos. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    /** Primera apertura. Se registra; NO bloquea la segunda (ADR-0017). */
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdBy: uuid('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('idx_pub_tokens_recurso').on(
+      t.tenantId,
+      t.resourceType,
+      t.resourceId,
+    ),
+  ],
 );

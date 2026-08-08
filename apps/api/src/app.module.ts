@@ -19,6 +19,7 @@ import { KitchenModule } from './modules/kitchen/index.js';
 import { InventoryModule } from './modules/inventory/index.js';
 import { BillingModule } from './modules/billing/index.js';
 import { PaymentsModule } from './modules/payments/index.js';
+import { CommonModule } from './common/common.module.js';
 import { MessagingModule } from './modules/messaging/index.js';
 import { AnalyticsModule } from './modules/analytics/index.js';
 import { CashModule } from './modules/cash/index.js';
@@ -62,6 +63,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     IntegrationsModule,
     KitchenModule,
     InventoryModule,
+    CommonModule,
     BillingModule,
     PaymentsModule,
     MessagingModule,

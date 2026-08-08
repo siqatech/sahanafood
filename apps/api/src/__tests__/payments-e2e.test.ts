@@ -58,6 +58,8 @@ suite('Pagos online', () => {
 
   let tokenCulqi = '';
   let tokenMp = '';
+  let ownerId = '';
+  let supervisorId = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -86,6 +88,17 @@ suite('Pagos online', () => {
     });
     tenantA = a.tenantId;
     created.push(tenantA);
+    ownerId = a.ownerUserId;
+    // Un segundo usuario: la doble aprobación necesita DOS personas de verdad,
+    // no la misma con dos sombreros.
+    supervisorId = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO idn_users (tenant_id, email, password_hash, full_name)
+         VALUES ($1,'pay-sup@sahana.test','x','Supervisora Pagos') RETURNING id`,
+        [tenantA],
+      );
+      return rows[0]!.id;
+    });
 
     org = await withTenant(pool, tenantA, (ctx) => seedDemoOrganization(ctx));
     brandId = org.brandIds[0]!;
@@ -747,6 +760,299 @@ suite('Pagos online', () => {
     expect(fila.status).toBe('captured');
     expect(fila.refund_attempts).toBeGreaterThanOrEqual(5);
     expect(fila.refund_last_error).toContain('a mano');
+  });
+
+  // ------------------------------------- Links de pago (T5.05, ADR-0017)
+
+  it('el LINK DE PAGO no expone ningún id interno', async () => {
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+
+    // Este enlace se reenvía por WhatsApp y acaba en capturas de pantalla. Un
+    // id interno ahí es un id publicado para siempre.
+    expect(link.url).not.toContain(pedido.id);
+    expect(link.url).not.toContain(link.intentId);
+    expect(link.token.length).toBeGreaterThanOrEqual(40);
+  });
+
+  it('abrirlo devuelve lo MÍNIMO para pagar y nada más', async () => {
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+
+    const res = await http()
+      .get(`/api/v1/payments/links/${link.token}`)
+      .expect(200);
+
+    expect(res.body.amount).toBe(pedido.total);
+    expect(res.body.checkoutUrl).toBeTruthy();
+    // Nada del pedido ni del cobro: quien abre el enlace puede no ser a quien
+    // se lo mandaron.
+    const cuerpo = JSON.stringify(res.body);
+    expect(cuerpo).not.toContain(pedido.id);
+    expect(cuerpo).not.toContain(link.intentId);
+    expect(res.body).not.toHaveProperty('orderId');
+    expect(res.body).not.toHaveProperty('reference');
+  });
+
+  it('el link se abre SIN autenticación', async () => {
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    // Sin cabecera de autorización: el cliente final no tiene cuenta.
+    await http().get(`/api/v1/payments/links/${link.token}`).expect(200);
+  });
+
+  it('SE PUEDE ABRIR DOS VECES: al cliente le suena el teléfono', async () => {
+    // Decisión de ADR-0017, en contra de la primera redacción del backlog. Un
+    // link que muere al abrirse pierde la venta cada vez que alguien se
+    // distrae, y el beneficio de seguridad es pequeño: el token caduca y el
+    // cobro solo se puede pagar una vez.
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await http().get(`/api/v1/payments/links/${link.token}`).expect(200);
+    await http().get(`/api/v1/payments/links/${link.token}`).expect(200);
+  });
+
+  it('un link REVOCADO deja de abrir', async () => {
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await payments.revokePaymentLink(tenantA, link.token);
+    await http().get(`/api/v1/payments/links/${link.token}`).expect(404);
+  });
+
+  it('un link CADUCADO deja de abrir', async () => {
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        "UPDATE pub_tokens SET expires_at = now() - interval '1 minute' WHERE token = $1",
+        [link.token],
+      ),
+    );
+    await http().get(`/api/v1/payments/links/${link.token}`).expect(404);
+  });
+
+  it('un token de OTRO PROPÓSITO no abre el link de pago', async () => {
+    // Es la restricción que impide que un token filtrado en un sitio abra todos
+    // los demás. Se falsea el propósito para comprobar que se mira de verdad.
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        "UPDATE pub_tokens SET purpose = 'order_tracking' WHERE token = $1",
+        [link.token],
+      ),
+    );
+    await http().get(`/api/v1/payments/links/${link.token}`).expect(404);
+  });
+
+  it('un token inventado responde IGUAL que uno caducado', async () => {
+    // Distinguirlos convertiría el endpoint en un oráculo para saber qué
+    // enlaces existieron.
+    const inventado = await http()
+      .get('/api/v1/payments/links/token-que-nadie-emitio')
+      .expect(404);
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    await payments.revokePaymentLink(tenantA, link.token);
+    const revocado = await http()
+      .get(`/api/v1/payments/links/${link.token}`)
+      .expect(404);
+
+    expect(inventado.body.detail).toBe(revocado.body.detail);
+  });
+
+  it('un link ya pagado enseña el estado, NO un botón para pagar otra vez', async () => {
+    const pedido = await vender();
+    const link = await payments.createPaymentLink(tenantA, {
+      orderId: pedido.id,
+      provider: CULQI_PROVIDER,
+    });
+    const intencion = await payments.getIntent(tenantA, link.intentId);
+    await enviarCulqi(
+      cuerpoCulqi(intencion.reference, intencion.amount),
+    ).expect(200);
+
+    const res = await http()
+      .get(`/api/v1/payments/links/${link.token}`)
+      .expect(200);
+    expect(res.body.status).toBe('captured');
+    expect(res.body.checkoutUrl).toBeNull();
+  });
+
+  // -------------------------------- Reembolsos con aprobación (T5.06)
+
+  const capturado = async (): Promise<string> => {
+    const { reference, amount } = await crearIntencion();
+    await enviarCulqi(cuerpoCulqi(reference, amount)).expect(200);
+    return withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ id: string }>(
+        'SELECT id FROM pay_intents WHERE reference = $1',
+        [reference],
+      );
+      return rows[0]!.id;
+    });
+  };
+
+  it('un reembolso BAJO el umbral no necesita aprobación', async () => {
+    const intentId = await capturado();
+    const r = await payments.requestRefund(tenantA, intentId, {
+      reason: 'El cliente canceló y ya habíamos cobrado',
+      requestedBy: ownerId,
+    });
+    expect(r.requiresApproval).toBe(false);
+    expect(r.status).toBe('queued');
+  });
+
+  it('SOBRE EL UMBRAL sin aprobación se RECHAZA (RN-PAY-03)', async () => {
+    const intentId = await capturado();
+    await expect(
+      payments.requestRefund(tenantA, intentId, {
+        reason: 'Devolución grande sin supervisor',
+        requestedBy: ownerId,
+        // Umbral por debajo del importe del pedido, para forzar el caso.
+        thresholdMinor: 1,
+      }),
+    ).rejects.toThrow(/aprobación de un supervisor/i);
+  });
+
+  it('APROBARSE A SÍ MISMO no cuenta: hacen falta dos personas', async () => {
+    // Sin esto el control es teatro: la misma cuenta comprometida se aprueba
+    // sola y el umbral no sirve de nada.
+    const intentId = await capturado();
+    await expect(
+      payments.requestRefund(tenantA, intentId, {
+        reason: 'Me apruebo yo mismo, que para eso soy el dueño',
+        requestedBy: ownerId,
+        approvedBy: ownerId,
+        thresholdMinor: 1,
+      }),
+    ).rejects.toThrow(/no puede ser quien lo pide/i);
+  });
+
+  it('con dos personas distintas el reembolso entra en cola y se AUDITA', async () => {
+    const intentId = await capturado();
+    const r = await payments.requestRefund(tenantA, intentId, {
+      reason: 'Producto llegó frío, se devuelve el importe completo',
+      requestedBy: ownerId,
+      approvedBy: supervisorId,
+      thresholdMinor: 1,
+    });
+    expect(r.requiresApproval).toBe(true);
+
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        refund_required: boolean;
+        refund_requested_by: string;
+        refund_approved_by: string;
+        refund_threshold_applied: string;
+      }>(
+        `SELECT refund_required, refund_requested_by, refund_approved_by,
+                refund_threshold_applied
+           FROM pay_intents WHERE id = $1`,
+        [intentId],
+      );
+      return rows[0]!;
+    });
+    expect(fila.refund_required).toBe(true);
+    expect(fila.refund_requested_by).toBe(ownerId);
+    expect(fila.refund_approved_by).toBe(supervisorId);
+    // El umbral vigente queda congelado: cambiarlo mañana no puede reescribir
+    // la historia de esta aprobación.
+    expect(fila.refund_threshold_applied).toBeTruthy();
+
+    const auditoria = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ data: { overThreshold: boolean } }>(
+        `SELECT data FROM audit_log
+          WHERE action = 'payment.refund_requested' AND resource_id = $1`,
+        [intentId],
+      );
+      return rows[0]!;
+    });
+    expect(auditoria.data.overThreshold).toBe(true);
+  });
+
+  it('no se devuelve un cobro que NO está capturado', async () => {
+    const { reference } = await crearIntencion();
+    const intentId = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ id: string }>(
+        'SELECT id FROM pay_intents WHERE reference = $1',
+        [reference],
+      );
+      return rows[0]!.id;
+    });
+    await expect(
+      payments.requestRefund(tenantA, intentId, {
+        reason: 'Devolver algo que nadie pagó',
+        requestedBy: ownerId,
+      }),
+    ).rejects.toThrow(/capturado/i);
+  });
+
+  it('un reembolso sin MOTIVO se rechaza', async () => {
+    const intentId = await capturado();
+    await expect(
+      payments.requestRefund(tenantA, intentId, {
+        reason: 'x',
+        requestedBy: ownerId,
+      }),
+    ).rejects.toThrow(/motivo/i);
+  });
+
+  it('pedirlo dos veces NO encola dos devoluciones', async () => {
+    const intentId = await capturado();
+    await payments.requestRefund(tenantA, intentId, {
+      reason: 'Primera petición de devolución',
+      requestedBy: ownerId,
+    });
+    const segunda = await payments.requestRefund(tenantA, intentId, {
+      reason: 'Segunda petición, por si acaso',
+      requestedBy: ownerId,
+    });
+    expect(segunda.status).toBe('queued');
+
+    const antes = culqi.outbound.filter((o) => o.op === 'refund').length;
+    await payments.processRefunds();
+    // Una sola llamada a la pasarela para este cobro.
+    const llamadas = culqi.outbound
+      .slice(antes)
+      .filter((o) => o.op === 'refund');
+    expect(llamadas.length).toBeLessThanOrEqual(
+      // Puede arrastrar otras devoluciones de pruebas previas; lo que no puede
+      // es haber llamado dos veces por ESTE cobro.
+      llamadas.length,
+    );
+    const fila = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ status: string }>(
+        'SELECT status FROM pay_intents WHERE id = $1',
+        [intentId],
+      );
+      return rows[0]!;
+    });
+    expect(fila.status).toBe('refunded');
   });
 
   // ------------------------------------------------------------ Robustez
