@@ -3,6 +3,7 @@ import { DatabaseModule } from '../../database/database.module.js';
 import { OrganizationModule } from '../organization/index.js';
 import { OrderingModule } from '../ordering/index.js';
 import { CatalogModule } from '../catalog/index.js';
+import { PaymentsModule } from '../payments/index.js';
 import { StorefrontService } from './app/storefront.service.js';
 import {
   StorefrontAdminController,
@@ -19,7 +20,17 @@ import {
  * sin tocar nada de lo de abajo.
  */
 @Module({
-  imports: [DatabaseModule, OrganizationModule, OrderingModule, CatalogModule],
+  imports: [
+    DatabaseModule,
+    OrganizationModule,
+    OrderingModule,
+    CatalogModule,
+    // Depende de Payments y no al revés: la tienda es quien necesita cobrar.
+    // Sin esta flecha, el checkout dejaba un pedido sin forma de pagarlo,
+    // porque crear una intención exige un permiso de personal que un
+    // comprador invitado no tiene.
+    PaymentsModule,
+  ],
   controllers: [StorefrontAdminController, ShopController],
   providers: [StorefrontService],
   exports: [StorefrontService],

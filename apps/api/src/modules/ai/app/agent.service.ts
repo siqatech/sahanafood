@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import {
   matchRule,
   detectNegativeSentiment,
+  detectPurchaseIntent,
   validateOutput,
   checkAiBudget,
   creditsForTokens,
@@ -18,6 +19,7 @@ import { AI_PROVIDER } from '../ai.tokens.js';
 import type { AiProvider } from '../domain/ai-provider.js';
 import { AgentToolsService, type ToolResult } from './agent-tools.service.js';
 import { KnowledgeService } from './knowledge.service.js';
+import { AgentCartService } from './agent-cart.service.js';
 import { ConversationsService } from '../../conversations/index.js';
 
 /**
@@ -95,6 +97,7 @@ export class AgentService {
     private readonly tools: AgentToolsService,
     private readonly knowledge: KnowledgeService,
     private readonly conversations: ConversationsService,
+    private readonly cart: AgentCartService,
   ) {}
 
   /**
@@ -224,6 +227,16 @@ export class AgentService {
       brandId: input.brandId,
       text: input.text,
     });
+
+    // Intención de compra: se abre un carrito y el enlace entra en el contexto
+    // (spec 19 §3, `order.start_cart`). Es la ÚNICA escritura del agente, y es
+    // deliberadamente pobre: un carrito vacío y su enlace. Lo que se compra se
+    // decide en el checkout estructurado, porque una compra confirmada por
+    // texto libre es una compra que nadie puede demostrar (ADR-0011 §2).
+    if (detectPurchaseIntent(input.text)) {
+      const carrito = await this.cart.startCart(tenantId, input.brandId);
+      if (carrito) resultados.push(carrito);
+    }
 
     // --- Escalón 3: fuentes del tenant, filtradas por tenant_id.
     const fuentes = await this.knowledge.search(tenantId, input.text, {

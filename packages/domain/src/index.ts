@@ -293,6 +293,7 @@ export {
 export {
   matchRule,
   detectNegativeSentiment,
+  detectPurchaseIntent,
   type ConditionKind,
   type Condition,
   type ActionKind,

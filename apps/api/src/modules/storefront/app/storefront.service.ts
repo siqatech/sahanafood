@@ -29,6 +29,7 @@ import {
   type ResolvedCatalog,
   type ResolvedProduct,
 } from '../../catalog/index.js';
+import { PaymentsService } from '../../payments/index.js';
 
 /**
  * Tienda web (spec 11, T5.08–T5.13).
@@ -67,6 +68,18 @@ export interface CartLineView {
   unavailable: boolean;
 }
 
+export interface CheckoutResult {
+  orderId: string;
+  total: string;
+  /** Solo con pago en línea. Es lo que la tienda necesita para redirigir. */
+  payment?: {
+    /** Referencia OPACA: nunca el id interno de la intención. */
+    reference: string;
+    checkoutUrl: string | null;
+    expiresAt: string;
+  };
+}
+
 export interface CartView {
   token: string;
   status: string;
@@ -92,6 +105,7 @@ export class StorefrontService {
     private readonly organization: OrganizationService,
     private readonly ordering: OrderingService,
     private readonly catalog: CatalogService,
+    private readonly payments: PaymentsService,
   ) {}
 
   // ------------------------------------------------------------- Dominios
@@ -268,9 +282,29 @@ export class StorefrontService {
   /** Abre un carrito para el host. Devuelve su token público. */
   async createCart(host: string): Promise<{ token: string }> {
     const { tenantId, brandId } = await this.tenantOfHost(host);
+    return this.createCartForBrand(tenantId, brandId);
+  }
+
+  /**
+   * Abre un carrito para una marca, sin pasar por el host.
+   *
+   * Lo usa el agente de IA para mandarle un enlace al cliente por WhatsApp
+   * (spec 19 §3). El host sigue siendo el camino del navegador; aquí el tenant
+   * ya está resuelto por el token de la conversación, así que exigir un host
+   * sería obligar a un módulo interno a adivinar el dominio de su propio
+   * cliente.
+   *
+   * Devuelve también la URL pública cuando la marca tiene dominio verificado:
+   * un token suelto no se puede mandar por chat, y construir la URL en el
+   * módulo que llame acabaría con dos formas distintas del mismo enlace.
+   */
+  async createCartForBrand(
+    tenantId: string,
+    brandId: string,
+  ): Promise<{ token: string; url: string | null }> {
     const expiresAt = new Date(Date.now() + CART_TTL_HOURS * 3_600_000);
 
-    return withTenant(this.pool, tenantId, async (ctx) => {
+    const { token } = await withTenant(this.pool, tenantId, async (ctx) => {
       const { rows } = await ctx.client.query<{ id: string }>(
         `INSERT INTO sto_carts (tenant_id, brand_id, expires_at)
          VALUES ($1,$2,$3) RETURNING id`,
@@ -284,6 +318,18 @@ export class StorefrontService {
       });
       return { token };
     });
+
+    const host = await withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ host: string }>(
+        `SELECT host FROM sto_domains
+          WHERE brand_id = $1 AND status = 'active'
+          ORDER BY created_at LIMIT 1`,
+        [brandId],
+      );
+      return rows[0]?.host ?? null;
+    });
+
+    return { token, url: host ? `https://${host}/carrito/${token}` : null };
   }
 
   /**
@@ -583,7 +629,10 @@ export class StorefrontService {
    * para que se acabe el pollo. Revalidar aquí es lo que impide cobrar por algo
    * que no se puede entregar.
    */
-  async checkout(token: string): Promise<{ orderId: string; total: string }> {
+  async checkout(
+    token: string,
+    options: { payment?: 'online' | 'on_delivery' | undefined } = {},
+  ): Promise<CheckoutResult> {
     const vista = await this.getCart(token);
     if (vista.blockers.length > 0) {
       throw new ValidationError(vista.blockers.map((b) => b.detail).join(' '), {
@@ -660,7 +709,63 @@ export class StorefrontService {
       }
     });
 
+    // Pago EN LÍNEA: la intención se crea aquí, no en un endpoint aparte que
+    // el comprador tendría que acertar a llamar. Sin esto el checkout dejaba
+    // un pedido sin forma de pagarlo: `POST /payments/intents` exige
+    // `payments.charge`, que es un permiso de personal — un invitado no lo
+    // tiene y no debe tenerlo.
+    //
+    // Se hace DESPUÉS de crear el pedido a propósito: la intención referencia
+    // un pedido, y una intención sin pedido detrás es dinero cobrado que nadie
+    // sabe a qué imputar.
+    if (options.payment === 'online') {
+      const intento = await this.payments.createIntent(tenantId, {
+        orderId: creado.id,
+        provider: await this.pasarelaDeLaMarca(tenantId, brandId),
+      });
+      return {
+        orderId: creado.id,
+        total: vista.total,
+        payment: {
+          reference: intento.reference,
+          checkoutUrl: intento.checkoutUrl,
+          expiresAt: intento.expiresAt,
+        },
+      };
+    }
+
     return { orderId: creado.id, total: vista.total };
+  }
+
+  /**
+   * Qué pasarela usa esta marca.
+   *
+   * La elige el NEGOCIO, no el comprador: dejar que el cliente mande el nombre
+   * del proveedor convierte un parámetro público en la forma de apuntar el
+   * cobro a una conexión que no es la suya.
+   */
+  private async pasarelaDeLaMarca(
+    tenantId: string,
+    brandId: string,
+  ): Promise<string> {
+    const fila = await withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ provider: string }>(
+        `SELECT provider FROM pay_connections
+          WHERE status = 'active' AND (brand_id IS NULL OR brand_id = $1)
+          ORDER BY brand_id NULLS LAST
+          LIMIT 1`,
+        [brandId],
+      );
+      return rows[0];
+    });
+    if (!fila) {
+      // Mensaje para el COMPRADOR: no es culpa suya y no puede arreglarlo.
+      throw new ValidationError(
+        'Esta tienda no tiene pago en línea disponible ahora mismo. Puedes pedir con pago contra entrega.',
+        { code: 'ONLINE_PAYMENT_UNAVAILABLE' },
+      );
+    }
+    return fila.provider;
   }
 
   // ---------------------------------------------------------------- Apoyo

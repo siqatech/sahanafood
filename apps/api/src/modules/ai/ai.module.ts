@@ -3,6 +3,7 @@ import { DatabaseModule } from '../../database/database.module.js';
 import { CatalogModule } from '../catalog/index.js';
 import { OrganizationModule } from '../organization/index.js';
 import { ConversationsModule } from '../conversations/index.js';
+import { StorefrontModule } from '../storefront/index.js';
 import { AI_PROVIDER } from './ai.tokens.js';
 import { EchoAiProvider } from './app/echo-provider.js';
 import { AgentService } from './app/agent.service.js';
@@ -11,6 +12,7 @@ import { AgentConfigService } from './app/agent-config.service.js';
 import { KnowledgeService } from './app/knowledge.service.js';
 import { AgentAnalyticsService } from './app/agent-analytics.service.js';
 import { AiEventHandlers } from './app/ai-event-handlers.js';
+import { AgentCartService } from './app/agent-cart.service.js';
 import { AiController } from './api/ai.controller.js';
 
 /**
@@ -30,6 +32,9 @@ import { AiController } from './api/ai.controller.js';
     CatalogModule,
     OrganizationModule,
     ConversationsModule,
+    // Para abrir carritos y mandar el enlace por chat (spec 19 §3). La flecha
+    // va en este sentido: la tienda no sabe que existe el agente.
+    StorefrontModule,
   ],
   controllers: [AiController],
   providers: [
@@ -40,6 +45,7 @@ import { AiController } from './api/ai.controller.js';
     KnowledgeService,
     AgentAnalyticsService,
     AiEventHandlers,
+    AgentCartService,
   ],
   exports: [
     AgentService,

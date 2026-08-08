@@ -221,6 +221,19 @@ function enHorario(
     : minuteOfDay >= desde || minuteOfDay < hasta;
 }
 
+/**
+ * ¿El mensaje es una intención de COMPRA?
+ *
+ * Mismo léxico que la condición `wants: comprar` de las reglas, expuesto
+ * aparte para que el agente pueda abrir un carrito sin que el dueño tenga que
+ * configurar una regla para ello. Léxico y no modelo por lo mismo de siempre:
+ * tiene que funcionar con el presupuesto agotado, y abrir un carrito de más no
+ * cuesta nada — no confirma ni cobra nada.
+ */
+export function detectPurchaseIntent(text: string): boolean {
+  return VERBOS['comprar']!.some((re) => re.test(text));
+}
+
 /** Detección de sentimiento negativo (RN-AIA-03). Léxico, no modelo. */
 export function detectNegativeSentiment(text: string): boolean {
   // Deliberadamente por palabras y no por LLM: esto decide si una queja llega a

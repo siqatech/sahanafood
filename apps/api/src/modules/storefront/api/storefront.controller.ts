@@ -18,6 +18,7 @@ import {
   StorefrontService,
   type CartView,
   type StorefrontContext,
+  type CheckoutResult,
 } from '../app/storefront.service.js';
 
 function parse<T>(schema: z.ZodType<T>, body: unknown): T {
@@ -202,7 +203,17 @@ export class ShopController {
   @Post('carts/:token/checkout')
   async checkout(
     @Param('token') token: string,
-  ): Promise<{ orderId: string; total: string }> {
-    return this.storefront.checkout(token);
+    @Body() body: unknown,
+  ): Promise<CheckoutResult> {
+    // `on_delivery` por defecto: con el pago en línea por defecto, una tienda
+    // sin pasarela conectada rompería el checkout de todos sus compradores el
+    // día que se despliegue esto.
+    const input = parse(
+      z.object({ payment: z.enum(['online', 'on_delivery']).optional() }),
+      body ?? {},
+    );
+    return this.storefront.checkout(token, {
+      payment: input.payment ?? 'on_delivery',
+    });
   }
 }
