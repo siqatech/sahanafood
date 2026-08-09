@@ -417,4 +417,12 @@ Los tipos publicados se leen del fuente; los escuchados se sacan llamando a `han
 
 **Lo que la lista deja al descubierto y queda escrito (DT-13):** tres reglas —RN-ORD-04, RN-BIL-02 y RN-BIL-03— piden **avisar a una persona**, y hoy ese aviso muere en un evento que nadie escucha. El hecho queda registrado y se ve entrando al panel; lo que falta es que el panel te busque a ti. Con un local lo ve el encargado; con diez, no.
 
-**Próxima acción de Claude Code:** terminar el gate de F5 propiamente dicho — repasar T5.00–T5.37 contra lo construido y dejar por escrito qué queda, separando lo que es trabajo de código de lo que son entregables humanos (pentest T5.36, los tres pilotos y la medición de Lighthouse, que dependen de DT-02).
+### El gate de F5, revisado
+
+`docs/33-gate-fase-5.md` §8. El veredicto no cambia —**APTO CON EXCEPCIONES**, y las cuatro excepciones siguen compartiendo causa: DT-02, no hay entorno cloud—. Lo que cambia es el alcance: cuando se firmó, los ocho criterios de salida y las 37 tareas estaban verificados y **el sistema no se podía usar**, porque no existía ni una sola pantalla de operación.
+
+La lección queda escrita para el gate de F6: **comprobar el backlog no es comprobar la fase.** Un backlog puede estar completo y dejar fuera media spec sin que ningún criterio se ponga rojo — las pantallas estaban especificadas en `specs/ux/`, asignadas a F4–F5, y ningún backlog las incluyó. El gate de F6 empieza por la lista de specs con interfaz declarada y pregunta, una por una, si existe, antes de mirar una sola prueba.
+
+Cifras a hoy: **1 235 pruebas** (441 dominio · 633 API contra Postgres y Redis reales · 117 print-agent · 23 POS · 14 navegador · 7 prompts), 66 casos de aislamiento bloqueantes, 365 módulos sin una violación de frontera y 31 migraciones que admiten volver a la imagen anterior.
+
+**Próxima acción de Claude Code:** abrir F6 con su tarea T6.00 —generar el backlog desde las specs 08 (compras, proveedores, transferencias, mermas, conteos, costo promedio móvil) y 14/15, con la lista de specs con interfaz declarada por delante— y saldar en ella DT-04 (la bandeja de excepciones tiene API y no UI), que venció en F5.

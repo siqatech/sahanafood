@@ -11,6 +11,12 @@
 > operadores piloto y la medición de Lighthouse en un móvil real. Ninguna es
 > código pendiente, y las tres dependen de **DT-02: no hay entorno cloud**.
 > La deuda **DT-08 —que vencía en este gate— queda saldada** (ADR-0018).
+>
+> **Revisado el 9 de agosto de 2026** (§8). El veredicto no cambia, pero el
+> alcance sí: tras firmar este gate se descubrió que **la fase no tenía
+> interfaz de usuario ninguna** —ni panel, ni POS, ni KDS— y que faltaba la
+> mitad de escritura del catálogo y la organización. Las tres deudas
+> (DT-09, DT-10, DT-11) están saldadas; se abrieron DT-12 y DT-13.
 
 ---
 
@@ -251,3 +257,106 @@ cierre de la fase.
 
 La deuda **DT-08** vencía en este gate y **se saldó**: ADR-0018 adopta
 Playwright, acotado a `apps/web`, y el job `browser` bloquea en CI.
+
+---
+
+## 8. Revisión del 9 de agosto de 2026 — lo que apareció después de firmar
+
+Un gate no es un acta: es una foto. Esta sección es lo que se vio al mirar otra
+vez, y el motivo por el que la primera foto salió movida.
+
+### 8.1 Lo que el gate original no vio, y por qué
+
+Los ocho criterios de salida de la fase, los siete comunes y las 37 tareas del
+backlog estaban todos verificados — y aun así **el sistema no se podía usar**:
+no existía ni una sola pantalla de operación. Ni panel de administración, ni
+POS, ni KDS. Estaban especificados (`specs/ux/`), asignados a F4–F5, y **ningún
+backlog los incluyó**. El gate no lo detectó porque comprueba lo que el backlog
+declara —pruebas, cobertura, criterios— y no **la superficie de las specs**.
+
+Es la misma forma de error que este proyecto ya ha visto seis veces a menor
+escala: la pieza existe, está bien hecha, y no está conectada a nada. Aquí lo
+que faltaba no era una llamada: era la mitad de arriba del producto.
+
+Lo mismo con los datos: `specs/03` pide «CRUD empresas/marcas/locales…» y
+`specs/04` «CRUD completo», y de ambas solo se había construido **la mitad de
+LECTURA**. Crear una marca exigía SQL a mano; el único negocio que existía era
+la pollería ficticia de las semillas demo.
+
+### 8.2 Deuda saldada desde el gate
+
+| ID | Qué era | Cómo se pagó |
+|---|---|---|
+| **DT-09** | No existía ninguna interfaz: ni panel, ni POS, ni KDS | Panel Next.js (`apps/web/panel`) con sesión en cookies `httpOnly`; PWA de POS y KDS (`apps/pos`, ADR-0019) con IndexedDB, service worker propio y sesión por dispositivo + PIN, vendiendo y cobrando **sin red** |
+| **DT-10** | No había forma de crear datos de negocio | `OrganizationAdminService` y `CatalogAdminService` con `If-Match` sobre `row_version`, idempotentes por clave natural, más `setup-business` para dar de alta un negocio entero desde un archivo |
+| **DT-11** | El KDS no podía deshacer | Transición inversa `resume_preparing` en el dominio, `undoTicket` con ventana de 30 s y auditoría |
+
+### 8.3 Defectos de producción encontrados al construir esas pantallas
+
+Todos de la misma familia —construido y sin conectar— y todos con consecuencia
+en dinero o en servicio:
+
+- **`authenticateDevice` no tenía ningún llamador HTTP.** Una tablet emparejada
+  no tenía forma de autenticarse: el POS no podía existir.
+- **`GET /auth/me` exigía `tenant.read`**, un permiso que un cajero no tiene. El
+  POS iniciaba sesión y recibía 403 en su primera llamada.
+- **Ninguna venta del POS llegaba a `cash_movements`.** Cada turno cerraba con
+  un sobrante exactamente igual a lo vendido en efectivo, y el arqueo —que
+  existe para detectar diferencias— las producía él mismo.
+- **`paymentMethod` se descartaba en el borde**: el esquema de zod no lo
+  declaraba, así que el campo llegaba y se perdía en silencio.
+- **La precuenta impresa no cuadraba**: base + IGV daba un céntimo menos que el
+  total cobrado.
+- **La mitad SALIENTE de las integraciones no tenía llamador** (§8.4).
+
+### 8.4 El sexto caso, y la comprobación que lo cierra
+
+`ChannelConnector` tiene dos mitades. La de entrada se cableó en F4. La de
+salida —`pushMenu`, `setAvailability`, `updateOrderStatus`, `cancelAck`— estaba
+implementada en el simulador, con pruebas en verde, y **no la llamaba nadie**.
+En un local eso es literalmente lo que RN-INT-05 advierte: se pausa un plato
+agotado y el marketplace lo sigue vendiendo.
+
+Ya hay consumidor (`ChannelSyncService`), con 11 pruebas que recorren el camino
+completo —evento en `outbox` → `consumeEvent` → conector— y no el servicio a
+solas, porque el servicio nunca estuvo mal: lo que faltaba era el eslabón.
+
+Y para que no haya un séptimo, `apps/api/src/workers/wiring.test.ts` vigila
+ahora **las tres** formas de quedarse sin llamador: barrido declarado sin
+arrancar, módulo con handlers sin registrar en el worker, y **evento publicado
+sin consumidor** —que rompe el build salvo que quede justificado por escrito,
+con la lista de excusas auditándose a sí misma para que no crezca hasta dejar
+de significar nada—. La cuarta comprobación es la simétrica: un handler cuyo
+evento nadie publica, que es una errata que de otro modo no falla jamás.
+
+### 8.5 Deuda nueva
+
+| ID | Qué es | Vence |
+|---|---|---|
+| **DT-12** | El número de pedido del papel del POS es un correlativo del dispositivo, marcado como provisional: se imprime antes de sincronizar y el definitivo lo pone el servidor | Antes del primer piloto |
+| **DT-13** | Tres reglas (RN-ORD-04, RN-BIL-02, RN-BIL-03) piden **avisar a una persona** y el aviso muere en un evento sin oyente. El hecho queda registrado y se ve entrando al panel; falta que el panel te busque a ti | F6 |
+
+### 8.6 Cifras a 9 de agosto de 2026
+
+| Suite | Antes del gate | Hoy |
+|---|---|---|
+| `@sahana/domain` | 438 | **441** |
+| API (integración contra Postgres + Redis reales) | 573 | **633** |
+| `@sahana/print-agent` | 117 | **117** |
+| `@sahana/ai-prompts` | 7 | **7** |
+| `@sahana/pos` (nuevo) | — | **23** |
+| Navegador | 6 (tienda) | **14** (tienda + panel) |
+| **Total** | **1 141** | **1 235** |
+
+Aislamiento de tenant: **66 casos** bloqueantes. dependency-cruiser: **365
+módulos, 1 289 dependencias, 0 violaciones**. Migraciones: **31**, todas
+admiten volver a la imagen anterior.
+
+### 8.7 El veredicto no cambia, pero la lección sí
+
+Sigue siendo **APTO CON EXCEPCIONES**, y las excepciones siguen siendo las
+mismas cuatro con la misma causa (DT-02). Lo que cambia es qué se le pide a un
+gate: **comprobar el backlog no es comprobar la fase**. Un backlog puede estar
+completo y dejar fuera media spec sin que ningún criterio se ponga rojo. El
+gate de F6 tiene que empezar por la lista de specs con interfaz declarada y
+preguntar, una por una, si existe — antes de mirar una sola prueba.
