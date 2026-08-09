@@ -447,4 +447,24 @@ Tres decisiones más que no son obvias:
 
 Y esta pantalla **sí usa JavaScript**, al contrario que la tienda: los modificadores obligatorios dependen del plato que se acaba de elegir, y sin JS eso obliga a una ida y vuelta al servidor por línea. La usa un encargado en su escritorio, no un comprador en un móvil con 3G. Sin JS sigue enviándose y sirve para los platos sin nada obligatorio.
 
-**Próxima acción de Claude Code:** DT-05 no es código y DT-02 sigue bloqueada por credenciales, así que lo siguiente con valor propio es repasar `specs/ux/` entera contra lo construido —el mismo método que destapó DT-09— para ver qué otra pantalla especificada no existe, antes de que la lista de specs con interfaz declarada se use como criterio de entrada del gate de F6.
+### El repaso de `specs/ux/`: dos pantallas más que no existían
+
+El método que destapó DT-09 —leer la lista de specs con interfaz declarada y preguntar una por una si existe— encontró otras dos. De seis specs de UX, cuatro estaban construidas (POS, KDS, panel, tienda) y **dos no existían en absoluto**: el centro de operaciones (`ux/05`, F4 básico / F5 completo) y la bandeja de conversaciones (`ux/06`, F5).
+
+**El centro de operaciones era el grave, y no por estética.** Sin él **no había forma de aceptar un pedido desde ninguna interfaz**. Los canales con aceptación manual dependían de que alguien llamara al endpoint a mano y, a los diez minutos, el barrido de RN-ORD-04 los rechazaba solo. Es decir: **todo pedido manual acababa rechazado, no por decisión de nadie sino por falta de un botón**. El KDS no servía —muestra tickets de cocina, que solo existen a partir de `order.accepted`— y el panel tampoco.
+
+Ya existe, con las tres columnas de la spec. Cuatro decisiones que importan:
+
+· **La cuenta atrás es real y corre en el navegador.** Un plazo pintado en el servidor se congela en la página y miente en cuanto pasa un minuto, y aquí lo que se mira es precisamente cuánto queda antes de que el sistema rechace el pedido solo.
+
+· **El plazo se resuelve con el mismo criterio de especificidad que el servidor**, y eso tiene prueba unitaria propia —la primera de `apps/web`, ahora en CI—. Una copia que se desvía es peor que no tener reloj: el operador ve «te quedan 4 minutos» sobre un pedido que el barrido ya rechazó y se entera cuando llama el cliente.
+
+· **Las excepciones van arriba del todo**, por encima de lo que tiene reloj: un pedido que no se pudo traducir lleva más tiempo esperando que cualquiera de los otros, y su cliente también.
+
+· **La columna de problemas se degrada sola.** Quien no tenga permiso de integraciones o de facturación ve el resto de la pantalla igual, en vez de un error que le impide aceptar pedidos. Y solo se pinta lo que tiene un dato real detrás: una tarjeta de «POS offline > 30 min» sin nada que la alimente enseñaría un verde que nadie ha comprobado.
+
+La prueba de navegador afirma el **movimiento** —el pedido sale de «por aceptar» y aparece en «en curso»— y no un mensaje de éxito: al aceptar, la tarjeta desaparece y se lleva el mensaje con ella, que es el comportamiento correcto.
+
+**Lo que queda escrito y no se hizo (DT-14):** la bandeja de conversaciones. El módulo y el agente están completos y probados, y lo que falta es la pantalla donde una persona atiende. La consecuencia concreta es que **una derivación bot→humano no llega a ningún sitio**: el agente escribe el resumen, marca `handoff_at`, y nadie lo ve. El cliente que pidió hablar con una persona no recibe respuesta.
+
+**Próxima acción de Claude Code:** saldar DT-14 — la bandeja de conversaciones de `specs/ux/06`, empezando por lo que hace que una derivación deje de perderse: lista con filtro de «derivadas», hilo legible con el resumen del bot arriba, y compositor con la ventana de 24 h visible.

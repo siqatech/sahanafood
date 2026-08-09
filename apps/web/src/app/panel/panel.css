@@ -327,3 +327,69 @@ tr:last-child td {
   background: var(--panel-tarjeta);
   max-width: 22rem;
 }
+
+/* --- Torre de control (specs/ux/05) --- */
+
+/* Tres columnas en escritorio, una debajo de otra en pantallas estrechas. La
+   pantalla es de escritorio o tablet grande, pero un encargado la abre desde el
+   móvil cuando le suena el teléfono a las ocho: apilar es peor que nada, pero
+   mucho mejor que un scroll horizontal. */
+.torre {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .torre {
+    grid-template-columns: 1fr;
+  }
+}
+
+.torre__columna {
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.torre__columna h2 {
+  margin-top: 4px;
+  font-size: 1rem;
+}
+
+.ficha--revision {
+  border-left: 4px solid var(--panel-baja);
+}
+
+.fila-compacta {
+  margin: 2px 0;
+}
+
+/* El reloj. Ícono Y texto, nunca solo color: en un mostrador con luz directa
+   el ámbar y el rojo se parecen (docs/25 §6). */
+.cuenta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.cuenta--ok {
+  color: var(--panel-sube);
+}
+
+.cuenta--poco {
+  color: #b45309;
+}
+
+.cuenta--vencido {
+  color: var(--panel-baja);
+}
+
+.panel button.grande {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+  margin-bottom: 6px;
+}

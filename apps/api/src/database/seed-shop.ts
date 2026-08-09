@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     seedDemoOrganization(ctx),
   );
   const brandId = org.brandIds[0]!;
-  await withTenant(pool, tenant.tenantId, (ctx) =>
+  const catalogo = await withTenant(pool, tenant.tenantId, (ctx) =>
     seedDemoCatalog(ctx, { brandId, locationId: org.locationId }),
   );
 
@@ -96,6 +96,19 @@ async function main(): Promise<void> {
     });
   }
 
+  // Un pedido ESPERANDO ACEPTACIÓN, con su reloj corriendo. Sin él la torre de
+  // control solo se puede mirar vacía, y una pantalla que solo se puede mirar
+  // vacía no se puede desarrollar ni probar — que es exactamente cómo esta
+  // pantalla acabó sin existir.
+  await ordering.submit(tenant.tenantId, {
+    brandId,
+    locationId: org.locationId,
+    channel: 'rappi',
+    externalRef: 'DEMO-POR-ACEPTAR',
+    lines: [{ productId: catalogo.comboId, quantity: 1 }],
+    customerName: 'Cliente esperando',
+  });
+
   console.log(
     JSON.stringify(
       {
@@ -105,6 +118,7 @@ async function main(): Promise<void> {
         tienda: `http://${HOST}:3001/`,
         cupon: 'BIENVENIDO (10 %, mínimo S/ 50)',
         excepciones: `http://${HOST}:3001/panel/excepciones`,
+        operaciones: `http://${HOST}:3001/panel/operaciones`,
       },
       null,
       2,

@@ -154,6 +154,11 @@ jobs:
       # nada, y un job que tarda de más acaba siendo el que alguien salta.
       - name: Pruebas del POS (cola offline y cálculo del ticket)
         run: pnpm --filter @sahana/pos test
+      # Y la única lógica del panel que REPLICA una regla del servidor: el
+      # plazo de aceptación de la torre de control. Una copia que se desvía
+      # enseña un reloj que miente sobre un pedido que ya se rechazó.
+      - name: Pruebas del panel (plazos de la torre de control)
+        run: pnpm --filter @sahana/web test
 
   # ---------------------------------------------------------------------------
   # Navegador: la tienda y el PANEL, vistos como los ve quien los usa

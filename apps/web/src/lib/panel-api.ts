@@ -180,6 +180,33 @@ export interface ProductoVendible {
   }>;
 }
 
+export interface PoliticaDeAceptacion {
+  brandId: string | null;
+  channel: string | null;
+  autoAccept: boolean;
+  alertAfterMinutes: number;
+  autoRejectAfterMinutes: number;
+}
+
+export interface CartaMuerta {
+  id: string;
+  provider: string;
+  deliveryId: string;
+  attempts: number;
+  lastError: string | null;
+  receivedAt: string;
+}
+
+export interface DocumentoDelPanel {
+  id: string;
+  orderId: string | null;
+  number: string | null;
+  status: string;
+  total: string;
+  rejectionReason: string | null;
+  attempts: number;
+}
+
 export interface ConexionDelPanel {
   id: string;
   provider: string;
@@ -321,6 +348,36 @@ export const panel = {
       method: 'POST',
       body: JSON.stringify({ lines }),
     }),
+
+  pedidos: (
+    filtros: {
+      status?: string;
+      limit?: number;
+    } = {},
+  ): Promise<PedidoDelPanel[]> => {
+    const q = new URLSearchParams();
+    if (filtros.status) q.set('status', filtros.status);
+    if (filtros.limit) q.set('limit', String(filtros.limit));
+    const cadena = q.toString();
+    return llamar<PedidoDelPanel[]>(`/orders${cadena ? `?${cadena}` : ''}`);
+  },
+
+  politicasDeAceptacion: (): Promise<PoliticaDeAceptacion[]> =>
+    llamar<PoliticaDeAceptacion[]>('/ordering/acceptance-policies'),
+
+  aceptarPedido: (orderId: string): Promise<unknown> =>
+    llamar(`/orders/${orderId}/accept`, { method: 'POST' }),
+
+  cartasMuertas: (): Promise<CartaMuerta[]> =>
+    llamar<CartaMuerta[]>('/integrations/dead-letters'),
+
+  reintentarCartaMuerta: (id: string): Promise<unknown> =>
+    llamar(`/integrations/dead-letters/${id}/retry`, { method: 'POST' }),
+
+  documentos: (status: string): Promise<DocumentoDelPanel[]> =>
+    llamar<DocumentoDelPanel[]>(
+      `/documents?status=${encodeURIComponent(status)}`,
+    ),
 
   excepciones: (): Promise<PedidoDelPanel[]> =>
     llamar<PedidoDelPanel[]>('/orders/exceptions'),

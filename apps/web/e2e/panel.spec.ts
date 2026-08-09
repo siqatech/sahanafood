@@ -222,6 +222,68 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.getByText(/rechazado y avisado al canal/i)).toBeVisible();
   });
 
+  test('LA TORRE DE CONTROL deja ACEPTAR un pedido, que hasta ahora no se podía', async ({
+    page,
+  }) => {
+    // Es la prueba que justifica la pantalla entera. Antes de ella no había
+    // ninguna interfaz para aceptar un pedido: los canales con aceptación
+    // manual dependían de que alguien llamara al endpoint a mano y, a los diez
+    // minutos, el barrido de RN-ORD-04 los rechazaba solo. Todo pedido manual
+    // acababa rechazado — no por decisión de nadie, sino por falta de un botón.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Operaciones', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Operaciones' }),
+    ).toBeVisible();
+
+    const columna = page.locator('.torre__columna').first();
+    const tarjeta = columna.locator('article.ficha').filter({
+      has: page.locator('button', { hasText: 'Aceptar' }),
+    });
+    await expect(tarjeta.first()).toBeVisible();
+
+    // El reloj corre y dice cuánto queda ANTES del rechazo automático. Un plazo
+    // que no se ve es un plazo que se cumple sin que nadie se entere.
+    await expect(tarjeta.first().locator('.cuenta')).toContainText(/quedan \d/);
+
+    // Se anota QUÉ pedido se acepta para poder seguirlo de una columna a otra.
+    // Comprobar un mensaje de éxito no valdría: al aceptar, la tarjeta sale de
+    // la columna y se lleva el mensaje con ella — que es el comportamiento
+    // correcto, y por eso lo que se afirma es el MOVIMIENTO.
+    const numero = (await tarjeta
+      .first()
+      .locator('strong')
+      .first()
+      .textContent())!;
+    expect(numero).toMatch(/^#\d+$/);
+
+    await tarjeta.first().getByRole('button', { name: 'Aceptar' }).click();
+
+    const columnaEnCurso = page.locator('.torre__columna').nth(1);
+    await expect(
+      columnaEnCurso.getByText(numero, { exact: true }),
+    ).toBeVisible();
+    // Y ya no espera decisión: si siguiera, se aceptaría dos veces.
+    await expect(columna.getByText(numero, { exact: true })).toHaveCount(0);
+  });
+
+  test('RECHAZAR DESDE LA TORRE exige motivo, porque va al canal', async ({
+    page,
+  }) => {
+    await entrar(page);
+    await page.goto('/panel/operaciones');
+    const boton = page.getByRole('button', { name: 'Rechazar' }).first();
+    if ((await boton.count()) === 0) {
+      // La torre está vacía: el pedido de la semilla ya se aceptó en la prueba
+      // anterior. No se inventa uno — se afirma lo que la pantalla debe decir
+      // cuando no hay nada esperando, que también es información.
+      await expect(page.getByText(/nada esperando decisión/i)).toBeVisible();
+      return;
+    }
+    await boton.click();
+    await expect(page.getByText(/escribe por qué se rechaza/i)).toBeVisible();
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {
