@@ -446,4 +446,153 @@ suite('Dispositivos POS y PIN', () => {
       .send({})
       .expect(403);
   });
+  // ------------------------------------------- Sesión del POS (ux/01)
+
+  /** Empareja una tablet nueva y devuelve su token. */
+  async function emparejar(nombre: string): Promise<string> {
+    const issued = await auth(
+      http().post('/api/v1/devices/pairing-codes').send({}),
+    ).expect(201);
+    const paired = await http()
+      .post('/api/v1/devices/pair')
+      .send({ code: issued.body.code, deviceName: nombre })
+      .expect(201);
+    return paired.body.deviceToken as string;
+  }
+
+  it('EL POS ENTRA con dispositivo + PIN, y la sesión sirve para vender', async () => {
+    // La prueba que decide si el POS puede existir. Antes de esto, una tablet
+    // emparejada tenía un token y NINGUNA forma de usarlo: `authenticateDevice`
+    // estaba escrito y no lo llamaba nadie desde HTTP.
+    const deviceToken = await emparejar('Tablet Caja 1');
+    await auth(
+      http().post('/api/v1/auth/pin').send({ userId: cajeroA, pin: '2468' }),
+    ).expect(201);
+
+    // 1. La tablet pregunta quién puede entrar. Sin sesión de usuario.
+    const lista = await http()
+      .post('/api/v1/auth/pos/operators')
+      .send({ deviceToken })
+      .expect(201);
+    expect(lista.body.device.deviceName).toBe('Tablet Caja 1');
+    const cajero = lista.body.operators.find(
+      (o: { userId: string }) => o.userId === cajeroA,
+    );
+    expect(cajero.fullName).toBe('Cajero POS');
+    // Ni correos ni roles: esta lista se ve desde el otro lado del mostrador.
+    expect(Object.keys(cajero).sort()).toEqual(['fullName', 'userId']);
+
+    // 2. El cajero teclea su PIN y obtiene una sesión de usuario normal.
+    const sesion = await http()
+      .post('/api/v1/auth/pos/login')
+      .send({ deviceToken, userId: cajeroA, pin: '2468' })
+      .expect(201);
+    expect(sesion.body.accessToken).toBeTruthy();
+    expect(sesion.body.refreshToken).toBeTruthy();
+
+    // 3. Y esa sesión SIRVE PARA VENDER. Un login que devuelve un token que
+    //    luego no abre nada no habría sido detectado por los dos pasos de
+    //    arriba.
+    const perfil = await http()
+      .get('/api/v1/auth/me')
+      .set('authorization', `Bearer ${sesion.body.accessToken}`)
+      .expect(200);
+    expect(perfil.body.userId).toBe(cajeroA);
+    expect(perfil.body.tenantId).toBe(tenantA);
+    expect(perfil.body.permissions).toContain('orders.create');
+  });
+
+  it('el PIN correcto en una tablet REVOCADA no entra', async () => {
+    // El dispositivo se comprueba PRIMERO, y esto es lo que lo demuestra: el
+    // PIN es válido y aun así no se entra. Una tablet robada se revoca de un
+    // clic y deja de servir aunque quien la tenga sepa el PIN.
+    const issued = await auth(
+      http().post('/api/v1/devices/pairing-codes').send({}),
+    ).expect(201);
+    const paired = await http()
+      .post('/api/v1/devices/pair')
+      .send({ code: issued.body.code, deviceName: 'Tablet Robada' })
+      .expect(201);
+    await auth(
+      http().post('/api/v1/auth/pin').send({ userId: cajeroA, pin: '3571' }),
+    ).expect(201);
+
+    await auth(
+      http()
+        .delete(`/api/v1/devices/${paired.body.deviceId}`)
+        .send({ reason: 'Tablet robada del mostrador' }),
+    ).expect(200);
+
+    await http()
+      .post('/api/v1/auth/pos/login')
+      .send({
+        deviceToken: paired.body.deviceToken,
+        userId: cajeroA,
+        pin: '3571',
+      })
+      .expect(403);
+  });
+
+  it('sin dispositivo válido NO se prueban PINs: el contador no se toca', async () => {
+    // Si el PIN se verificara antes que el dispositivo, cualquiera desde
+    // internet podría bloquear la cuenta del cajero a base de intentos y dejar
+    // al mostrador sin poder cobrar en hora punta.
+    await auth(
+      http().post('/api/v1/auth/pin').send({ userId: cajeroA, pin: '4826' }),
+    ).expect(201);
+
+    for (let i = 0; i < 6; i++) {
+      await http()
+        .post('/api/v1/auth/pos/login')
+        .send({
+          deviceToken: 'token-inventado-que-no-existe-en-ninguna-parte',
+          userId: cajeroA,
+          pin: '0000',
+        })
+        .expect(403);
+    }
+
+    // Seis intentos con un dispositivo falso y el PIN sigue vivo.
+    const deviceToken = await emparejar('Tablet Sana');
+    await http()
+      .post('/api/v1/auth/pos/login')
+      .send({ deviceToken, userId: cajeroA, pin: '4826' })
+      .expect(201);
+  });
+
+  it('AISLAMIENTO: la tablet de A no lista ni deja entrar a nadie de B', async () => {
+    const deviceToken = await emparejar('Tablet Aislada');
+    const lista = await http()
+      .post('/api/v1/auth/pos/operators')
+      .send({ deviceToken })
+      .expect(201);
+
+    // El dueño de B no está en la lista de la tablet de A.
+    const dueñoDeB = await withTenant(pool, tenantB, async (ctx) => {
+      const rows = await ctx.db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .limit(1);
+      return rows[0]!.id;
+    });
+    expect(
+      lista.body.operators.some(
+        (o: { userId: string }) => o.userId === dueñoDeB,
+      ),
+    ).toBe(false);
+
+    // Y aunque se conozca su id, la tablet de A no puede abrirle sesión.
+    await withTenant(pool, tenantB, async (ctx) => {
+      await ctx.client.query(
+        `INSERT INTO idn_user_pins (tenant_id, user_id, pin_hash, must_change)
+         VALUES ($1,$2,'no-importa',false)
+         ON CONFLICT (tenant_id, user_id) DO NOTHING`,
+        [tenantB, dueñoDeB],
+      );
+    });
+    await http()
+      .post('/api/v1/auth/pos/login')
+      .send({ deviceToken, userId: dueñoDeB, pin: '1357' })
+      .expect(404);
+  });
 });

@@ -38,3 +38,8 @@ export {
   type ScopeType,
   type SystemRole,
 } from './domain/permissions.js';
+export {
+  PosSessionService,
+  type OperadorDelPos,
+  type ContextoDelDispositivo,
+} from './app/pos-session.service.js';

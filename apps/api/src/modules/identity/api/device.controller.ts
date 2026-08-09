@@ -14,6 +14,11 @@ import {
 } from '../../../common/authz.js';
 import { ValidationError } from '../../../common/errors.js';
 import { DeviceService, type PairedDevice } from '../app/device.service.js';
+import {
+  PosSessionService,
+  type ContextoDelDispositivo,
+  type OperadorDelPos,
+} from '../app/pos-session.service.js';
 
 /**
  * Dispositivos POS y PIN de operador (spec 02: POST /devices/pair,
@@ -150,6 +155,63 @@ export class DeviceController {
   ): Promise<{ ok: true; mustChange: boolean }> {
     const dto = parse(verifyPinSchema, body);
     return this.devices.verifyPin(req.auth!.tid, dto.userId, dto.pin, {
+      ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
+    });
+  }
+}
+
+/**
+ * Sesión del POS: dispositivo + PIN (ux/01, «Sesión por PIN»).
+ *
+ * Controlador aparte y **público**, como el de emparejar, y por el mismo
+ * motivo: la tablet todavía no tiene sesión de usuario cuando llama aquí. Lo
+ * que la autoriza es el `deviceToken`, que se emitió al emparejarla contra un
+ * código de un solo uso generado por alguien con `users.write`.
+ *
+ * El `deviceToken` va en el CUERPO y no en `Authorization`, deliberadamente:
+ * no es un token de sesión —no da acceso a ningún dato de negocio— y ponerlo
+ * en la misma cabecera que un access token invitaría a que el guard global
+ * acabara aceptando uno donde espera el otro.
+ */
+@Controller({ path: 'auth', version: '1' })
+export class PosSessionController {
+  constructor(private readonly pos: PosSessionService) {}
+
+  /** Quién puede entrar en esta tablet. Sin correos ni roles: se ve desde la cola. */
+  @Post('pos/operators')
+  operators(@Body() body: unknown): Promise<{
+    device: ContextoDelDispositivo;
+    operators: OperadorDelPos[];
+  }> {
+    const dto = parse(z.object({ deviceToken: z.string().min(20) }), body);
+    return this.pos.operadores(dto.deviceToken);
+  }
+
+  /** Canjea dispositivo + PIN por una sesión de usuario normal. */
+  @Post('pos/login')
+  login(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    locationId: string | null;
+  }> {
+    const dto = parse(
+      z.object({
+        deviceToken: z.string().min(20),
+        userId: z.string().uuid(),
+        pin: z.string().min(4).max(6),
+      }),
+      body,
+    );
+    return this.pos.entrar({
+      ...dto,
+      ...(req.ip !== undefined ? { ip: req.ip } : {}),
+      ...(req.header('user-agent') !== undefined
+        ? { userAgent: req.header('user-agent')! }
+        : {}),
       ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
     });
   }

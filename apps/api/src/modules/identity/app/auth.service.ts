@@ -285,6 +285,65 @@ export class AuthService {
     if (status !== 'active') throw new TenantSuspendedError();
   }
 
+  /**
+   * Emite una sesión para un usuario cuya identidad **ya se probó por otro
+   * medio**. Hoy solo lo usa el POS: dispositivo emparejado + PIN correcto.
+   *
+   * Es el método más peligroso de este archivo y por eso lleva su propio
+   * comentario: **no verifica ninguna credencial**. Quien lo llama es
+   * responsable de haberlo hecho. Se expone en vez de duplicar la emisión de
+   * tokens porque una segunda implementación de la firma, la rotación y el
+   * registro de sesión acabaría divergiendo de esta — y la que divergiera sería
+   * la que emite tokens sin revocación.
+   *
+   * Regla para quien añada un tercer llamador: la prueba de identidad tiene que
+   * ser algo que el usuario **sabe o posee**, verificado en el servidor, en la
+   * misma petición. Un id de usuario en el cuerpo no lo es.
+   */
+  async issueSessionForVerifiedUser(
+    tenantId: string,
+    userId: string,
+    meta: {
+      ip?: string;
+      userAgent?: string;
+      traceId?: string;
+      /** Qué probó la identidad. Va a auditoría: sin esto, un login por PIN y
+       *  uno por contraseña serían indistinguibles en el registro. */
+      via: string;
+    },
+  ): Promise<AuthTokens> {
+    await this.assertTenantActive(tenantId);
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const rows = await ctx.db
+        .select({ id: schema.users.id, status: schema.users.status })
+        .from(schema.users)
+        .where(eq(schema.users.id, userId))
+        .limit(1);
+      const user = rows[0];
+      if (!user || user.status !== 'active') {
+        throw new InvalidCredentialsError();
+      }
+
+      const tokens = await this.issueSession(
+        ctx,
+        userId,
+        crypto.randomUUID(),
+        meta,
+      );
+      await recordAudit(ctx, {
+        actorType: 'user',
+        actorId: userId,
+        action: 'auth.login',
+        resourceType: 'user',
+        resourceId: userId,
+        ...(meta.traceId !== undefined ? { traceId: meta.traceId } : {}),
+        data: { via: meta.via, ip: meta.ip ?? null },
+      });
+      return tokens;
+    });
+  }
+
   /** Emite access+refresh y persiste la sesión (dentro de la transacción dada). */
   private async issueSession(
     ctx: TenantContext,

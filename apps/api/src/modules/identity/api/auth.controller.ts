@@ -1,11 +1,8 @@
 import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import { z } from 'zod';
-import { ValidationError } from '../../../common/errors.js';
+import { ForbiddenError, ValidationError } from '../../../common/errors.js';
 import { AuthService, type AuthTokens } from '../app/auth.service.js';
-import {
-  RequirePermission,
-  type AuthenticatedRequest,
-} from '../../../common/authz.js';
+import type { AuthenticatedRequest } from '../../../common/authz.js';
 
 /**
  * Endpoints de autenticación (spec 02). Validación con zod en el borde
@@ -72,15 +69,29 @@ export class AuthController {
     return { ok: true };
   }
 
-  /** Perfil de la sesión actual: quién soy y qué puedo hacer. */
+  /**
+   * Perfil de la sesión actual: quién soy y qué puedo hacer.
+   *
+   * **Sin `@RequirePermission`, y a propósito.** Llevaba `tenant.read`, que un
+   * cajero no tiene: el POS entraba con su PIN, recibía un token válido y lo
+   * primero que hacía —preguntar quién es— le respondía 403. Lo destapó la
+   * prueba de sesión del POS al comprobar que el token *sirve para algo*, no
+   * solo que se emite.
+   *
+   * Preguntar por la propia sesión no es leer la configuración del tenant: no
+   * devuelve nada que quien trae el token no tenga ya. Exigir un permiso aquí
+   * es pedir autorización para leerse a uno mismo. Sin token responde 403,
+   * igual que cualquier endpoint protegido, porque no hay sesión de la que
+   * hablar.
+   */
   @Get('me')
-  @RequirePermission('tenant.read')
   me(@Req() req: AuthenticatedRequest): {
     userId: string;
     tenantId: string;
     permissions: string[];
   } {
-    const auth = req.auth!;
+    const auth = req.auth;
+    if (!auth) throw new ForbiddenError('Se requiere autenticación.');
     return {
       userId: auth.sub,
       tenantId: auth.tid,
