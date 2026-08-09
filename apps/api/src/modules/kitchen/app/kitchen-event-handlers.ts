@@ -90,6 +90,14 @@ export class KitchenEventHandlers {
         await this.transitionOrder(event, 'finish_preparing');
       },
 
+      // Deshacer en el KDS devuelve el pedido a preparación (DT-11). Va por
+      // evento y no desde el servicio de cocina por lo mismo que los demás: la
+      // transición del pedido necesita su propio cerrojo y su propia
+      // validación contra la máquina de estados.
+      'kitchen.order_resumed': async (_ctx, event) => {
+        await this.transitionOrder(event, 'resume_preparing');
+      },
+
       'kitchen.order_packed': async (_ctx, event) => {
         await this.transitionOrder(event, 'pack');
       },
@@ -108,7 +116,8 @@ export class KitchenEventHandlers {
    */
   private async transitionOrder(
     event: DomainEventMessage,
-    transicion: 'start_preparing' | 'finish_preparing' | 'pack',
+    transicion:
+      'start_preparing' | 'finish_preparing' | 'pack' | 'resume_preparing',
   ): Promise<void> {
     try {
       await this.ordering.applyTransition(

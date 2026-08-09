@@ -54,7 +54,6 @@ Dos decisiones a tener en cuenta antes de tocarlo:
 
 ## Lo que todavía NO está
 
-- **Deshacer en el KDS** (DT-11): la API solo sabe avanzar tickets.
 - **Número de pedido definitivo en el papel** (DT-12): se imprime antes de
   sincronizar, así que el correlativo es del dispositivo y va marcado como
   provisional.

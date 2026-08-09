@@ -356,4 +356,14 @@ export const api = {
     accion: 'start' | 'ready',
   ): Promise<unknown> =>
     llamar(`/kitchen/tickets/${ticketId}/${accion}`, { method: 'POST' }, token),
+
+  /**
+   * Deshace el último toque de un ticket (DT-11 saldada).
+   *
+   * El servidor decide si se puede: hay una ventana de tiempo y el pedido tiene
+   * que seguir en cocina. La pantalla enseña el botón unos segundos, pero la
+   * regla no vive aquí — un reloj de tablet no es una autorización.
+   */
+  deshacerTicket: (token: string, ticketId: string): Promise<unknown> =>
+    llamar(`/kitchen/tickets/${ticketId}/undo`, { method: 'POST' }, token),
 };

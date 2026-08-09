@@ -215,6 +215,25 @@ export class KitchenController {
   }
 
   /**
+   * Deshacer el último toque (ux/02, DT-11).
+   *
+   * Mismo permiso que avanzar: quien puede mover un ticket puede corregir su
+   * propio toque. Las barreras que importan —ventana de tiempo y que el pedido
+   * siga en cocina— viven en el servicio, no aquí.
+   */
+  @Post('tickets/:id/undo')
+  @RequirePermission('kitchen.transition')
+  undo(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<{ ticket: TicketView; orderResumed: boolean }> {
+    return this.kitchen.undoTicket(req.auth!.tid, id, {
+      actorId: req.auth!.sub,
+      ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
+    });
+  }
+
+  /**
    * Empaque con verificación (RN-KIT-03). Devuelve la marca para la etiqueta:
    * en un local multimarca, etiquetar con la marca equivocada es un error que
    * el cliente ve.

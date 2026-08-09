@@ -373,4 +373,20 @@ Y un defecto que encontró la prueba antes de que lo viera nadie: **la precuenta
 
 **Lo que no cuadra todavía y queda escrito (DT-12):** el número del papel es un correlativo del dispositivo, porque se imprime antes de sincronizar y el definitivo lo pone el servidor. Va marcado como provisional en el propio ticket. Cuadrarlos exige reservar bloques de correlativos por dispositivo, que es una regla de negocio con implicaciones en facturación.
 
-**Próxima acción de Claude Code:** DT-11 —el deshacer del KDS—, que requiere decidir qué pasa con un pedido que ya emitió `kitchen.order_ready`. Es lo último que queda de las tres pantallas.
+### El KDS deshace — DT-11 saldada
+
+Un cocinero con las manos ocupadas toca la tarjeta con el codo. Ahora puede deshacerlo durante ocho segundos, y **deshace de verdad**: transición inversa `resume_preparing` (`ready → preparing`) en el dominio, `undoTicket` en Kitchen y evento `kitchen.order_resumed`.
+
+Lo que hace que esto sea seguro no es que el ticket retroceda, es que **el pedido retroceda con él**. Deshacer el ticket dejando el pedido en «listo» habría dejado a la cocina trabajando en algo que el resto del sistema da por terminado — peor que no deshacer.
+
+Dos barreras, y cada una tapa un abuso distinto:
+
+· **Ventana de tiempo.** Pasados unos segundos ya no es un toque accidental: es una corrección, y una corrección lleva motivo y va por el panel. Sin este límite, «deshacer» sería una forma cómoda de reescribir cuánto tardó la cocina. El servidor da 30 s frente a los 8 de la pantalla: el reloj de una tablet no es el del servidor, y un deshacer legítimo rechazado por medio segundo obliga a llamar al encargado, que es justo lo que esto viene a evitar.
+
+· **El pedido sigue en cocina.** A partir de `packed` está en una bolsa y probablemente en manos de un repartidor: retroceder ahí sería reescribir lo que otra persona hizo después.
+
+Y la prueba de auditoría destapó un tercer caso que yo había cerrado de más: **`accepted` también cuenta como «en cocina»**. El cocinero arranca el ticket y deshace al instante, antes de que el relay haya movido el pedido a `preparing`; mi guardia lo rechazaba justo en el caso más frecuente.
+
+Queda auditado con el estado de origen y destino: sin traza, los tiempos de cocina se vuelven negociables.
+
+**Próxima acción de Claude Code:** el gate de la fase — pasar `specs/phases/` en limpio y comprobar qué queda de F5 con las tres pantallas ya en pie; y de camino revisar si alguna otra pieza construida sigue sin llamador, que es el patrón que ya ha aparecido cinco veces.

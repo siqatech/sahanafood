@@ -13,20 +13,18 @@ import { api, SinRed, type TicketDeCocina } from '../lib/api';
  *  · **Nunca una pantalla en blanco.** Si se cae la red, se enseña un aviso y
  *    la cola que ya estaba, no un error. Una cocina sin comandas a la vista se
  *    para; una cocina con comandas de hace treinta segundos, no.
- *  · **Confirmación visible de lo que se acaba de tocar.** Con las manos
- *    ocupadas y una pantalla con vapor hace falta saber que el toque entró.
- *
- * Lo que la spec pide y **todavía no está**: deshacer durante 8 s. Retroceder
- * un ticket exige transiciones hacia atrás en la máquina de estados de cocina
- * —y decidir qué pasa con el pedido que ya emitió `kitchen.order_ready`—, y eso
- * no se improvisa. Aquí no hay botón «Deshacer»: uno que no deshace es peor que
- * ninguno, porque el cocinero lo pulsa, se queda tranquilo y el pedido sigue
- * mal. Queda anotado como DT-11.
+ *  · **Deshacer durante 8 s.** Un toque accidental con el codo pasa, y sin
+ *    deshacer el cocinero tiene que buscar al encargado en mitad del servicio.
+ *    Deshace **de verdad**: el ticket retrocede y, si el pedido había pasado a
+ *    «listo» por ese toque, vuelve a preparación con él. Quien decide si se
+ *    puede es el servidor —hay ventana de tiempo y el pedido tiene que seguir
+ *    en cocina—; el reloj de una tablet no es una autorización.
  */
 
 const REFRESCO_MS = 5_000;
-/** Cuánto se enseña la confirmación del último toque. */
-const CONFIRMACION_MS = 4_000;
+/** Cuánto se ofrece deshacer, como pide ux/02. El servidor da algo más de
+ *  margen para que un desfase de reloj no invalide un deshacer legítimo. */
+const DESHACER_MS = 8_000;
 
 const COLUMNAS = [
   { estado: 'queued', rotulo: 'Nuevos', siguiente: 'start' as const },
@@ -58,9 +56,11 @@ export function Cocina({
   const [tickets, setTickets] = useState<TicketDeCocina[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
   const [ultimo, setUltimo] = useState<{
+    ticketId: string;
     numero: number;
     hasta: number;
   } | null>(null);
+  const [deshaciendo, setDeshaciendo] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -93,10 +93,34 @@ export function Cocina({
     if (!columna?.siguiente) return;
     try {
       await api.avanzarTicket(token, t.id, columna.siguiente);
-      setUltimo({ numero: t.orderNumber, hasta: Date.now() + CONFIRMACION_MS });
+      setUltimo({
+        ticketId: t.id,
+        numero: t.orderNumber,
+        hasta: Date.now() + DESHACER_MS,
+      });
       await cargar();
     } catch {
       setAviso('No se pudo avanzar el ticket. Vuelve a tocarlo.');
+    }
+  }
+
+  async function deshacer(ticketId: string): Promise<void> {
+    setDeshaciendo(true);
+    try {
+      await api.deshacerTicket(token, ticketId);
+      setUltimo(null);
+      await cargar();
+    } catch (error) {
+      // El motivo viene del servidor y es el que importa: «pasó el tiempo» y
+      // «el pedido ya salió de cocina» se resuelven de formas distintas.
+      setAviso(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo deshacer. Avisa al encargado.',
+      );
+      setUltimo(null);
+    } finally {
+      setDeshaciendo(false);
     }
   }
 
@@ -158,12 +182,15 @@ export function Cocina({
       {ultimo && ultimo.hasta > Date.now() ? (
         <div className="kds__confirmacion">
           <span>#{ultimo.numero} avanzado</span>
-          {/* Sin botón de deshacer mientras la API no sepa retroceder un
-              ticket (DT-11). Un cocinero que se equivoca avisa al encargado, y
-              eso es peor que deshacer — pero mejor que creer que deshizo. */}
-          <span className="kds__nota-pie">
-            ¿Te equivocaste? Avisa al encargado: retroceder va por el panel.
-          </span>
+          <button
+            type="button"
+            disabled={deshaciendo}
+            onClick={() => {
+              void deshacer(ultimo.ticketId);
+            }}
+          >
+            {deshaciendo ? 'Deshaciendo…' : 'Deshacer'}
+          </button>
         </div>
       ) : null}
     </div>

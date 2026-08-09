@@ -42,6 +42,16 @@ export const ORDER_EVENTS = [
   'reject',
   'start_preparing',
   'finish_preparing',
+  /**
+   * Vuelta atrás desde `ready` (RN-KIT-02, deshacer del KDS).
+   *
+   * Existe porque un cocinero con las manos ocupadas toca la tarjeta con el
+   * codo, y sin esto la única salida era llamar al encargado. NO es un estado
+   * nuevo ni un salto: es exactamente el inverso de `finish_preparing`, y solo
+   * desde `ready` — en cuanto el pedido se empaca ya no está en manos de la
+   * cocina y retroceder sería reescribir lo que otro hizo después.
+   */
+  'resume_preparing',
   'pack',
   'dispatch',
   'deliver',
@@ -90,6 +100,9 @@ export const orderStateMachine = new StateMachine<OrderState, OrderEvent>({
     },
     ready: {
       pack: 'packed',
+      // El deshacer del KDS. La ventana de tiempo y el permiso los exige la
+      // capa de aplicación; la máquina solo declara que el camino existe.
+      resume_preparing: 'preparing',
       cancel: 'cancelled',
     },
     packed: {

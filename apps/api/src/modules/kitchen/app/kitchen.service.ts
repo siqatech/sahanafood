@@ -66,6 +66,20 @@ export class TicketInvalidTransitionError extends DomainError {
   readonly code = 'TICKET_INVALID_TRANSITION';
 }
 
+/**
+ * Se intentó deshacer fuera de la ventana o con el pedido ya fuera de cocina.
+ *
+ * 409 y no 422: lo pedido es legítimo, lo que pasa es que llega tarde. El
+ * mensaje tiene que decir qué hacer, porque quien lo lee está de pie delante
+ * de una pantalla con vapor.
+ */
+export class UndoWindowExpiredError extends DomainError {
+  readonly status = 409;
+  readonly type = 'https://errors.sahana.food/ticket-undo-expired';
+  readonly title = 'Ya no se puede deshacer';
+  readonly code = 'TICKET_UNDO_EXPIRED';
+}
+
 export class PackChecklistIncompleteError extends DomainError {
   readonly status = 422;
   readonly type = 'https://errors.sahana.food/pack-checklist-incomplete';
@@ -81,6 +95,32 @@ export class OrderNotReadyError extends DomainError {
 }
 
 /** Transiciones permitidas del ticket. Lo que no está aquí, no ocurre. */
+/**
+ * Cuánto tiempo se puede deshacer un toque (ux/02 pide 8 s).
+ *
+ * En el servidor se da algo más de margen que en la pantalla: el reloj de una
+ * tablet no es el del servidor, y un deshacer legítimo rechazado por medio
+ * segundo de desfase obliga a llamar al encargado — exactamente lo que esto
+ * viene a evitar. Más allá de treinta segundos ya no es un toque accidental,
+ * es una corrección, y esa va por el panel con su motivo.
+ */
+export const UNDO_WINDOW_SECONDS = 30;
+
+/**
+ * Estados del pedido en los que la cocina todavía manda.
+ *
+ * A partir de `packed` el pedido está en una bolsa y probablemente en manos de
+ * un repartidor: retroceder ahí sería reescribir lo que otra persona hizo
+ * después.
+ */
+const ESTADOS_EN_COCINA = new Set(['accepted', 'preparing', 'ready']);
+
+/** Adónde vuelve un ticket al deshacer. Es el inverso, no un estado nuevo. */
+const UNDO_TARGET: Partial<Record<TicketStatus, TicketStatus>> = {
+  in_progress: 'pending',
+  ready: 'in_progress',
+};
+
 const TICKET_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   pending: ['in_progress', 'cancelled'],
   in_progress: ['ready', 'cancelled'],
@@ -356,6 +396,133 @@ export class KitchenService {
   ): Promise<{ ticket: TicketView; orderReady: boolean }> {
     const resultado = await this.transition(tenantId, ticketId, 'ready', actor);
     return { ticket: resultado.ticket, orderReady: resultado.allReady };
+  }
+
+  /**
+   * Deshacer el último toque de un ticket (ux/02, salda DT-11).
+   *
+   * Un cocinero con las manos ocupadas toca la tarjeta con el codo. Sin esto,
+   * la única salida era buscar al encargado en mitad del servicio.
+   *
+   * ### Las dos barreras, y por qué son dos
+   *
+   *  1. **Ventana de tiempo.** Pasados unos segundos ya no es un toque
+   *     accidental: es una corrección, y una corrección lleva motivo y se hace
+   *     desde el panel. Sin esta barrera, «deshacer» sería una forma cómoda de
+   *     reescribir cuánto tardó la cocina.
+   *  2. **El pedido sigue en cocina.** En cuanto se empaca o se despacha, dejó
+   *     de estar en manos de quien mira esta pantalla: retroceder ahí sería
+   *     reescribir lo que otra persona hizo después, y el cliente ya tiene la
+   *     bolsa.
+   *
+   * Si el pedido había pasado a `ready` porque este era el último ticket, se
+   * emite `kitchen.order_resumed` para devolverlo a `preparing`. Deshacer el
+   * ticket sin devolver el pedido dejaría a la cocina trabajando en algo que
+   * el resto del sistema da por terminado — que es peor que no deshacer.
+   *
+   * **Queda auditado.** Es una corrección de un hecho ya registrado: sin
+   * traza, los tiempos de cocina se vuelven negociables.
+   */
+  async undoTicket(
+    tenantId: string,
+    ticketId: string,
+    actor: { actorId?: string | undefined; traceId?: string | undefined } = {},
+  ): Promise<{ ticket: TicketView; orderResumed: boolean }> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        status: TicketStatus;
+        order_id: string;
+        row_version: number;
+        updated_at: Date;
+        order_status: string;
+      }>(
+        `SELECT t.status, t.order_id, t.row_version, t.updated_at,
+                o.status AS order_status
+           FROM kit_tickets t
+           JOIN ord_orders o ON o.id = t.order_id
+          WHERE t.id = $1
+          FOR UPDATE OF t`,
+        [ticketId],
+      );
+      const actual = rows[0];
+      if (!actual) throw new NotFoundError('Ticket no encontrado.');
+
+      const destino = UNDO_TARGET[actual.status];
+      if (!destino) {
+        throw new TicketInvalidTransitionError(
+          `Un ticket en "${actual.status}" no tiene nada que deshacer.`,
+          { from: actual.status },
+        );
+      }
+
+      const segundos = (Date.now() - actual.updated_at.getTime()) / 1000;
+      if (segundos > UNDO_WINDOW_SECONDS) {
+        throw new UndoWindowExpiredError(
+          'Pasó el tiempo para deshacer. Pídelo al encargado desde el panel, con el motivo.',
+          { seconds: Math.round(segundos), window: UNDO_WINDOW_SECONDS },
+        );
+      }
+
+      // El pedido tiene que seguir EN COCINA. `packed` en adelante ya salió.
+      //
+      // `accepted` cuenta: el cocinero acaba de arrancar el ticket y el evento
+      // que mueve el pedido a `preparing` puede no haberse consumido todavía
+      // —el relay tarda segundos—. Dejarlo fuera bloqueaba justo el caso más
+      // frecuente: tocar por error y deshacer al instante. Lo destapó la
+      // prueba de auditoría.
+      if (!ESTADOS_EN_COCINA.has(actual.order_status)) {
+        throw new UndoWindowExpiredError(
+          `El pedido ya está en "${actual.order_status}": salió de cocina y no se puede retroceder desde aquí.`,
+          { orderStatus: actual.order_status },
+        );
+      }
+
+      const ahora = new Date();
+      await ctx.db
+        .update(schema.kitchenTickets)
+        .set({
+          status: destino,
+          rowVersion: actual.row_version + 1,
+          updatedAt: ahora,
+          // Se limpian las marcas de tiempo del paso deshecho: dejarlas haría
+          // que el ticket contara como iniciado o listo en las métricas de
+          // cocina, y esas alimentan la promesa que se le da al cliente.
+          ...(actual.status === 'ready' ? { readyAt: null } : {}),
+          ...(actual.status === 'in_progress' ? { startedAt: null } : {}),
+        })
+        .where(eq(schema.kitchenTickets.id, ticketId));
+
+      // ¿El pedido estaba dado por listo gracias a este ticket?
+      const orderResumed =
+        actual.status === 'ready' && actual.order_status === 'ready';
+      if (orderResumed) {
+        await enqueueEvent(ctx, {
+          aggregateType: 'order',
+          aggregateId: actual.order_id,
+          eventType: 'kitchen.order_resumed',
+          payload: { orderId: actual.order_id, ticketId },
+          ...(actor.traceId !== undefined ? { traceId: actor.traceId } : {}),
+        });
+      }
+
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(actor.actorId !== undefined ? { actorId: actor.actorId } : {}),
+        action: 'kitchen.ticket_undone',
+        resourceType: 'kitchen_ticket',
+        resourceId: ticketId,
+        ...(actor.traceId !== undefined ? { traceId: actor.traceId } : {}),
+        data: { from: actual.status, to: destino, orderResumed },
+      });
+
+      const filas = await ctx.db
+        .select()
+        .from(schema.kitchenTickets)
+        .where(eq(schema.kitchenTickets.id, ticketId))
+        .limit(1);
+      const [vista] = await this.hydrate(ctx, filas, ahora);
+      return { ticket: vista!, orderResumed };
+    });
   }
 
   /**

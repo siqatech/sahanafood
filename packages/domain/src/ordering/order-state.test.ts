@@ -285,3 +285,26 @@ describe('Errores', () => {
     }
   });
 });
+
+describe('Deshacer del KDS: ready → preparing', () => {
+  it('vuelve a preparación, que es el inverso exacto de terminar', () => {
+    // Un cocinero toca la tarjeta con el codo. Sin este camino, la única
+    // salida era llamar al encargado en mitad del servicio.
+    expect(transition('ready', 'resume_preparing')).toBe('preparing');
+  });
+
+  it('NO se puede deshacer un pedido ya empacado ni despachado', () => {
+    // A partir de ahí el pedido salió de la cocina: retroceder sería
+    // reescribir lo que otra persona hizo después.
+    for (const estado of ['packed', 'dispatched', 'delivered'] as const) {
+      expect(() => transition(estado, 'resume_preparing')).toThrow();
+    }
+  });
+
+  it('deshacer y volver a terminar deja el pedido donde estaba', () => {
+    // La propiedad que hace que esto sea seguro: no abre un ciclo raro, es
+    // ida y vuelta por el mismo camino.
+    const ida = transition('ready', 'resume_preparing');
+    expect(transition(ida, 'finish_preparing')).toBe('ready');
+  });
+});

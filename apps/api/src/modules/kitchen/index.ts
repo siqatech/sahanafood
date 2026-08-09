@@ -9,6 +9,8 @@ export { KitchenModule } from './kitchen.module.js';
 export {
   KitchenService,
   TicketInvalidTransitionError,
+  UndoWindowExpiredError,
+  UNDO_WINDOW_SECONDS,
   PackChecklistIncompleteError,
   OrderNotReadyError,
   type TicketView,

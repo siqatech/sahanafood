@@ -14,6 +14,7 @@ import {
   KitchenService,
   KitchenEventHandlers,
   KITCHEN_CONSUMER,
+  UNDO_WINDOW_SECONDS,
 } from '../modules/kitchen/index.js';
 import { consumeEvent } from '../events/consumer.js';
 import { relayOnce } from '../events/outbox.js';
@@ -37,6 +38,7 @@ suite('Cocina / KDS', () => {
 
   let tenantA = '';
   let tokenA = '';
+  let ownerId = '';
   let brandId = '';
   let marcaDosId = '';
   let org: Awaited<ReturnType<typeof seedDemoOrganization>>;
@@ -77,6 +79,7 @@ suite('Cocina / KDS', () => {
       },
     });
     tenantA = a.tenantId;
+    ownerId = a.ownerUserId;
     created.push(tenantA);
 
     org = await withTenant(pool, tenantA, (ctx) => seedDemoOrganization(ctx));
@@ -137,6 +140,21 @@ suite('Cocina / KDS', () => {
           modifierOptionIds: [cat.optionGrandeId],
         },
         { productId: cat.comboId, quantity: 2 },
+      ],
+    });
+
+  /** Pedido de UNA sola estación: al terminar su ticket, el pedido queda listo. */
+  const pedidoUnaEstacion = () =>
+    ordering.submit(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'pos',
+      lines: [
+        {
+          productId: cat.polloId,
+          quantity: 1,
+          modifierOptionIds: [cat.optionGrandeId],
+        },
       ],
     });
 
@@ -552,5 +570,156 @@ suite('Cocina / KDS', () => {
     });
     await drenarEventos();
     expect(await kitchen.ticketsForOrder(tenantA, pedido.id)).toEqual([]);
+  });
+  // ----------------------------------------- Deshacer del KDS (DT-11, ux/02)
+
+  it('DESHACER devuelve el ticket y el PEDIDO a preparación', async () => {
+    // Un cocinero toca la tarjeta con el codo. Lo que hace esto seguro no es
+    // que el ticket retroceda: es que el PEDIDO retroceda con él. Deshacer el
+    // ticket dejando el pedido en `ready` dejaría a la cocina trabajando en
+    // algo que el resto del sistema da por terminado.
+    const pedido = await pedidoUnaEstacion();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const [ticket] = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    await kitchen.startTicket(tenantA, ticket!.id);
+    await kitchen.readyTicket(tenantA, ticket!.id);
+    await drenarEventos();
+    expect((await ordering.getSummary(tenantA, pedido.id)).status).toBe(
+      'ready',
+    );
+
+    const deshecho = await kitchen.undoTicket(tenantA, ticket!.id, {
+      actorId: ownerId,
+    });
+    expect(deshecho.ticket.status).toBe('in_progress');
+    expect(deshecho.orderResumed).toBe(true);
+    // La marca de «listo» se borra: dejarla haría que el ticket contara como
+    // terminado en las métricas que alimentan la promesa al cliente.
+    expect(deshecho.ticket.readyAt).toBeNull();
+
+    await drenarEventos();
+    expect((await ordering.getSummary(tenantA, pedido.id)).status).toBe(
+      'preparing',
+    );
+  });
+
+  it('deshacer y volver a terminar deja el pedido donde estaba', async () => {
+    const pedido = await pedidoUnaEstacion();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const [ticket] = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    await kitchen.startTicket(tenantA, ticket!.id);
+    await kitchen.readyTicket(tenantA, ticket!.id);
+    await drenarEventos();
+
+    await kitchen.undoTicket(tenantA, ticket!.id, { actorId: ownerId });
+    await drenarEventos();
+    await kitchen.readyTicket(tenantA, ticket!.id);
+    await drenarEventos();
+
+    expect((await ordering.getSummary(tenantA, pedido.id)).status).toBe(
+      'ready',
+    );
+  });
+
+  it('NO se deshace un pedido que ya salió de cocina', async () => {
+    // Empacado significa que el pedido está en una bolsa y probablemente en
+    // manos de un repartidor: retroceder aquí sería reescribir lo que otra
+    // persona hizo después.
+    const pedido = await pedidoUnaEstacion();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const [ticket] = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    await kitchen.startTicket(tenantA, ticket!.id);
+    await kitchen.readyTicket(tenantA, ticket!.id);
+    await drenarEventos();
+
+    // El checklist va sobre las líneas DEL PEDIDO —lo que el cliente recibe en
+    // la bolsa—, no sobre las del ticket de cocina, que son otras filas.
+    const lineasDelPedido = await withTenant(
+      pool,
+      tenantA,
+      async ({ client }) => {
+        const { rows } = await client.query<{ id: string }>(
+          'SELECT id FROM ord_order_lines WHERE order_id = $1 AND is_adjustment = false',
+          [pedido.id],
+        );
+        return rows.map((r) => r.id);
+      },
+    );
+    await kitchen.packOrder(tenantA, pedido.id, {
+      checkedLineIds: lineasDelPedido,
+      actorId: ownerId,
+    });
+    await drenarEventos();
+
+    await expect(
+      kitchen.undoTicket(tenantA, ticket!.id, { actorId: ownerId }),
+    ).rejects.toThrow(/salió de cocina/i);
+  });
+
+  it('PASADA LA VENTANA ya no se deshace: eso es una corrección, no un toque', async () => {
+    // Sin límite de tiempo, «deshacer» sería una forma cómoda de reescribir
+    // cuánto tardó la cocina.
+    const pedido = await pedidoUnaEstacion();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const [ticket] = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    await kitchen.startTicket(tenantA, ticket!.id);
+
+    // Se envejece el ticket en la base en vez de esperar: una prueba que
+    // duerme treinta segundos es una prueba que alguien acaba desactivando.
+    await withTenant(pool, tenantA, async ({ client }) => {
+      await client.query(
+        `UPDATE kit_tickets
+            SET updated_at = now() - ($2 || ' seconds')::interval
+          WHERE id = $1`,
+        [ticket!.id, String(UNDO_WINDOW_SECONDS + 5)],
+      );
+    });
+
+    await expect(
+      kitchen.undoTicket(tenantA, ticket!.id, { actorId: ownerId }),
+    ).rejects.toThrow(/tiempo para deshacer/i);
+  });
+
+  it('un ticket que no ha empezado no tiene nada que deshacer', async () => {
+    const pedido = await pedidoUnaEstacion();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const [ticket] = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    await expect(
+      kitchen.undoTicket(tenantA, ticket!.id, { actorId: ownerId }),
+    ).rejects.toThrow(/nada que deshacer/i);
+  });
+
+  it('deshacer QUEDA AUDITADO: los tiempos de cocina no son negociables', async () => {
+    const pedido = await pedidoUnaEstacion();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const [ticket] = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    await kitchen.startTicket(tenantA, ticket!.id);
+    await kitchen.undoTicket(tenantA, ticket!.id, { actorId: ownerId });
+
+    const registrado = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ action: string; data: unknown }>(
+        `SELECT action, data FROM audit_log
+          WHERE resource_id = $1 AND action = 'kitchen.ticket_undone'`,
+        [ticket!.id],
+      );
+      return rows[0];
+    });
+    expect(registrado).toBeTruthy();
+    expect(registrado!.data).toMatchObject({
+      from: 'in_progress',
+      to: 'pending',
+    });
   });
 });
