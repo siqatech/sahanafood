@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      `user-scalable=no` es una de las poquísimas veces en que desactivar el
+      zoom es lo correcto: esto es un mostrador con la tablet fija, y un pellizco
+      accidental con la mano llena descoloca la rejilla en mitad de una venta.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#14532d" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>Sahana POS</title>
+  </head>
+  <body>
+    <div id="raiz"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

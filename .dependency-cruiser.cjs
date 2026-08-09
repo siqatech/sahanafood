@@ -66,7 +66,7 @@ module.exports = {
         pathNot: [
           '\\.d\\.ts$',
           '(^|/)tsconfig\\.',
-          '(^|/)(eslint|prettier|vitest|drizzle|next|playwright)\\.config\\.',
+          '(^|/)(eslint|prettier|vitest|drizzle|next|playwright|vite)\\.config\\.',
           '(^|/)index\\.ts$',
           // Especificaciones de navegador: las arranca Playwright, no las
           // importa nadie. Igual que los `.config.` de arriba, huérfanas por
@@ -76,6 +76,9 @@ module.exports = {
           // directorio y no las importa nadie. La regla no puede decir nada
           // útil sobre ellas, así que avisar solo añade ruido.
           'apps/web/src/app/.*/(page|layout|error|loading|not-found)\\.tsx$',
+          // Service worker: lo registra el navegador por URL, no lo importa
+          // nadie. Es huérfano por definición, igual que un `.config.`.
+          'apps/pos/src/sw\\.ts$',
         ],
       },
       to: {},

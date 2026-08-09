@@ -63,7 +63,7 @@ curl -s localhost:3000/api/v1/health/ready
 
 `ready` exige que la base responda **y** que el esquema alcance al que trae la
 imagen. Un esquema *por delante* también está listo: es el estado normal tras
-revertir (§9).
+revertir (§10).
 
 ## 4. Dar de alta al primer cliente
 
@@ -88,8 +88,7 @@ Devuelve el `tenantId` en JSON.
 Con esa cuenta ya se entra al **panel** (§6): ver cómo va el día, editar la
 carta y sus precios, pausar un plato, dar de alta marcas y locales. Lo que el
 panel todavía no cubre —zonas de reparto, horarios, cocinas y estaciones— va por
-el archivo de la sección siguiente. **No hay POS ni KDS**: el mostrador y la
-cocina siguen sin interfaz (`docs/23-technical-debt.md`, DT-09).
+el archivo de la sección siguiente.
 
 ## 5. Configurar el negocio
 
@@ -144,7 +143,34 @@ pedidos en marcha, comparados con el mismo día de la semana pasada), carta
 locales—. Lo que no: pedidos, inventario, caja, clientes, integraciones. Está
 especificado en `specs/ux/03-panel.md` y se construye por partes.
 
-## 7. Poner la tienda en un dominio
+## 7. El POS y el KDS
+
+Son una PWA (`apps/pos`) que se sirve como archivos estáticos. Se instala en la
+tablet desde el navegador —«Añadir a la pantalla de inicio»— y a partir de ahí
+arranca **sin internet**.
+
+Puesta en marcha de cada tablet:
+
+1. En el panel, alguien con permiso de gestión emite un **código de
+   emparejamiento** (`POST /api/v1/devices/pairing-codes`, con el local).
+2. La tablet abre la PWA y escribe el código. Queda emparejada para siempre.
+3. Cada cajero pone su **PIN** desde el panel, y a partir de ahí entra en dos
+   toques: su nombre y cuatro dígitos.
+
+El dispositivo dice **dónde** se vende y el PIN **quién** vende. Una tablet
+robada se revoca de un clic y deja de servir aunque quien la tenga sepa el PIN.
+
+**Cobrar no llama al servidor.** El total se calcula en el dispositivo con el
+mismo `@sahana/domain` que usa el servidor al recalcular, la venta se encola en
+el propio aparato y se sincroniza sola cuando vuelve la red. Con red o sin ella
+el flujo es idéntico. Lo que sí necesita internet: emparejar, entrar la primera
+vez, descargar la carta y el tablero de cocina.
+
+Lo que todavía no trae: deshacer en el KDS (DT-11), cierre de caja por
+denominación, impresión desde la tablet y modo TV del KDS. Está en
+`apps/pos/README.md`.
+
+## 8. Poner la tienda en un dominio
 
 El tenant de cada tienda **sale del `Host`** y de nada más. Los pasos son:
 
@@ -157,7 +183,7 @@ El tenant de cada tienda **sale del `Host`** y de nada más. Los pasos son:
 Si el proxy reescribe el `Host`, **todas las tiendas resolverán a la misma
 marca**. Es el fallo más caro posible aquí y es silencioso: la página carga.
 
-## 8. Copias de seguridad — responsabilidad de quien levanta
+## 9. Copias de seguridad — responsabilidad de quien levanta
 
 En este despliegue Postgres vive en el mismo servidor. **Nadie hace copias por
 ti.** Lo mínimo antes de tener un cliente vendiendo:
@@ -171,7 +197,7 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
 Diario, **fuera de la máquina**, y probando la restauración de vez en cuando:
 una copia que nadie ha restaurado nunca no es una copia, es una carpeta.
 
-## 9. Desplegar una versión nueva, y revertirla
+## 10. Desplegar una versión nueva, y revertirla
 
 Las imágenes se fijan por **tag**, nunca `latest`: revertir es volver a poner el
 tag anterior, y con `latest` no hay tag anterior al que volver.
@@ -192,27 +218,28 @@ a la versión anterior: lo impide el gate `pnpm migrations:check`, que corre en
 CI y rechaza `DROP COLUMN`, renombrados, cambios de tipo y `NOT NULL` sin
 `DEFAULT`. Las dos piezas son la misma garantía (docs/17, T5.35).
 
-## 10. Qué mirar cuando algo va mal
+## 11. Qué mirar cuando algo va mal
 
 | Síntoma | Dónde mirar |
 |---|---|
 | La API reinicia en bucle | `docker logs sahana-api-1`. Casi siempre es configuración: el proceso valida al arrancar y prefiere no arrancar |
 | `/health/ready` dice `not_ready` con `database: ok` | El esquema va por detrás de la imagen: falta correr `migrate` |
-| Una tienda enseña la carta de otra | El proxy está reescribiendo el `Host` (§7) |
+| Una tienda enseña la carta de otra | El proxy está reescribiendo el `Host` (§8) |
 | Los pedidos no llegan a cocina | El worker. `docker logs sahana-worker-1`: al arrancar imprime qué barridos y qué consumidores tiene activos |
 | La cola crece | Métricas `outbox_pending` y `outbox_oldest_pending_seconds` (docs/18). Más de 1 000 pendientes es alerta |
 
-## 11. Lo que este despliegue NO trae
+## 12. Lo que este despliegue NO trae
 
 Se dice aquí para que nadie lo descubra el día que haga falta:
 
 - **Alta disponibilidad.** Un servidor. Si se cae, se cae todo.
-- **Copias gestionadas.** Ver §8.
+- **Copias gestionadas.** Ver §9.
 - **Escalado horizontal.** La API y el worker escalan con réplicas, pero el
   Postgres local no.
 - **Canario.** El reparto de tráfico al 10 % necesita balanceador (**DT-02**).
   Lo que sí está: revertir sin tocar la base.
 - **Certificados.** Los pone el proxy.
-- **POS y KDS.** No existen (DT-09). El panel ya está (§6), pero el mostrador y
-  la pantalla de cocina siguen sin interfaz: el negocio vende por la tienda web
-  y por el agente de WhatsApp.
+- **Un servidor para la PWA del POS.** `apps/pos` se compila a archivos
+  estáticos y este compose **no los sirve**: hay que publicarlos en el proxy o
+  en un alojamiento estático. Es un `pnpm --filter @sahana/pos build` y copiar
+  `dist/`, pero nadie lo hace por ti.

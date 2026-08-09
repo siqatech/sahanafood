@@ -1,0 +1,19 @@
+{
+  "name": "Sahana POS",
+  "short_name": "POS",
+  "description": "Punto de venta y pantalla de cocina de Sahana Food",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0f1115",
+  "theme_color": "#14532d",
+  "lang": "es-PE",
+  "icons": [
+    {
+      "src": "/icono.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

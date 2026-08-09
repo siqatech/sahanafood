@@ -148,6 +148,12 @@ jobs:
       # segundos en el móvil de un cliente en Lima.
       - name: Presupuesto de rendimiento de la tienda
         run: pnpm --filter @sahana/web budget
+      # Las pruebas del POS no necesitan base de datos ni navegador: la cola
+      # offline corre contra `fake-indexeddb` y el cálculo del ticket es puro.
+      # Van aquí y no en el job de integración porque ese levanta Postgres para
+      # nada, y un job que tarda de más acaba siendo el que alguien salta.
+      - name: Pruebas del POS (cola offline y cálculo del ticket)
+        run: pnpm --filter @sahana/pos test
 
   # ---------------------------------------------------------------------------
   # Navegador: la tienda y el PANEL, vistos como los ve quien los usa

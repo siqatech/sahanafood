@@ -321,4 +321,24 @@ La tienda se movió a un grupo de rutas `(tienda)` para que no comparta marco co
 
 Y la comprobación que decide si el panel sirve, la misma de siempre: **lo que el dueño escribe es lo que el cliente ve**. La prueba cambia el precio del canal web a 61.50 desde el panel, recarga la tienda y comprueba que ahí pone S/ 61.50. Un panel que guardara en una tabla que la tienda no lee no es un panel, es un formulario bonito.
 
-**Próxima acción de Claude Code:** el POS (`specs/ux/01-pos.md`) y el KDS (`specs/ux/02-kds.md`), que es lo que queda de DT-09. La API de las dos ya está —caja, comandas por estación, cola offline, impresión—; faltan las pantallas.
+### El POS y el KDS existen — DT-09 saldada
+
+`apps/pos`: una PWA con Vite (ADR-0019), IndexedDB, service worker propio y las dos superficies dentro. Catorce pruebas, y la que manda es la del backlog: **veinte ventas sin red, veinte en el servidor**.
+
+Antes hubo que soldar la pieza que faltaba, y era la de siempre: **`authenticateDevice` estaba escrito, probado y sin ningún llamador desde HTTP**. Una tablet emparejada tenía un `deviceToken` y ninguna forma de usarlo. Cuarta vez que aparece este patrón en el proyecto.
+
+La sesión del POS son dos factores porque responden dos preguntas distintas: **el dispositivo dice DÓNDE se vende y el PIN dice QUIÉN vende**. Solo con contraseña, el cajero acabaría escribiéndola en un papel pegado a la caja; solo con PIN, cuatro dígitos serían la única barrera desde cualquier navegador de internet. Y el dispositivo se comprueba primero: si el PIN fuera antes, cualquiera podría bloquear la cuenta del cajero a base de intentos y dejar al mostrador sin cobrar en hora punta. Hay prueba de las dos cosas.
+
+Al comprobar que el token **sirve para algo** —no solo que se emite— apareció otro defecto: `GET /auth/me` exigía `tenant.read`, que un cajero no tiene. El POS entraba con su PIN y lo primero que hacía, preguntar quién es, le respondía 403.
+
+Tres decisiones del POS que no son de interfaz:
+
+· **Cobrar no llama al servidor.** Ni una vez. El total se calcula en el dispositivo con el mismo `@sahana/domain` que el servidor usa al recalcular —es la razón de que sea una PWA y no una app nativa (ADR-0006 §3.2)— y la venta se encola en el aparato.
+
+· **Se vende siempre de la carta descargada, también con internet.** Si con red se vendiera de una respuesta fresca, el modo offline sería un camino distinto que solo se ejercita cuando algo falla, y esos caminos siempre están rotos.
+
+· **Una venta encolada no se borra hasta que el servidor confirma.** Borrar al enviar y perder la respuesta haría desaparecer del dispositivo una venta que no está en el servidor: dinero cobrado y no registrado. Hay prueba.
+
+**Lo que no se hizo, y por qué**: el KDS **no tiene «Deshacer»**, y la spec lo pide. Retroceder un ticket exige transiciones inversas en la máquina de estados de cocina y decidir qué pasa con un pedido que ya emitió `kitchen.order_ready`: es una regla de negocio, no un botón. Escribí uno que solo mostraba un aviso, releí mi propio comentario —«un botón que no deshace es peor que ningún botón»— y lo quité. Queda como **DT-11**. Tampoco están el cierre de caja por denominación, la impresión desde la tablet ni el modo TV; están listados en `apps/pos/README.md` y en el runbook.
+
+**Próxima acción de Claude Code:** cerrar los huecos que quedan del POS por orden de daño — cierre de caja por denominación (hoy la caja no cuadra sin él), impresión de comanda y precuenta, y DT-11.

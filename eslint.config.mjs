@@ -144,7 +144,7 @@ export default tseslint.config(
      * Componentes de React: el tipo de retorno de un componente es JSX y
      * anotarlo a mano no añade nada que el compilador no sepa ya.
      */
-    files: ['apps/web/**/*.tsx'],
+    files: ['apps/web/**/*.tsx', 'apps/pos/**/*.tsx'],
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
     },
