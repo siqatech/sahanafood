@@ -207,6 +207,50 @@ export interface DocumentoDelPanel {
   attempts: number;
 }
 
+/** Lo que el bot entrega al humano al derivar (RN-CNV-02). */
+export interface ResumenDeDerivacion {
+  intent: string;
+  captured?: Record<string, unknown>;
+  cart?: unknown;
+  notes?: string;
+}
+
+export interface ConversacionDelPanel {
+  id: string;
+  brandId: string;
+  brandName: string;
+  channel: string;
+  contactPhone: string;
+  contactName: string | null;
+  status: string;
+  assigneeId: string | null;
+  queue: string;
+  aiEnabled: boolean;
+  lastMsgAt: string | null;
+  /** Ventana de 24 h, ya redactada por el dominio (RN-CNV-03). */
+  window: {
+    state: string;
+    minutesRemaining: number;
+    canSendFreeform: boolean;
+    label: string;
+  };
+  messageCount: number;
+  costTotal: string;
+  tags: string[];
+  handoffAt: string | null;
+  handoffSummary: ResumenDeDerivacion | null;
+}
+
+export interface MensajeDelPanel {
+  id: string;
+  direction: string;
+  authorType: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  status: string;
+  createdAt: string;
+}
+
 export interface ConexionDelPanel {
   id: string;
   provider: string;
@@ -378,6 +422,53 @@ export const panel = {
     llamar<DocumentoDelPanel[]>(
       `/documents?status=${encodeURIComponent(status)}`,
     ),
+
+  conversaciones: (
+    filtros: { status?: string; queue?: string; search?: string } = {},
+  ): Promise<ConversacionDelPanel[]> => {
+    const q = new URLSearchParams();
+    if (filtros.status) q.set('status', filtros.status);
+    if (filtros.queue) q.set('queue', filtros.queue);
+    if (filtros.search) q.set('search', filtros.search);
+    const cadena = q.toString();
+    return llamar<ConversacionDelPanel[]>(
+      `/conversations${cadena ? `?${cadena}` : ''}`,
+    );
+  },
+
+  conversacion: (id: string): Promise<ConversacionDelPanel> =>
+    llamar<ConversacionDelPanel>(`/conversations/${id}`),
+
+  /**
+   * El hilo CON las notas internas.
+   *
+   * Se piden explícitamente porque la API no las da por defecto (RN-CNV-07):
+   * quien consulta sin declararlo suele ir a enseñar el hilo a alguien. Aquí
+   * sí se piden — esta pantalla es la del agente, y una nota que su autor no
+   * puede releer no sirve para nada.
+   */
+  mensajes: (id: string): Promise<MensajeDelPanel[]> =>
+    llamar<MensajeDelPanel[]>(
+      `/conversations/${id}/messages?includeNotes=true`,
+    ),
+
+  responder: (
+    id: string,
+    input: { kind: 'text' | 'note'; text: string },
+  ): Promise<unknown> =>
+    llamar(`/conversations/${id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  asignarme: (id: string, userId: string): Promise<unknown> =>
+    llamar(`/conversations/${id}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ assigneeId: userId }),
+    }),
+
+  resolverConversacion: (id: string): Promise<unknown> =>
+    llamar(`/conversations/${id}/resolve`, { method: 'POST' }),
 
   excepciones: (): Promise<PedidoDelPanel[]> =>
     llamar<PedidoDelPanel[]>('/orders/exceptions'),

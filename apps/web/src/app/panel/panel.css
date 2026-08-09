@@ -393,3 +393,69 @@ tr:last-child td {
   font-size: 1rem;
   margin-bottom: 6px;
 }
+
+/* --- Bandeja de conversaciones (specs/ux/06) --- */
+
+.hilo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.burbuja {
+  border: 1px solid var(--panel-borde);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--panel-tarjeta);
+  max-width: 42rem;
+}
+
+.burbuja p {
+  margin: 2px 0;
+}
+
+/* El cliente a la izquierda, nosotros a la derecha — pero el AUTOR va escrito
+   en todas: «¿esto lo dijo la IA o una persona?» no puede depender de que
+   alguien interprete de qué lado está la burbuja. */
+.burbuja--customer {
+  align-self: flex-start;
+  border-left: 4px solid var(--panel-acento);
+}
+
+.burbuja--bot,
+.burbuja--agent {
+  align-self: flex-end;
+}
+
+.burbuja--bot {
+  border-right: 4px solid #6d28d9;
+}
+
+.burbuja--agent {
+  border-right: 4px solid var(--panel-sube);
+}
+
+.burbuja--system {
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--panel-suave);
+}
+
+/* La nota interna es AMARILLA y lo dice, como pide la spec: es la única
+   burbuja que no salió del edificio. */
+.burbuja--nota {
+  align-self: flex-end;
+  background: #fefce8;
+  border-color: #fde047;
+}
+
+.compositor textarea {
+  width: 100%;
+  max-width: 42rem;
+  padding: 10px;
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  font: inherit;
+  resize: vertical;
+}

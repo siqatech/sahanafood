@@ -9,6 +9,7 @@ import { seedDemoOrganization } from '../modules/organization/index.js';
 import { seedDemoCatalog } from '../modules/catalog/index.js';
 import { StorefrontService } from '../modules/storefront/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
+import { ConversationsService } from '../modules/conversations/index.js';
 
 /**
  * Siembra una tienda demo para levantar `apps/web` a mano (T5.08–T5.14).
@@ -109,6 +110,32 @@ async function main(): Promise<void> {
     customerName: 'Cliente esperando',
   });
 
+  // Una conversación DERIVADA por el bot y otra normal. La derivada es la que
+  // justifica la bandeja: sin pantalla, el resumen que el agente escribe no lo
+  // lee nadie y el cliente que pidió hablar con una persona se queda esperando.
+  const conversaciones = app.get(ConversationsService);
+  const derivada = await conversaciones.receiveInbound(tenant.tenantId, {
+    brandId,
+    channel: 'whatsapp',
+    phone: '+51987123456',
+    text: 'Quiero dos pollos para las 8, ¿me los pueden llevar?',
+  });
+  await conversaciones.handoffToHuman(
+    tenant.tenantId,
+    derivada.conversationId,
+    {
+      intent: 'Pedir 2 pollos a la brasa para las 20:00 con reparto',
+      captured: { cantidad: 2, hora: '20:00', zona: 'Miraflores' },
+      notes: 'Ya preguntó por el precio; se le dijo S/ 32.',
+    },
+  );
+  await conversaciones.receiveInbound(tenant.tenantId, {
+    brandId,
+    channel: 'whatsapp',
+    phone: '+51987654321',
+    text: '¿A qué hora abren hoy?',
+  });
+
   console.log(
     JSON.stringify(
       {
@@ -119,6 +146,7 @@ async function main(): Promise<void> {
         cupon: 'BIENVENIDO (10 %, mínimo S/ 50)',
         excepciones: `http://${HOST}:3001/panel/excepciones`,
         operaciones: `http://${HOST}:3001/panel/operaciones`,
+        conversaciones: `http://${HOST}:3001/panel/conversaciones`,
       },
       null,
       2,

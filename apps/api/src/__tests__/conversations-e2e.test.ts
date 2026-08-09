@@ -280,6 +280,29 @@ suite('Bandeja omnicanal', () => {
     // La IA se apaga en ESTA conversación: si siguiera contestando mientras el
     // humano escribe, el cliente vería dos respuestas a la misma pregunta.
     expect(fila.ai_enabled).toBe(false);
+
+    // Y —esto es lo que faltaba— el resumen SE PUEDE LEER desde fuera. Durante
+    // toda F5 se escribió aquí y ninguna ruta lo devolvía: la bandeja del
+    // agente no tenía forma de enseñarlo, así que el traspaso con contexto
+    // existía en la base de datos y no ocurría en la práctica.
+    const vista = await conversations.getConversation(tenantA, conversationId);
+    expect(vista.handoffAt).not.toBeNull();
+    expect(vista.handoffSummary?.intent).toContain('2 pollos');
+    expect(vista.handoffSummary?.captured).toMatchObject({ hora: '20:00' });
+
+    // Y una conversación sin derivar no inventa ninguno.
+    const otra = await conversations.receiveInbound(tenantA, {
+      brandId: org.brandIds[0]!,
+      channel: 'whatsapp',
+      phone: '+51987007778',
+      text: 'Hola',
+    });
+    const sinDerivar = await conversations.getConversation(
+      tenantA,
+      otra.conversationId,
+    );
+    expect(sinDerivar.handoffAt).toBeNull();
+    expect(sinDerivar.handoffSummary).toBeNull();
   });
 
   it('un traspaso SIN resumen se rechaza', async () => {

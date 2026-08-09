@@ -56,6 +56,18 @@ export interface ConversationView {
   /** Coste acumulado de los mensajes de pago (RN-CNV-04). */
   costTotal: string;
   tags: string[];
+  /**
+   * Cuándo el bot pidió pasar la conversación a una persona, y con qué
+   * contexto (RN-CNV-02).
+   *
+   * Se escribían desde T5.28 y **no los devolvía ninguna ruta**. El traspaso
+   * con resumen —lo que evita que el cliente lo cuente todo otra vez, que es el
+   * momento exacto en el que la gente abandona— existía en la base de datos y
+   * era inalcanzable para cualquier pantalla. Un traspaso cuyo contexto no se
+   * puede leer es un traspaso que no ocurrió.
+   */
+  handoffAt: string | null;
+  handoffSummary: HandoffSummary | null;
 }
 
 export interface MessageView {
@@ -523,6 +535,7 @@ export class ConversationsService {
                 ct.display_name AS contact_name, ct.opted_out,
                 c.status, c.assignee_id, c.queue, c.ai_enabled,
                 c.last_msg_at, c.last_inbound_at,
+                c.handoff_at, c.handoff_summary,
                 (SELECT count(*) FROM cnv_messages m
                   WHERE m.conversation_id = c.id AND m.kind <> 'note')
                   AS message_count,
@@ -668,6 +681,8 @@ export class ConversationsService {
       messageCount: Number(r.message_count),
       costTotal: Money.parse(r.cost_total ?? '0').toDecimalString(),
       tags: r.tags ?? [],
+      handoffAt: r.handoff_at?.toISOString() ?? null,
+      handoffSummary: r.handoff_summary,
     };
   }
 
@@ -703,6 +718,8 @@ interface FilaConversacion {
   ai_enabled: boolean;
   last_msg_at: Date | null;
   last_inbound_at: Date | null;
+  handoff_at: Date | null;
+  handoff_summary: HandoffSummary | null;
   message_count: string;
   cost_total: string | null;
   tags: string[] | null;

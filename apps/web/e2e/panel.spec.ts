@@ -284,6 +284,81 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.getByText(/escribe por qué se rechaza/i)).toBeVisible();
   });
 
+  test('LA BANDEJA enseña el RESUMEN DEL BOT al tomar una derivada (DT-14)', async ({
+    page,
+  }) => {
+    // Es la prueba de que la derivación deja de perderse. El resumen se
+    // escribía desde T5.28 y ninguna ruta lo devolvía: el traspaso con contexto
+    // existía en la base de datos y no ocurría en la práctica. Sin él, el
+    // humano abre con «hola, ¿en qué puedo ayudarte?» y el cliente lo cuenta
+    // todo otra vez — el momento exacto en el que la gente abandona.
+    await entrar(page);
+    await page
+      .getByRole('link', { name: 'Conversaciones', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Conversaciones' }),
+    ).toBeVisible();
+
+    // Las derivadas van primero: ahí ya hay alguien esperando a una persona.
+    await expect(
+      page.getByRole('heading', { name: /esperando a una persona/i }),
+    ).toBeVisible();
+
+    await page
+      .locator('article.ficha--revision')
+      .first()
+      .getByRole('link', { name: /abrir/i })
+      .click();
+
+    await expect(
+      page.getByRole('heading', { name: /te la pasó/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/2 pollos a la brasa/)).toBeVisible();
+    // Y lo que el cliente YA dijo, para no repreguntarlo. Se busca en la LISTA
+    // de datos capturados y no en la página entera: «20:00» también aparece
+    // dentro de la frase de la intención, y una aserción ambigua pasaría
+    // aunque la lista no se pintara.
+    const capturados = page.locator('.ficha--revision li');
+    await expect(capturados.filter({ hasText: 'hora' })).toContainText('20:00');
+    await expect(capturados.filter({ hasText: 'zona' })).toContainText(
+      'Miraflores',
+    );
+
+    // Tomarla pone un nombre al lado del cliente que espera. Lo que se afirma
+    // es el EFECTO —deja de estar sin asignar y el botón desaparece— y no un
+    // mensaje: al asignarse, el botón se desmonta y se lleva el mensaje con
+    // él, que es el comportamiento correcto.
+    await expect(page.getByText(/sin asignar/)).toBeVisible();
+    await page
+      .getByRole('button', { name: /tomar esta conversación/i })
+      .click();
+    await expect(
+      page.getByRole('button', { name: /tomar esta conversación/i }),
+    ).toHaveCount(0);
+    await expect(page.getByText(/sin asignar/)).toHaveCount(0);
+  });
+
+  test('UNA NOTA INTERNA se distingue del mensaje que sale al cliente', async ({
+    page,
+  }) => {
+    // Una nota enviada al cliente es de los errores que no se deshacen
+    // (RN-CNV-07), así que la casilla es explícita y la burbuja va aparte.
+    await entrar(page);
+    await page.goto('/panel/conversaciones');
+    await page.locator('article.ficha').first().getByRole('link').click();
+
+    await page.getByLabel('Mensaje').fill('Cliente habitual, dar prioridad');
+    await page.getByLabel(/nota interna/i).check();
+    await page.getByRole('button', { name: 'Enviar' }).click();
+
+    await expect(page.getByText(/no sale al cliente/i).first()).toBeVisible();
+    await page.reload();
+    await expect(page.locator('.burbuja--nota')).toContainText(
+      'Cliente habitual',
+    );
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

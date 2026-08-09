@@ -467,4 +467,22 @@ La prueba de navegador afirma el **movimiento** —el pedido sale de «por acept
 
 **Lo que queda escrito y no se hizo (DT-14):** la bandeja de conversaciones. El módulo y el agente están completos y probados, y lo que falta es la pantalla donde una persona atiende. La consecuencia concreta es que **una derivación bot→humano no llega a ningún sitio**: el agente escribe el resumen, marca `handoff_at`, y nadie lo ve. El cliente que pidió hablar con una persona no recibe respuesta.
 
-**Próxima acción de Claude Code:** saldar DT-14 — la bandeja de conversaciones de `specs/ux/06`, empezando por lo que hace que una derivación deje de perderse: lista con filtro de «derivadas», hilo legible con el resumen del bot arriba, y compositor con la ventana de 24 h visible.
+### La bandeja de conversaciones — DT-14 saldada, y el mismo hallazgo por tercera vez
+
+El módulo de conversaciones y el agente estaban completos y probados desde T5.19–T5.31. Faltaba el sitio donde una persona atiende, y sin él **una derivación bot→humano no llegaba a ningún sitio**.
+
+Y al construirla apareció otra vez el patrón, ya por tercera vez en dos días: **`handoff_summary` y `handoff_at` se escribían desde T5.28 y ninguna ruta los devolvía**. `ConversationView` traía todo menos justo el dato por el que existe la derivación. El traspaso con contexto —lo que evita que el cliente lo cuente todo otra vez, que es el momento exacto en el que la gente abandona— vivía en la base de datos y no ocurría en la práctica. Es la misma forma que el payload crudo de las excepciones (DT-04), y por el mismo motivo: el dato se guarda con un comentario que explica para qué, y nadie comprueba nunca que se pueda sacar.
+
+Tres decisiones de la pantalla:
+
+· **El resumen se pinta ANTES que el hilo**, con los datos ya capturados en una lista. La spec pide que el agente conteste en menos de diez segundos sin releerlo todo, y eso no se consigue enseñándole cincuenta mensajes en orden.
+
+· **Con la ventana de 24 h cerrada no se deja escribir texto libre** (RN-CNV-03). Dejar pasar el texto y que Meta lo descarte en silencio es el peor de los dos mundos: el agente cree que respondió y el cliente no recibe nada. La nota interna sí queda habilitada — apuntar algo para el turno siguiente no manda nada a nadie.
+
+· **El autor va escrito en todas las burbujas**, no solo el color y el lado. «¿Esto lo dijo la IA o una persona?» no puede depender de que alguien interprete el diseño. Y la nota interna va en amarillo y lo dice: es la única burbuja que no salió del edificio.
+
+Las dos pruebas de navegador afirman el **efecto** y no un mensaje de éxito: al tomar la conversación el botón desaparece y deja de decir «sin asignar». Es la misma corrección que hizo falta en la torre de control — al revalidar, el componente se desmonta y se lleva su mensaje, que es el comportamiento correcto.
+
+**Estado de `specs/ux/`: las seis specs tienen pantalla.** POS, KDS, panel, tienda, centro de operaciones y bandeja. Lo que queda del panel son secciones que la spec 03 enumera y que aún no existen —Pedidos con buscador y timeline, Inventario, Caja y comprobantes, Clientes, Configuración completa, Novedades—, todas de consulta y ninguna bloqueante para operar.
+
+**Próxima acción de Claude Code:** con las seis pantallas en pie, volver al gate: rehacer §8 de `docs/33-gate-fase-5.md` con lo saldado (DT-04, DT-14, DT-15) y las cifras nuevas, y dejar escrito el criterio de entrada de F6 —la lista de specs con interfaz declarada, comprobada una por una— que es lo que habría evitado los tres agujeros.
