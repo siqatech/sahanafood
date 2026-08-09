@@ -1,4 +1,5 @@
 import type { CartaResuelta, PedidoOffline } from './api';
+import type { ConfiguracionDeImpresion } from './impresion';
 import type { SyncItem } from '@sahana/domain';
 
 /**
@@ -133,6 +134,35 @@ export const almacen = {
   marca: (): Promise<string | undefined> => leer<string>(ESTADO, 'marca'),
   guardarMarca: (brandId: string): Promise<void> =>
     escribir(ESTADO, 'marca', brandId),
+
+  /**
+   * Configuración de impresión. Es **del dispositivo**, no del tenant: la IP
+   * del agente y el nombre de la impresora dependen de la red del local y de
+   * qué cable va a qué aparato. Guardarla en el servidor obligaría a un
+   * catálogo de impresoras que hoy no existe y que tampoco sabría en qué wifi
+   * está esta tablet.
+   */
+  impresion: (): Promise<ConfiguracionDeImpresion | undefined> =>
+    leer<ConfiguracionDeImpresion>(ESTADO, 'impresion'),
+  guardarImpresion: (cfg: ConfiguracionDeImpresion): Promise<void> =>
+    escribir(ESTADO, 'impresion', cfg),
+
+  /**
+   * Correlativo LOCAL de la venta, para el papel que se imprime antes de
+   * sincronizar.
+   *
+   * El número definitivo lo pone el servidor al recibir el pedido, y el POS
+   * vende sin red: no hay forma de conocerlo en el momento de imprimir. Se usa
+   * un contador del dispositivo y **se dice en el papel que es provisional**,
+   * porque un número que luego cambia sin avisar es peor que uno que se sabe
+   * temporal. Ver DT-12.
+   */
+  async siguienteNumeroLocal(): Promise<number> {
+    const actual = (await leer<number>(ESTADO, 'correlativo')) ?? 0;
+    const siguiente = actual + 1;
+    await escribir(ESTADO, 'correlativo', siguiente);
+    return siguiente;
+  },
 
   // ------------------------------------------------------------- Carta
 

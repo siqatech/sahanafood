@@ -35,8 +35,27 @@ se recupera de ninguna parte.
 3. El cajero se elige de la lista y teclea su **PIN**. El dispositivo dice
    *dónde* se vende; el PIN, *quién* vende.
 
+## Impresión
+
+La comanda y la precuenta salen por el **`print-agent`**, que corre en la
+computadora de la caja y en la misma red que la tablet: por eso imprimir
+funciona sin internet, igual que cobrar. Se configura en la propia PWA
+(pestaña «Impresoras»): dirección del agente, token y nombre de cada
+impresora. Es configuración **del dispositivo**, porque depende de la red del
+local y de qué cable va a qué aparato.
+
+Dos decisiones a tener en cuenta antes de tocarlo:
+
+- **Primero se encola la venta, después se imprime.** Una venta que no se
+  registra porque la impresora no responde es dinero cobrado que no existe en
+  ninguna parte.
+- **La comanda no lleva precios.** La cocina no cobra, y un papel con importes
+  en la zona de preparación genera confusión y reclamos.
+
 ## Lo que todavía NO está
 
 - **Deshacer en el KDS** (DT-11): la API solo sabe avanzar tickets.
-- **Impresión**: el `print-agent` está, falta encolarle la comanda desde aquí.
+- **Número de pedido definitivo en el papel** (DT-12): se imprime antes de
+  sincronizar, así que el correlativo es del dispositivo y va marcado como
+  provisional.
 - **Modo TV del KDS** (kiosk sin sesión) y sonidos por canal.

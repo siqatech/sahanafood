@@ -12,6 +12,8 @@ import {
   type SeleccionDeModificador,
 } from '../lib/venta';
 import { encolarVenta } from '../lib/sincronizacion';
+import { almacen } from '../lib/db';
+import { impresion, ImpresionNoDisponible } from '../lib/impresion';
 
 /**
  * Pantalla de venta (ux/01).
@@ -43,11 +45,17 @@ function soles(m: Money): string {
 export function Venta({
   carta,
   brandId,
+  brandName,
+  deviceName,
   locationId,
   alCobrar,
 }: {
   carta: CartaResuelta;
   brandId: string;
+  brandName: string;
+  /** Nombre de esta caja («Caja 1»). Va en la precuenta: identifica de qué
+   *  terminal salió el papel, que es lo que se pregunta cuando algo no cuadra. */
+  deviceName: string;
   locationId: string;
   alCobrar: (mensaje: string) => void;
 }) {
@@ -89,10 +97,64 @@ export function Venta({
       paymentMethod: medio,
       ahora: new Date(),
     });
+
+    // PRIMERO se encola la venta. Imprimir puede fallar —agente apagado, papel,
+    // wifi— y una venta que no se registra porque la impresora no responde es
+    // dinero cobrado que no existe en ninguna parte. El papel es importante; el
+    // registro, más.
     await encolarVenta(pedido);
+
+    const vendidas = lineas;
     setLineas([]);
     setCobrando(false);
     alCobrar(`Cobrado ${soles(total)}.`);
+
+    void imprimirVenta(pedido.clientId, vendidas);
+  }
+
+  /**
+   * Comanda a cocina y precuenta, en segundo plano.
+   *
+   * No se espera a la impresora para liberar la pantalla: con el cliente
+   * delante, dos segundos de espera son dos segundos de cola. Si falla, se
+   * avisa y se puede reimprimir desde el agente — el trabajo queda en su cola
+   * con reintentos.
+   */
+  async function imprimirVenta(
+    ventaId: string,
+    vendidas: readonly LineaDeTicket[],
+  ): Promise<void> {
+    const cfg = await almacen.impresion();
+    // Sin agente configurado no se imprime y no se avisa: hay locales que no
+    // usan papel, y un aviso en cada venta se convierte en ruido que se ignora.
+    if (!cfg?.token) return;
+
+    const numero = await almacen.siguienteNumeroLocal();
+    try {
+      await impresion.comanda(cfg, {
+        ventaId,
+        orderNumber: numero,
+        brandName,
+        stationName: 'Cocina',
+        lines: vendidas,
+        // El número es del dispositivo hasta que el pedido sincroniza: el
+        // definitivo lo pone el servidor y todavía no existe (DT-12).
+        notes: `Nº provisional del POS · ${numero}`,
+      });
+      await impresion.precuenta(cfg, {
+        ventaId,
+        orderNumber: numero,
+        brandName,
+        locationName: deviceName,
+        lines: vendidas,
+      });
+    } catch (error) {
+      alCobrar(
+        error instanceof ImpresionNoDisponible
+          ? `Cobrado, pero no se imprimió: ${error.message}`
+          : 'Cobrado, pero no se pudo imprimir.',
+      );
+    }
   }
 
   if (eligiendo) {

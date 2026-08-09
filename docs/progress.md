@@ -355,4 +355,22 @@ Cuatro pruebas nuevas, drenando el outbox por el camino real: la venta en efecti
 
 Y la pantalla que faltaba: **cierre de caja contando por denominación**, con la diferencia en vivo mientras se cuenta —que es lo que hace que quien cuenta vuelva a contar en el momento, y no que el descuadre aparezca semanas después— y motivo más PIN de supervisor ante cualquier descuadre, aunque sea de diez céntimos. La caja **necesita red** a propósito: vender sin conexión sí; arquear sin conexión, no. Y si quedan ventas sin sincronizar, la pantalla lo dice antes de dejar cerrar.
 
-**Próxima acción de Claude Code:** impresión desde el POS —comanda a cocina y precuenta— encolando al `print-agent`, que existe y todavía no recibe nada de la tablet. Después DT-11.
+### El POS imprime
+
+Comanda a cocina y precuenta, contra el `print-agent` de la caja. El agente estaba completo desde F4 —cola propia, reintentos, ESC/POS, reimprimir— y **la tablet no le mandaba nada**. Otro cable.
+
+Va contra el agente y no contra la API por lo mismo que la venta: la impresora está en el mostrador, colgada de la red del local y a menudo es una térmica USB sin IP. El servidor no la alcanza, y aunque la alcanzara, imprimir por internet dejaría a la cocina sin comandas justo cuando el POS sí puede seguir vendiendo. **Imprimir funciona sin internet.**
+
+Tres decisiones:
+
+· **Primero se encola la venta, después se imprime.** Imprimir puede fallar —agente apagado, papel, wifi— y una venta que no se registra porque la impresora no responde es dinero cobrado que no existe en ninguna parte.
+
+· **La comanda no lleva precios.** La cocina no cobra, y un papel con importes en la zona de preparación es una fuente de confusión y de reclamos. Hay prueba de que no se cuela ni un «S/».
+
+· **El id del trabajo se deriva dentro del módulo**, no lo pasa quien llama. La cola del agente deduplica por ese id: reintentar no imprime dos comandas, y derivarlo dentro impide el error contrario —usar el mismo para comanda y precuenta haría que la segunda se descartara en silencio—.
+
+Y un defecto que encontró la prueba antes de que lo viera nadie: **la precuenta no cuadraba**. Con 116.00 y IGV incluido, la base sale 98.3050 y el impuesto 17.6950; truncando cada uno a dos decimales daba 98.30 + 17.69 = 115.99. Ahora se redondea a céntimos y **el impuesto se deriva de la resta de lo impreso**, así que base + IGV da siempre el total que se cobra. Una precuenta que no suma es lo primero que un cliente señala con el dedo.
+
+**Lo que no cuadra todavía y queda escrito (DT-12):** el número del papel es un correlativo del dispositivo, porque se imprime antes de sincronizar y el definitivo lo pone el servidor. Va marcado como provisional en el propio ticket. Cuadrarlos exige reservar bloques de correlativos por dispositivo, que es una regla de negocio con implicaciones en facturación.
+
+**Próxima acción de Claude Code:** DT-11 —el deshacer del KDS—, que requiere decidir qué pasa con un pedido que ya emitió `kitchen.order_ready`. Es lo último que queda de las tres pantallas.

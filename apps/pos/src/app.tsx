@@ -12,6 +12,7 @@ import { Entrar } from './pantallas/entrar';
 import { Venta } from './pantallas/venta';
 import { Cocina } from './pantallas/cocina';
 import { Caja } from './pantallas/caja';
+import { Impresoras } from './pantallas/impresoras';
 
 /**
  * El armazón del POS/KDS.
@@ -29,7 +30,7 @@ import { Caja } from './pantallas/caja';
 
 const SINCRONIZAR_CADA_MS = 15_000;
 
-type Modo = 'venta' | 'cocina' | 'caja';
+type Modo = 'venta' | 'cocina' | 'caja' | 'impresoras';
 
 export function App() {
   const [dispositivo, setDispositivo] = useState<
@@ -40,6 +41,7 @@ export function App() {
   );
   const [carta, setCarta] = useState<CartaResuelta | null>(null);
   const [brandId, setBrandId] = useState<string | null>(null);
+  const [brandName, setBrandName] = useState<string>('');
   const [modo, setModo] = useState<Modo>('venta');
   const [sinSincronizar, setSinSincronizar] = useState(0);
   const [enLinea, setEnLinea] = useState(navigator.onLine);
@@ -88,12 +90,14 @@ export function App() {
     if (!token) return;
 
     try {
-      const id = guardadaId ?? (await api.marcas(token)).brands[0]?.id;
+      const marcas = (await api.marcas(token)).brands;
+      const id = guardadaId ?? marcas[0]?.id;
       if (!id) return;
       const fresca = await api.carta(token, id);
       await almacen.guardarMarca(id);
       await almacen.guardarCarta(id, fresca);
       setBrandId(id);
+      setBrandName(marcas.find((m) => m.id === id)?.name ?? '');
       setCarta(fresca);
     } catch (error) {
       if (!(error instanceof SinRed)) throw error;
@@ -193,6 +197,15 @@ export function App() {
           >
             Caja
           </button>
+          <button
+            type="button"
+            className={modo === 'impresoras' ? 'activo' : ''}
+            onClick={() => {
+              setModo('impresoras');
+            }}
+          >
+            Impresoras
+          </button>
         </div>
         <span className="barra__quien">{sesion.userName}</span>
         {/*
@@ -230,7 +243,9 @@ export function App() {
         </div>
       ) : null}
 
-      {modo === 'caja' ? (
+      {modo === 'impresoras' ? (
+        <Impresoras />
+      ) : modo === 'caja' ? (
         locationId ? (
           <Caja
             token={sesion.accessToken}
@@ -247,6 +262,8 @@ export function App() {
           <Venta
             carta={carta}
             brandId={brandId}
+            brandName={brandName}
+            deviceName={dispositivo.deviceName}
             locationId={locationId}
             alCobrar={(m) => {
               setMensaje(m);
