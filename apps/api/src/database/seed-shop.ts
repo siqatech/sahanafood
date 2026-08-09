@@ -8,6 +8,7 @@ import { TenancyService } from '../modules/tenancy/index.js';
 import { seedDemoOrganization } from '../modules/organization/index.js';
 import { seedDemoCatalog } from '../modules/catalog/index.js';
 import { StorefrontService } from '../modules/storefront/index.js';
+import { OrderingService } from '../modules/ordering/index.js';
 
 /**
  * Siembra una tienda demo para levantar `apps/web` a mano (T5.08–T5.14).
@@ -74,6 +75,27 @@ async function main(): Promise<void> {
     ),
   );
 
+  // Dos pedidos APARTADOS en la bandeja de excepciones (RN-ORD-10). Sin ellos
+  // la pantalla de excepciones solo se puede ver vacía, y una pantalla que solo
+  // se puede mirar vacía no se puede desarrollar ni probar. Son dos porque el
+  // flujo tiene dos salidas —resolver y rechazar— y cada una consume la suya.
+  const ordering = app.get(OrderingService);
+  for (const [ref, sku] of [
+    ['DEMO-EXC-1', 'RAPPI-POLLO-XL'],
+    ['DEMO-EXC-2', 'RAPPI-COMBO-2'],
+  ] as const) {
+    await ordering.submitForReview(tenant.tenantId, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'rappi',
+      externalRef: ref,
+      reason: `SKU externo sin mapear: ${sku}`,
+      rawPayload: { order_id: ref, items: [{ sku, qty: 2 }] },
+      customerName: 'Cliente de Rappi',
+      customerPhone: '+51987000111',
+    });
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -82,6 +104,7 @@ async function main(): Promise<void> {
         host: HOST,
         tienda: `http://${HOST}:3001/`,
         cupon: 'BIENVENIDO (10 %, mínimo S/ 50)',
+        excepciones: `http://${HOST}:3001/panel/excepciones`,
       },
       null,
       2,

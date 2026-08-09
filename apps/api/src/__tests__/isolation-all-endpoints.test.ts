@@ -64,6 +64,12 @@ suite('Aislamiento — todos los endpoints', () => {
   let catA: Awaited<ReturnType<typeof seedDemoCatalog>>;
   /** Pedido del tenant A, para probar endpoints que operan sobre uno concreto. */
   let pedidoDeA = '';
+  /**
+   * Pedido de A apartado en la bandeja de excepciones. Su detalle lleva el
+   * payload CRUDO del canal —con nombre y teléfono del cliente—, así que es de
+   * lo más sensible que se puede pedir por id.
+   */
+  let excepcionDeA = '';
   /** Insumo y almacén del tenant B: A no debe poder leerlos ni ajustarlos. */
   let insumoDeB = '';
   let almacenDeB = '';
@@ -295,6 +301,20 @@ suite('Aislamiento — todos los endpoints', () => {
       lines: [{ productId: catA.comboId, quantity: 1 }],
     });
     pedidoDeA = pedido.id;
+
+    const apartado = await app
+      .get(OrderingService)
+      .submitForReview(a.tenantId, {
+        brandId: demoA.brandIds[0],
+        locationId: demoA.locationId,
+        channel: 'simulador',
+        externalRef: 'AISLAMIENTO-EXC-1',
+        reason: 'SKU desconocido',
+        rawPayload: { items: [{ sku: 'SKU-DE-A', qty: 2 }] },
+        customerName: 'Cliente de A',
+        customerPhone: '+51911100022',
+      });
+    excepcionDeA = apartado.id;
 
     const pedidoB = await app.get(OrderingService).submit(b.tenantId, {
       brandId: demoB.brandIds[0],
@@ -622,6 +642,19 @@ suite('Aislamiento — todos los endpoints', () => {
       app,
       caseFor('GET /orders/exceptions', (r) =>
         r.get('/api/v1/orders/exceptions'),
+      ),
+    );
+  });
+
+  it('GET /orders/:id/exception (excepción de A)', async () => {
+    // Lo que se protege aquí no es el pedido: es el payload crudo del canal,
+    // con el nombre y el teléfono del cliente de la competencia dentro.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /orders/:id/exception',
+        (r) => r.get(`/api/v1/orders/${excepcionDeA}/exception`),
+        { expectedStatusForA: [200] },
       ),
     );
   });

@@ -329,6 +329,15 @@ con la lista de excusas auditándose a sí misma para que no crezca hasta dejar
 de significar nada—. La cuarta comprobación es la simétrica: un handler cuyo
 evento nadie publica, que es una errata que de otro modo no falla jamás.
 
+### 8.4b DT-04, que vencía en este gate, queda saldada
+
+La bandeja de excepciones tenía API desde F4 y ninguna pantalla. Ahora existe
+`/panel/excepciones`, y construirla destapó dos huecos: el payload crudo del
+canal se guardaba y **no lo devolvía ninguna ruta** (`getTimeline` trae todo el
+evento menos `data`), y el formulario no resolvía **modificadores obligatorios**
+— mapear a un pollo con «Tamaño» devolvía un 422 que el operador no podía
+arreglar, con el pedido atascado en la bandeja para siempre.
+
 ### 8.5 Deuda nueva
 
 | ID | Qué es | Vence |

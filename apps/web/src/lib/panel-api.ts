@@ -143,6 +143,51 @@ export interface ProductoDelPanel {
   pauses: Array<{ channel: string; until: string | null }>;
 }
 
+/** Pedido tal como lo lista la API (subconjunto de `OrderSummary`). */
+export interface PedidoDelPanel {
+  id: string;
+  orderNumber: number;
+  status: string;
+  channel: string;
+  brandId: string;
+  createdAt: string;
+}
+
+/** Lo que llegó del canal para un pedido apartado (RN-ORD-10). */
+export interface DetalleDeExcepcion {
+  orderId: string;
+  orderNumber: number;
+  channel: string;
+  brandId: string;
+  externalRef: string | null;
+  reason: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  createdAt: string;
+  rawPayload: unknown;
+}
+
+/** Producto vendible en un canal, con lo que hay que elegir para pedirlo. */
+export interface ProductoVendible {
+  id: string;
+  name: string;
+  modifierGroups: Array<{
+    id: string;
+    name: string;
+    minSelections: number;
+    maxSelections: number;
+    options: Array<{ id: string; name: string }>;
+  }>;
+}
+
+export interface ConexionDelPanel {
+  id: string;
+  provider: string;
+  channel: string;
+  brandId: string;
+  status: string;
+}
+
 // ------------------------------------------------------------ Llamadas
 
 export const panel = {
@@ -247,6 +292,57 @@ export const panel = {
     name: string;
   }): Promise<{ id: string; slug: string }> =>
     llamar<{ id: string; slug: string }>('/org/brands', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /**
+   * La carta RESUELTA para un canal: solo lo que ahí se puede vender.
+   *
+   * En la bandeja de excepciones importa más que en ningún otro sitio. Ofrecer
+   * la carta entera dejaría elegir un plato sin precio en ese canal o pausado,
+   * y el pedido volvería a fallar al resolverlo — con el operador convencido
+   * de que ya lo había arreglado.
+   */
+  vendibles: (brandId: string, channel: string): Promise<ProductoVendible[]> =>
+    llamar<{ products: ProductoVendible[] }>(
+      `/catalog/resolved?brand=${encodeURIComponent(brandId)}&channel=${encodeURIComponent(channel)}`,
+    ).then((c) => c.products),
+
+  resolverMapeo: (
+    orderId: string,
+    lines: Array<{
+      productId: string;
+      quantity: number;
+      modifierOptionIds?: string[];
+    }>,
+  ): Promise<unknown> =>
+    llamar(`/orders/${orderId}/resolve-mapping`, {
+      method: 'POST',
+      body: JSON.stringify({ lines }),
+    }),
+
+  excepciones: (): Promise<PedidoDelPanel[]> =>
+    llamar<PedidoDelPanel[]>('/orders/exceptions'),
+
+  excepcion: (orderId: string): Promise<DetalleDeExcepcion> =>
+    llamar<DetalleDeExcepcion>(`/orders/${orderId}/exception`),
+
+  rechazarPedido: (orderId: string, reason: string): Promise<unknown> =>
+    llamar(`/orders/${orderId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  conexiones: (): Promise<ConexionDelPanel[]> =>
+    llamar<ConexionDelPanel[]>('/integrations/connections'),
+
+  mapearSku: (input: {
+    connectionId: string;
+    externalSku: string;
+    productId: string;
+  }): Promise<unknown> =>
+    llamar('/integrations/catalog-map', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

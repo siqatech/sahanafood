@@ -153,6 +153,75 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
   });
 
+  test('LA BANDEJA DE EXCEPCIONES enseña lo que llegó y deja resolverlo (DT-04)', async ({
+    page,
+  }) => {
+    // Es la prueba de que la regla RN-ORD-10 —«un pedido que no sabemos mapear
+    // NO se descarta»— se cumple entera. Durante F4 y F5 se cumplió a medias:
+    // el pedido se apartaba y la única forma de sacarlo de ahí era llamar al
+    // endpoint a mano. Para el cliente que espera su comida, «perdido» y
+    // «apartado donde nadie lo ve» son lo mismo.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Excepciones', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Excepciones' }),
+    ).toBeVisible();
+
+    const fila = page.locator('tbody tr').first();
+    await expect(fila).toContainText('rappi');
+    await fila.getByRole('link', { name: 'Resolver' }).click();
+
+    // Lo primero que el operador necesita: POR QUÉ se apartó y QUÉ llegó.
+    const motivo = page.getByText(/SKU externo sin mapear: /);
+    await expect(motivo).toBeVisible();
+    // El SKU se LEE de la pantalla en vez de fijarlo: la bandeja ordena por
+    // fecha y cuál cae primero depende de la semilla. Una prueba que lo
+    // hardcodea falla por el orden, no por el fallo que vigila.
+    const sku = (await motivo.textContent())!.split(': ').pop()!.trim();
+    expect(sku).toMatch(/^RAPPI-/);
+
+    // El payload crudo se enseña siempre: si nuestra lectura de las líneas
+    // falla, el original sigue delante y el pedido se puede armar a mano.
+    await expect(page.locator('pre.crudo')).toContainText(sku);
+
+    // Se mapea al POLLO a propósito, que es el plato con «Tamaño» obligatorio.
+    // Elegir uno sin modificadores probaría el camino fácil y dejaría fuera el
+    // que de verdad se usa en el Perú: mapear a un plato con talla obligatoria
+    // devolvía un 422 que el operador no podía arreglar desde la pantalla, y el
+    // pedido se quedaba en la bandeja para siempre.
+    const selector = page.getByLabel(`Plato para ${sku}`);
+    await selector.selectOption({ label: 'Pollo a la brasa entero' });
+    await expect(page.getByLabel(`Tamaño de ${sku}`)).toBeVisible();
+    await Promise.all([
+      page.waitForURL(/\/panel\/excepciones\?resuelto=/),
+      page.getByRole('button', { name: /resolver y mandar a cocina/i }).click(),
+    ]);
+
+    // Y ya no está en la bandeja: si siguiera, se resolvería dos veces.
+    await expect(page.getByText(/ya va camino de la cocina/i)).toBeVisible();
+    await expect(page.getByText(sku)).toHaveCount(0);
+  });
+
+  test('RECHAZAR EXIGE MOTIVO: va al canal y a auditoría', async ({ page }) => {
+    await entrar(page);
+    await page.goto('/panel/excepciones');
+    await page.locator('tbody tr').first().getByRole('link').click();
+
+    // Sin motivo no se rechaza. «Rechazado» a secas no le sirve ni al cliente
+    // que esperaba ni a quien revise el mes.
+    await page.getByRole('button', { name: 'Rechazar' }).click();
+    await expect(page.getByText(/escribe por qué se rechaza/i)).toBeVisible();
+
+    await page
+      .getByLabel('Motivo del rechazo')
+      .fill('Ese plato ya no se prepara');
+    await Promise.all([
+      page.waitForURL(/\/panel\/excepciones\?rechazado=1/),
+      page.getByRole('button', { name: 'Rechazar' }).click(),
+    ]);
+    await expect(page.getByText(/rechazado y avisado al canal/i)).toBeVisible();
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

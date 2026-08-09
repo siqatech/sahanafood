@@ -823,6 +823,81 @@ export class OrderingService {
     });
   }
 
+  /**
+   * Detalle de un pedido apartado, con **lo que llegó del canal**.
+   *
+   * `submitForReview` guarda el payload crudo en el evento `mapping_failed`
+   * porque «sin él, resolver la excepción sería adivinar» — y durante toda F4 y
+   * F5 no hubo ninguna forma de leerlo: `getTimeline` devuelve todo menos
+   * `data`. El dato estaba a salvo y era inalcanzable, que para quien tiene que
+   * resolver la excepción es lo mismo que no tenerlo.
+   *
+   * Va aparte del timeline y con permiso propio (`orders.review_exceptions`) a
+   * propósito: el payload trae nombre y teléfono del cliente tal cual los mandó
+   * el canal, y eso no tiene por qué verlo todo el que puede leer pedidos.
+   */
+  async getException(
+    tenantId: string,
+    orderId: string,
+  ): Promise<{
+    orderId: string;
+    orderNumber: number;
+    channel: string;
+    brandId: string;
+    externalRef: string | null;
+    reason: string | null;
+    customerName: string | null;
+    customerPhone: string | null;
+    createdAt: string;
+    /** Tal cual lo mandó el canal. `null` si el pedido no vino de fuera. */
+    rawPayload: unknown;
+  }> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const filas = await ctx.db
+        .select()
+        .from(schema.orders)
+        .where(eq(schema.orders.id, orderId))
+        .limit(1);
+      const pedido = filas[0];
+      if (!pedido) throw new NotFoundError('Pedido no encontrado.');
+      if (pedido.status !== 'needs_review') {
+        throw new OrderInvalidTransitionError(
+          `El pedido no está en revisión; está en "${pedido.status}".`,
+          { from: pedido.status as OrderState, event: 'mapping_resolved' },
+        );
+      }
+
+      const eventos = await ctx.db
+        .select()
+        .from(schema.orderEvents)
+        .where(
+          and(
+            eq(schema.orderEvents.orderId, orderId),
+            eq(schema.orderEvents.event, 'mapping_failed'),
+          ),
+        )
+        .orderBy(desc(schema.orderEvents.occurredAt))
+        .limit(1);
+      const datos = eventos[0]?.data as
+        { rawPayload?: unknown } | null | undefined;
+
+      return {
+        orderId: pedido.id,
+        orderNumber: pedido.orderNumber,
+        channel: pedido.channel,
+        brandId: pedido.brandId,
+        externalRef: pedido.externalRef,
+        // El motivo está en dos sitios y se prefiere el del evento: el de
+        // `notes` puede haberlo pisado una edición posterior.
+        reason: eventos[0]?.reason ?? pedido.notes,
+        customerName: pedido.customerName,
+        customerPhone: pedido.customerPhone,
+        createdAt: pedido.createdAt.toISOString(),
+        rawPayload: datos?.rawPayload ?? null,
+      };
+    });
+  }
+
   /** Pedidos en la bandeja de excepciones (RN-ORD-10). */
   async listExceptions(tenantId: string): Promise<OrderSummary[]> {
     return withTenant(this.pool, tenantId, async (ctx) => {

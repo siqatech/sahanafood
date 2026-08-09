@@ -770,6 +770,58 @@ suite('Ordering e2e', () => {
     ]);
   });
 
+  it('el detalle de la excepción devuelve LO QUE MANDÓ EL CANAL', async () => {
+    // Sin esto, resolver una excepción era adivinar: el payload crudo se
+    // guardaba desde F4 en `mapping_failed.data` y ninguna ruta lo devolvía —
+    // `getTimeline` trae todos los campos del evento menos `data`—. El dato
+    // estaba a salvo y era inalcanzable, que para quien tiene que resolverla es
+    // lo mismo que no tenerlo.
+    const apartado = await ordering.submitForReview(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'rappi',
+      externalRef: `DETALLE-${Date.now()}`,
+      reason: 'SKU externo sin mapear: ABC-999',
+      rawPayload: { items: [{ sku: 'ABC-999', qty: 3 }] },
+      customerName: 'Rosa Quispe',
+      customerPhone: '+51955000123',
+    });
+
+    const detalle = await auth(
+      http().get(`/api/v1/orders/${apartado.id}/exception`),
+    ).expect(200);
+
+    expect(detalle.body.reason).toContain('ABC-999');
+    expect(detalle.body.channel).toBe('rappi');
+    expect(detalle.body.customerName).toBe('Rosa Quispe');
+    // Y sobre todo: las líneas externas, que son lo que hay que mapear.
+    expect(detalle.body.rawPayload).toEqual({
+      items: [{ sku: 'ABC-999', qty: 3 }],
+    });
+  });
+
+  it('el detalle SOLO existe mientras el pedido está en revisión', async () => {
+    // Una vez resuelto, el payload crudo deja de ser necesario y sigue llevando
+    // los datos del cliente dentro: no hay motivo para dejarlo servible.
+    const apartado = await ordering.submitForReview(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'rappi',
+      externalRef: `CERRADO-${Date.now()}`,
+      reason: 'SKU externo sin mapear: QQQ',
+      rawPayload: { items: [{ sku: 'QQQ', qty: 1 }] },
+    });
+    await auth(
+      http()
+        .post(`/api/v1/orders/${apartado.id}/resolve-mapping`)
+        .send({ lines: [{ productId: cat.comboId, quantity: 1 }] }),
+    ).expect(201);
+
+    await auth(http().get(`/api/v1/orders/${apartado.id}/exception`)).expect(
+      409,
+    );
+  });
+
   it('resolver dos veces el mismo pedido se rechaza con 409', async () => {
     const apartado = await ordering.submitForReview(tenantA, {
       brandId,

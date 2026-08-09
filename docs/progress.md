@@ -425,4 +425,26 @@ La lección queda escrita para el gate de F6: **comprobar el backlog no es compr
 
 Cifras a hoy: **1 235 pruebas** (441 dominio · 633 API contra Postgres y Redis reales · 117 print-agent · 23 POS · 14 navegador · 7 prompts), 66 casos de aislamiento bloqueantes, 365 módulos sin una violación de frontera y 31 migraciones que admiten volver a la imagen anterior.
 
-**Próxima acción de Claude Code:** abrir F6 con su tarea T6.00 —generar el backlog desde las specs 08 (compras, proveedores, transferencias, mermas, conteos, costo promedio móvil) y 14/15, con la lista de specs con interfaz declarada por delante— y saldar en ella DT-04 (la bandeja de excepciones tiene API y no UI), que venció en F5.
+### La bandeja de excepciones existe — DT-04 saldada
+
+F6 no se abre todavía: su propia nota de planificación dice que no debería abrirse antes de que los tres pilotos lleven un mes vendiendo, porque el inventario real solo se prueba contra consumo real. Lo que sí estaba vencido y era código es DT-04.
+
+RN-ORD-10 exige que un pedido cuyo catálogo no sabemos mapear **no se descarte**: se aparta. Eso funcionaba desde F4 en la base de datos, y la única forma de sacarlo de ahí era llamar al endpoint a mano. Para el cliente que espera su comida, «perdido» y «apartado donde nadie lo ve» son lo mismo.
+
+Al construir la pantalla aparecieron dos huecos que solo se ven usándola:
+
+· **El payload crudo del canal no lo devolvía nadie.** Se guarda desde F4 en `mapping_failed.data`, con un comentario que dice literalmente «sin él, resolver la excepción sería adivinar»… y `getTimeline` devuelve todos los campos del evento **menos** `data`. El dato estaba a salvo y era inalcanzable, que para quien tiene que resolver la excepción es exactamente lo mismo que no tenerlo. Ahora hay `GET /orders/:id/exception`, con **permiso propio** —el payload lleva el nombre y el teléfono del cliente, y eso no tiene por qué verlo todo el que puede leer pedidos— y **solo mientras el pedido está en revisión**.
+
+· **Mapear a un pollo era imposible.** El primer formulario ofrecía plato y cantidad, y la API respondía 422: «Debes elegir en "Tamaño"». Un plato con talla obligatoria es el caso normal en el Perú, no el raro — la pantalla habría parecido rota el primer día, con el pedido atascado en la bandeja para siempre. Lo destapó la prueba de navegador al elegir el pollo en vez de la bebida.
+
+Tres decisiones más que no son obvias:
+
+· **Se ofrece la carta RESUELTA para el canal del pedido**, no la carta entera. Ofrecer un plato sin precio en ese canal, o pausado, haría que resolver fallara con el operador convencido de haberlo arreglado.
+
+· **Se puede recordar el SKU** para la próxima. Resolver de uno en uno para siempre es pagar cada pedido con trabajo manual; el mapeo permanente va DESPUÉS de resolver y **su fallo no deshace nada** — que el próximo vuelva a apartarse es molesto, perder este no.
+
+· **Rechazar exige motivo.** Sin salida la bandeja solo crece, y una bandeja que solo crece se deja de mirar. El motivo va al canal y a auditoría: «rechazado» a secas no le sirve ni al cliente que esperaba ni a quien revise el mes.
+
+Y esta pantalla **sí usa JavaScript**, al contrario que la tienda: los modificadores obligatorios dependen del plato que se acaba de elegir, y sin JS eso obliga a una ida y vuelta al servidor por línea. La usa un encargado en su escritorio, no un comprador en un móvil con 3G. Sin JS sigue enviándose y sirve para los platos sin nada obligatorio.
+
+**Próxima acción de Claude Code:** DT-05 no es código y DT-02 sigue bloqueada por credenciales, así que lo siguiente con valor propio es repasar `specs/ux/` entera contra lo construido —el mismo método que destapó DT-09— para ver qué otra pantalla especificada no existe, antes de que la lista de specs con interfaz declarada se use como criterio de entrada del gate de F6.

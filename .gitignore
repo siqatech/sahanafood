@@ -45,3 +45,6 @@ Thumbs.db
 # No son fuente y pesan; el job de CI las sube como artefacto cuando falla.
 apps/web/test-results/
 apps/web/playwright-report/
+
+# Volcado de Redis: lo deja el servidor local al pararse, no es del proyecto.
+dump.rdb

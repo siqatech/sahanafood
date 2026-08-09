@@ -62,6 +62,7 @@ export default async function PanelLayout({
             <nav className="panel__nav">
               <Link href="/panel">Hoy</Link>
               <Link href="/panel/catalogo">Carta</Link>
+              <Link href="/panel/excepciones">Excepciones</Link>
               <Link href="/panel/negocio">Negocio</Link>
             </nav>
             {/* Formulario y no enlace: cerrar sesión cambia estado en el

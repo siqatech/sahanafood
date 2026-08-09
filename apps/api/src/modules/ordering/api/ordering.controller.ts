@@ -297,6 +297,22 @@ export class OrderingController {
     return this.ordering.listExceptions(req.auth!.tid);
   }
 
+  /**
+   * Lo que llegó del canal para un pedido apartado (RN-ORD-10).
+   *
+   * Permiso propio y no `orders.read`: el payload trae los datos del cliente
+   * tal cual los mandó el marketplace, y quien resuelve excepciones ya los
+   * necesita — quien solo consulta pedidos, no.
+   */
+  @Get(':id/exception')
+  @RequirePermission('orders.review_exceptions')
+  exception(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<unknown> {
+    return this.ordering.getException(req.auth!.tid, id);
+  }
+
   @Get(':id')
   @RequirePermission('orders.read')
   get(

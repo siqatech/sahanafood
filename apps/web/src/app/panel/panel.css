@@ -304,3 +304,26 @@ tr:last-child td {
   padding: 16px;
   margin-bottom: 16px;
 }
+
+/* El payload crudo del canal. Monoespaciada y con desbordamiento propio: es
+   JSON de un tercero y puede traer una línea de trescientos caracteres — sin
+   scroll propio empujaría el ancho de toda la pantalla. */
+.panel pre.crudo {
+  background: var(--panel-fondo);
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  max-height: 20rem;
+}
+
+.panel select {
+  padding: 8px 10px;
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--panel-tarjeta);
+  max-width: 22rem;
+}
