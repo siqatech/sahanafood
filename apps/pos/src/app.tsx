@@ -11,6 +11,7 @@ import { Emparejar } from './pantallas/emparejar';
 import { Entrar } from './pantallas/entrar';
 import { Venta } from './pantallas/venta';
 import { Cocina } from './pantallas/cocina';
+import { Caja } from './pantallas/caja';
 
 /**
  * El armazón del POS/KDS.
@@ -28,7 +29,7 @@ import { Cocina } from './pantallas/cocina';
 
 const SINCRONIZAR_CADA_MS = 15_000;
 
-type Modo = 'venta' | 'cocina';
+type Modo = 'venta' | 'cocina' | 'caja';
 
 export function App() {
   const [dispositivo, setDispositivo] = useState<
@@ -183,6 +184,15 @@ export function App() {
           >
             Cocina
           </button>
+          <button
+            type="button"
+            className={modo === 'caja' ? 'activo' : ''}
+            onClick={() => {
+              setModo('caja');
+            }}
+          >
+            Caja
+          </button>
         </div>
         <span className="barra__quien">{sesion.userName}</span>
         {/*
@@ -220,7 +230,19 @@ export function App() {
         </div>
       ) : null}
 
-      {modo === 'venta' ? (
+      {modo === 'caja' ? (
+        locationId ? (
+          <Caja
+            token={sesion.accessToken}
+            locationId={locationId}
+            sinSincronizar={sinSincronizar}
+          />
+        ) : (
+          <p className="centrado apunte">
+            Esta tablet no está asignada a ningún local: no hay caja que abrir.
+          </p>
+        )
+      ) : modo === 'venta' ? (
         carta && brandId && locationId ? (
           <Venta
             carta={carta}

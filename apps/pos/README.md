@@ -38,7 +38,5 @@ se recupera de ninguna parte.
 ## Lo que todavía NO está
 
 - **Deshacer en el KDS** (DT-11): la API solo sabe avanzar tickets.
-- **Cierre de caja por denominación**: la API de caja existe (`/cash-sessions`),
-  falta la pantalla de conteo.
 - **Impresión**: el `print-agent` está, falta encolarle la comanda desde aquí.
 - **Modo TV del KDS** (kiosk sin sesión) y sonidos por canal.

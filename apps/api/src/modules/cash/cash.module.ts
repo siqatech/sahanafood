@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/index.js';
 import { CashService } from './app/cash.service.js';
 import { CashController } from './api/cash.controller.js';
+import { CashEventHandlers } from './app/cash-event-handlers.js';
 
 /**
  * Caja (spec 06). Depende de Identity para el PIN de supervisor que autoriza
@@ -11,7 +12,7 @@ import { CashController } from './api/cash.controller.js';
 @Module({
   imports: [IdentityModule],
   controllers: [CashController],
-  providers: [CashService],
-  exports: [CashService],
+  providers: [CashService, CashEventHandlers],
+  exports: [CashService, CashEventHandlers],
 })
 export class CashModule {}

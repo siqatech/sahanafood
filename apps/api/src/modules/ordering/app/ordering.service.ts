@@ -236,6 +236,15 @@ export interface OfflineOrderInput {
   notes?: string | undefined;
   /** Instante real de la venta en el local. */
   soldAt?: string | undefined;
+  /**
+   * Con qué cobró el cajero. Es lo que decide si la venta mueve la gaveta.
+   *
+   * Se aceptaba en la PWA y se tiraba aquí: `offlineOrderSchema` no lo
+   * declaraba y zod lo quitaba en silencio. El resultado era que **ninguna
+   * venta del mostrador llegaba al arqueo** y toda caja cerraba con un
+   * sobrante del tamaño de lo vendido en efectivo.
+   */
+  paymentMethod?: string | undefined;
   actorId?: string | undefined;
   traceId?: string | undefined;
 }
@@ -985,6 +994,7 @@ export class OrderingService {
           status: 'accepted',
           customerName: input.customerName ?? null,
           customerPhone: input.customerPhone ?? null,
+          paymentMethod: input.paymentMethod ?? null,
           subtotal: subtotal.toDecimalString(),
           discountTotal: descuento.toDecimalString(),
           deliveryFee: envio.toDecimalString(),
@@ -1069,6 +1079,10 @@ export class OrderingService {
           offline: true,
           total: total.toJSON(),
           alerts: alerts.length,
+          // El medio de pago viaja en el evento para que el consumidor de caja
+          // no tenga que releer el pedido. Está también en la fila: el evento
+          // es la vía rápida, la fila es la verdad.
+          paymentMethod: input.paymentMethod ?? null,
         },
         ...(input.traceId !== undefined ? { traceId: input.traceId } : {}),
       });

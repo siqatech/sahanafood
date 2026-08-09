@@ -104,6 +104,12 @@ const offlineOrderSchema = z.object({
   customerPhone: z.string().max(40).optional(),
   notes: z.string().max(1000).optional(),
   soldAt: z.string().datetime().optional(),
+  // Con qué cobró el cajero. Sin esto, la venta no llega al arqueo: la PWA
+  // ya lo mandaba y zod lo quitaba en silencio, así que toda caja cerraba con
+  // un sobrante del tamaño exacto de lo vendido en efectivo.
+  paymentMethod: z
+    .enum(['cash', 'card', 'wallet', 'transfer', 'other'])
+    .optional(),
 });
 
 const syncBatchSchema = z.object({

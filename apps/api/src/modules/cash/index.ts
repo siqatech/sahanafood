@@ -11,3 +11,4 @@ export {
   type MovementKind,
   type PaymentMethod,
 } from './app/cash.service.js';
+export { CashEventHandlers, CASH_CONSUMER } from './app/cash-event-handlers.js';

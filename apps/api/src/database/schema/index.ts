@@ -632,6 +632,14 @@ export const orders = pgTable(
     closedAt: timestamp('closed_at', { withTimezone: true }),
     cancelReason: text('cancel_reason'),
     notes: text('notes'),
+    /**
+     * Con qué se cobró en el mostrador. NULL en los canales donde el cobro lo
+     * lleva otro módulo (tienda web con pasarela, marketplaces).
+     *
+     * Es lo que permite que una venta del POS llegue al arqueo de caja: solo
+     * `cash` mueve la gaveta.
+     */
+    paymentMethod: text('payment_method'),
     rowVersion: integer('row_version').notNull().default(1),
     acceptanceAlertedAt: timestamp('acceptance_alerted_at', {
       withTimezone: true,

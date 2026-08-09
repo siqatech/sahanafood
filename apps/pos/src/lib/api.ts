@@ -184,6 +184,34 @@ export interface TicketDeCocina {
   }>;
 }
 
+export interface Dinero {
+  minorUnits: number;
+  currency: string;
+  scale: number;
+}
+
+export interface SesionDeCaja {
+  id: string;
+  locationId: string;
+  status: 'open' | 'closing' | 'closed';
+  openingFloat: Dinero;
+  declaredCash: Dinero | null;
+  expectedCash: Dinero | null;
+  difference: Dinero | null;
+  openedAt: string;
+  closedAt: string | null;
+}
+
+export interface ArqueoDeCaja {
+  sessionId: string;
+  openingFloat: Dinero;
+  /** Fondo + entradas − salidas EN EFECTIVO: lo que debería haber en gaveta. */
+  expectedCash: Dinero;
+  byKind: Record<string, Dinero>;
+  byMethod: Record<string, Dinero>;
+  movements: number;
+}
+
 // --------------------------------------------------------------- Llamadas
 
 export const api = {
@@ -269,6 +297,53 @@ export const api = {
       : `kitchen=${encodeURIComponent(filtro.kitchenId ?? '')}`;
     return llamar<TicketDeCocina[]>(`/kitchen/queue?${q}`, {}, token);
   },
+
+  // ---------------------------------------------------------------- Caja
+  //
+  // La caja SÍ necesita red, y es una diferencia importante con la venta:
+  // abrir y cerrar turno son actos de control —quién responde del dinero— y no
+  // se pueden hacer a ciegas contra un estado local que quizá no cuadre con el
+  // servidor. Vender sin red sí; arquear sin red, no.
+
+  cajas: (token: string, locationId: string): Promise<SesionDeCaja[]> =>
+    llamar<SesionDeCaja[]>(
+      `/cash-sessions?location=${encodeURIComponent(locationId)}`,
+      {},
+      token,
+    ),
+
+  abrirCaja: (
+    token: string,
+    input: {
+      locationId: string;
+      deviceId?: string;
+      openingFloatMinor?: number;
+    },
+  ): Promise<SesionDeCaja> =>
+    llamar<SesionDeCaja>(
+      '/cash-sessions',
+      { method: 'POST', body: JSON.stringify(input) },
+      token,
+    ),
+
+  arqueo: (token: string, sessionId: string): Promise<ArqueoDeCaja> =>
+    llamar<ArqueoDeCaja>(`/cash-sessions/${sessionId}/summary`, {}, token),
+
+  cerrarCaja: (
+    token: string,
+    sessionId: string,
+    input: {
+      declaredCashMinor: number;
+      differenceReason?: string;
+      supervisorId?: string;
+      supervisorPin?: string;
+    },
+  ): Promise<SesionDeCaja> =>
+    llamar<SesionDeCaja>(
+      `/cash-sessions/${sessionId}/close`,
+      { method: 'POST', body: JSON.stringify(input) },
+      token,
+    ),
 
   /**
    * Avanza un ticket. Sin `If-Match`: la API no lo pide aquí, y mandarlo

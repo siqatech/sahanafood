@@ -39,6 +39,7 @@ import {
   ANALYTICS_CONSUMER,
 } from '../modules/analytics/index.js';
 import { AiEventHandlers, AI_CONSUMER } from '../modules/ai/index.js';
+import { CashEventHandlers, CASH_CONSUMER } from '../modules/cash/index.js';
 import { Worker } from 'bullmq';
 import {
   outboxPending,
@@ -127,6 +128,13 @@ async function bootstrap(): Promise<void> {
     {
       nombre: ANALYTICS_CONSUMER,
       handlers: app.get(AnalyticsEventHandlers).handlers(),
+    },
+    // Caja: mete la venta del mostrador en el arqueo del turno abierto. Sin
+    // este consumidor, `cash_movements` solo recibía apuntes manuales y toda
+    // caja cerraba con un sobrante del tamaño de lo vendido en efectivo.
+    {
+      nombre: CASH_CONSUMER,
+      handlers: app.get(CashEventHandlers).handlers(),
     },
     // El agente. Va el ÚLTIMO a propósito: si contestar falla, el ticket de
     // cocina y la analítica del mensaje ya están escritos en sus propias

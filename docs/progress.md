@@ -341,4 +341,18 @@ Tres decisiones del POS que no son de interfaz:
 
 **Lo que no se hizo, y por qué**: el KDS **no tiene «Deshacer»**, y la spec lo pide. Retroceder un ticket exige transiciones inversas en la máquina de estados de cocina y decidir qué pasa con un pedido que ya emitió `kitchen.order_ready`: es una regla de negocio, no un botón. Escribí uno que solo mostraba un aviso, releí mi propio comentario —«un botón que no deshace es peor que ningún botón»— y lo quité. Queda como **DT-11**. Tampoco están el cierre de caja por denominación, la impresión desde la tablet ni el modo TV; están listados en `apps/pos/README.md` y en el runbook.
 
-**Próxima acción de Claude Code:** cerrar los huecos que quedan del POS por orden de daño — cierre de caja por denominación (hoy la caja no cuadra sin él), impresión de comanda y precuenta, y DT-11.
+### La caja cuadra: la venta del mostrador llega al arqueo
+
+Al montar la pantalla de cierre apareció un defecto que llevaba ahí desde F4 y que ninguna prueba podía ver: **ninguna venta del POS entraba en `cash_movements`**. Esa tabla solo la escribían el endpoint manual y el cobro contra entrega, así que un turno con S/ 2 000 en efectivo cerraba con un «esperado» igual al fondo inicial y un sobrante exactamente del tamaño de lo vendido. Todos los días, en todos los locales.
+
+Y había un segundo eslabón roto antes: **el POS mandaba el medio de pago y el servidor lo tiraba a la basura**. `offlineOrderSchema` no declaraba `paymentMethod` y zod lo quitaba en silencio. El dato con el que se decide si una venta mueve la gaveta no llegaba nunca.
+
+Las dos piezas estaban bien por separado —la caja sabía sumar movimientos, el POS sabía cobrar, el pedido se guardaba correcto—; faltaba el cable. Es la quinta vez que este patrón aparece en el proyecto.
+
+Arreglado con la migración 0031 (`ord_orders.payment_method`, columna nueva y anulable) y un **consumidor de caja** sobre el outbox. Por evento y no llamando a Cash desde Ordering, por dos motivos: Ordering no puede depender de Cash, y sobre todo **una caja cerrada no puede tumbar una venta** — si el cobro fallara porque alguien cerró el turno por descuido, el mostrador se quedaría sin poder cobrar. Por el outbox la venta entra siempre y el apunte se registra si hay dónde.
+
+Cuatro pruebas nuevas, drenando el outbox por el camino real: la venta en efectivo sube el esperado, la de tarjeta se registra y **no** mueve la gaveta, sin turno abierto no revienta nada, y reprocesar el evento no suma dos veces.
+
+Y la pantalla que faltaba: **cierre de caja contando por denominación**, con la diferencia en vivo mientras se cuenta —que es lo que hace que quien cuenta vuelva a contar en el momento, y no que el descuadre aparezca semanas después— y motivo más PIN de supervisor ante cualquier descuadre, aunque sea de diez céntimos. La caja **necesita red** a propósito: vender sin conexión sí; arquear sin conexión, no. Y si quedan ventas sin sincronizar, la pantalla lo dice antes de dejar cerrar.
+
+**Próxima acción de Claude Code:** impresión desde el POS —comanda a cocina y precuenta— encolando al `print-agent`, que existe y todavía no recibe nada de la tablet. Después DT-11.

@@ -13,6 +13,9 @@ import { seedDemoCatalog } from '../modules/catalog/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
 import { CashService } from '../modules/cash/index.js';
 import { DeviceService } from '../modules/identity/index.js';
+import { CashEventHandlers, CASH_CONSUMER } from '../modules/cash/index.js';
+import { consumeEvent } from '../events/consumer.js';
+import { relayOnce } from '../events/outbox.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 
@@ -558,5 +561,154 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
     expect(descuento).toBeTruthy();
     expect(descuento!.fromStatus).toBe(descuento!.toStatus);
     expect(descuento!.reason).toBe('Cortesía');
+  });
+  // ------------------------------------ La venta del mostrador LLEGA a la caja
+
+  /**
+   * Drena el outbox por el camino REAL hasta el consumidor de caja.
+   *
+   * No se llama al handler a mano: lo que había roto antes era justamente el
+   * cable —el evento se publicaba y no lo escuchaba nadie—, así que la prueba
+   * recorre relay y consumidor como en producción.
+   */
+  const drenarHaciaCaja = async (): Promise<void> => {
+    const handlers = app.get(CashEventHandlers).handlers();
+    for (let vuelta = 0; vuelta < 4; vuelta++) {
+      const entregados: Array<Record<string, unknown>> = [];
+      await relayOnce(
+        pool,
+        async (evento) => {
+          entregados.push({
+            eventId: evento.id,
+            tenantId: evento.tenantId,
+            aggregateId: evento.aggregateId,
+            eventType: evento.eventType,
+            payload: evento.payload,
+            traceId: evento.traceId,
+          });
+        },
+        50,
+      );
+      if (entregados.length === 0) break;
+      for (const mensaje of entregados) {
+        await consumeEvent(
+          { pool, consumer: CASH_CONSUMER, handlers },
+          mensaje as never,
+        );
+      }
+    }
+  };
+
+  it('UNA VENTA EN EFECTIVO DEL MOSTRADOR entra en el arqueo', async () => {
+    // El fallo que esto cierra: `cash_movements` solo se escribía a mano, así
+    // que un turno con ventas en efectivo cerraba con un «esperado» igual al
+    // fondo inicial y un sobrante del tamaño exacto de lo vendido. Todos los
+    // días, en todos los locales.
+    const sesion = await abrirCaja('100.00');
+
+    const venta = await ordering.submitOffline(tenantA, {
+      clientId: `01JCAJA0000000000000000${String(++terminal).padStart(3, '0')}`,
+      brandId,
+      locationId: org.locationId,
+      channel: 'pos',
+      lines: [
+        {
+          productId: cat.polloId,
+          productName: 'Pollo',
+          quantity: 1,
+          unitPriceMinor: soles('55.00'),
+          lineTotalMinor: soles('55.00'),
+        },
+      ],
+      totalMinor: soles('55.00'),
+      paymentMethod: 'cash',
+    });
+    expect(venta.outcome).not.toBe('duplicate');
+
+    await drenarHaciaCaja();
+
+    const arqueo = await cash.summary(tenantA, sesion.id);
+    // Fondo 100 + venta 55 = 155 en la gaveta.
+    expect(arqueo.expectedCash.minorUnits).toBe(soles('155.00'));
+  });
+
+  it('una venta con TARJETA se registra pero NO mueve la gaveta', async () => {
+    // Contarla como efectivo produciría un faltante del tamaño exacto de lo
+    // cobrado con tarjeta — el mismo error, con el signo cambiado.
+    const sesion = await abrirCaja('100.00');
+
+    await ordering.submitOffline(tenantA, {
+      clientId: `01JCAJA1000000000000000${String(++terminal).padStart(3, '0')}`,
+      brandId,
+      locationId: org.locationId,
+      channel: 'pos',
+      lines: [
+        {
+          productId: cat.polloId,
+          productName: 'Pollo',
+          quantity: 1,
+          unitPriceMinor: soles('55.00'),
+          lineTotalMinor: soles('55.00'),
+        },
+      ],
+      totalMinor: soles('55.00'),
+      paymentMethod: 'card',
+    });
+    await drenarHaciaCaja();
+
+    const arqueo = await cash.summary(tenantA, sesion.id);
+    expect(arqueo.expectedCash.minorUnits).toBe(soles('100.00'));
+  });
+
+  it('SIN CAJA ABIERTA la venta no se pierde: entra igual y no revienta nada', async () => {
+    // El consumidor no puede fallar por no encontrar turno: tumbarlo dejaría
+    // sin procesar los eventos que vienen detrás —cocina, inventario,
+    // analítica— por un apunte de caja.
+    const venta = await ordering.submitOffline(tenantA, {
+      clientId: `01JCAJA2000000000000000${String(++terminal).padStart(3, '0')}`,
+      brandId,
+      locationId: org.locationId,
+      channel: 'pos',
+      lines: [
+        {
+          productId: cat.polloId,
+          productName: 'Pollo',
+          quantity: 1,
+          unitPriceMinor: soles('20.00'),
+          lineTotalMinor: soles('20.00'),
+        },
+      ],
+      totalMinor: soles('20.00'),
+      paymentMethod: 'cash',
+    });
+    await expect(drenarHaciaCaja()).resolves.toBeUndefined();
+    expect(venta.order.id).toBeTruthy();
+  });
+
+  it('reprocesar el evento NO suma la venta dos veces', async () => {
+    const sesion = await abrirCaja('100.00');
+    await ordering.submitOffline(tenantA, {
+      clientId: `01JCAJA3000000000000000${String(++terminal).padStart(3, '0')}`,
+      brandId,
+      locationId: org.locationId,
+      channel: 'pos',
+      lines: [
+        {
+          productId: cat.polloId,
+          productName: 'Pollo',
+          quantity: 1,
+          unitPriceMinor: soles('30.00'),
+          lineTotalMinor: soles('30.00'),
+        },
+      ],
+      totalMinor: soles('30.00'),
+      paymentMethod: 'cash',
+    });
+    await drenarHaciaCaja();
+    await drenarHaciaCaja();
+
+    const arqueo = await cash.summary(tenantA, sesion.id);
+    // 100 + 30, no 100 + 60. Duplicar aquí sería inventar dinero en un turno.
+    expect(arqueo.expectedCash.minorUnits).toBe(soles('130.00'));
   });
 });
