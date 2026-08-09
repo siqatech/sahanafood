@@ -389,4 +389,32 @@ Y la prueba de auditoría destapó un tercer caso que yo había cerrado de más:
 
 Queda auditado con el estado de origen y destino: sin traza, los tiempos de cocina se vuelven negociables.
 
-**Próxima acción de Claude Code:** el gate de la fase — pasar `specs/phases/` en limpio y comprobar qué queda de F5 con las tres pantallas ya en pie; y de camino revisar si alguna otra pieza construida sigue sin llamador, que es el patrón que ya ha aparecido cinco veces.
+### La sexta pieza sin llamador: la mitad saliente de las integraciones
+
+El repaso de piezas huérfanas encontró la más grande hasta ahora. `ChannelConnector` siempre tuvo dos mitades. La de ENTRADA —firma, `identify`, `parseOrder`— se cableó en F4 con la ingesta y funciona. La de SALIDA —`pushMenu`, `setAvailability`, `updateOrderStatus`, `cancelAck`— estaba implementada en el simulador, con sus pruebas en verde, y **no la llamaba nadie**. Los únicos «llamadores» que aparecían al buscar eran las propias implementaciones.
+
+Lo que eso significaba en un local de verdad es exactamente lo que RN-INT-05 advierte entre paréntesis: *el canal sigue vendiendo lo pausado = pérdida*. Se acaba el pollo, el encargado lo pausa en Sahana, el marketplace no se entera y **sigue vendiéndolo**. Cada pedido que entra por ahí es una cancelación, una penalización del canal y un cliente que esperó comida que no existía. Lo mismo con los estados: el canal nunca sabía si su pedido se aceptó o se rechazó.
+
+Ahora hay consumidor. `ChannelSyncService` + `IntegrationsEventHandlers` escuchan `catalog.availability_changed`, `catalog.published` y las transiciones del pedido, y llaman al conector de cada conexión activa de esa marca y canal. Tres decisiones:
+
+· **Se dispara por eventos, no desde Catalog ni Ordering.** Una caída de Rappi no puede impedir pausar un producto ni aceptar un pedido (RN-INT-03).
+
+· **El fallo se propaga a propósito.** El handler comparte transacción con la marca de `inbox`: al lanzar, la marca se deshace y BullMQ reintenta con backoff, que es literalmente lo que pide RN-INT-05. Tragarse el error —como sí hace mensajería, donde un aviso perdido es solo un aviso perdido— aquí dejaría el canal vendiendo un plato agotado sin reintento alguno.
+
+· **Con el cortacircuitos abierto no se propaga.** Machacar a un proveedor que ya se sabe caído no arregla nada y retrasa su recuperación. El contador del circuito no se toca desde aquí: cualquier escritura previa a lanzar se iría con el rollback. Lo abre la ingesta, que sí escribe en su propia transacción; esta ruta solo lo lee.
+
+Va **el último** de los consumidores del worker, porque es el único cuyo fallo es esperable: ponerlo antes retrasaría el ticket de cocina y el aviso al cliente por una llamada a un tercero.
+
+### Y la comprobación para que no haya una séptima
+
+Seis veces ya: `processPending` sin barrido, el consumidor del agente que no existía, `authenticateDevice` sin endpoint, `paymentMethod` descartado en el borde, la venta del POS que nunca llegaba a caja, y esto. Las seis se encontraron a mano, leyendo. `workers/wiring.test.ts` ya vigilaba dos de las tres formas de quedarse sin llamador —barrido sin arrancar, módulo con handlers sin registrar—; ahora cubre la tercera, el evento:
+
+· **Todo evento que se publica o lo escucha alguien, o está justificado por escrito.** Añadir un `enqueueEvent` sin consumidor rompe el build salvo que se apunte en `SIN_OYENTE` con el motivo. Y la lista se audita a sí misma: una excusa cuyo evento ya tiene consumidor también falla, para que no crezca hasta dejar de significar nada.
+
+· **Todo evento que se escucha lo publica alguien.** Un handler con el nombre mal escrito no da error nunca: simplemente no se ejecuta.
+
+Los tipos publicados se leen del fuente; los escuchados se sacan llamando a `handlers()` de verdad, porque varios módulos construyen sus claves con plantillas y una expresión regular se las perdería. Al montarla apareció además un falso positivo instructivo: el primer escaneo dio `order.cancelled` y `order.rejected` como «sin emisor», y resultó que sí los emite `` eventType: `order.${siguiente}` `` — por eso la prueba entiende plantillas y no solo literales.
+
+**Lo que la lista deja al descubierto y queda escrito (DT-13):** tres reglas —RN-ORD-04, RN-BIL-02 y RN-BIL-03— piden **avisar a una persona**, y hoy ese aviso muere en un evento que nadie escucha. El hecho queda registrado y se ve entrando al panel; lo que falta es que el panel te busque a ti. Con un local lo ve el encargado; con diez, no.
+
+**Próxima acción de Claude Code:** terminar el gate de F5 propiamente dicho — repasar T5.00–T5.37 contra lo construido y dejar por escrito qué queda, separando lo que es trabajo de código de lo que son entregables humanos (pentest T5.36, los tres pilotos y la medición de Lighthouse, que dependen de DT-02).

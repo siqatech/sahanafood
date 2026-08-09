@@ -20,6 +20,13 @@ Formato: CloudEvents-like `{id ulid, type, tenant_id, aggregate_id, occurred_at,
 | document.issued / document.rejected | Billing | Ordering, alertas |
 | stock.below_minimum / stock.negative | Inventory | Alertas, Catalog (opcional autopausa) |
 | catalog.availability_changed | Catalog | Integrations (propagar a canales) |
+| catalog.published | Catalog | Integrations (`pushMenu` del menú aprobado) |
+
+Los consumidores REALES de cada evento se comprueban en CI
+(`apps/api/src/workers/wiring.test.ts`): publicar un evento que no escucha
+nadie rompe el build salvo que quede justificado por escrito en la lista
+`SIN_OYENTE`, y un handler cuyo nombre de evento nadie publica —una errata que
+de otro modo no falla nunca, simplemente no se ejecuta— también.
 
 Regla: los consumidores son idempotentes y tolerantes a desorden (comparar `occurred_at`/versión antes de aplicar).
 

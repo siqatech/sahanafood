@@ -39,6 +39,10 @@ import {
   ANALYTICS_CONSUMER,
 } from '../modules/analytics/index.js';
 import { AiEventHandlers, AI_CONSUMER } from '../modules/ai/index.js';
+import {
+  IntegrationsEventHandlers,
+  INTEGRATIONS_CONSUMER,
+} from '../modules/integrations/index.js';
 import { CashEventHandlers, CASH_CONSUMER } from '../modules/cash/index.js';
 import { Worker } from 'bullmq';
 import {
@@ -142,6 +146,15 @@ async function bootstrap(): Promise<void> {
     {
       nombre: AI_CONSUMER,
       handlers: app.get(AiEventHandlers).handlers(),
+    },
+    // Salida hacia los marketplaces. Va DESPUÉS de todo lo demás porque es el
+    // único consumidor cuyo fallo es esperable —el proveedor está caído— y se
+    // propaga para que BullMQ reintente. Ponerlo antes retrasaría el ticket de
+    // cocina y el aviso al cliente hasta el siguiente intento por una llamada
+    // a un tercero.
+    {
+      nombre: INTEGRATIONS_CONSUMER,
+      handlers: app.get(IntegrationsEventHandlers).handlers(),
     },
   ];
 

@@ -22,6 +22,14 @@ export {
   type ProcessResult,
 } from './app/ingestion.service.js';
 export {
+  ChannelSyncService,
+  type ResultadoDePropagacion,
+} from './app/channel-sync.service.js';
+export {
+  IntegrationsEventHandlers,
+  INTEGRATIONS_CONSUMER,
+} from './app/integrations-event-handlers.js';
+export {
   ConnectorParseError,
   type ChannelConnector,
   type NormalizedOrder,

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { OrderingModule } from '../ordering/index.js';
 import { ConnectionService } from './app/connection.service.js';
 import { IngestionService } from './app/ingestion.service.js';
+import { ChannelSyncService } from './app/channel-sync.service.js';
+import { IntegrationsEventHandlers } from './app/integrations-event-handlers.js';
 import { WebhookController } from './api/webhook.controller.js';
 import { IntegrationsController } from './api/integrations.controller.js';
 
@@ -14,7 +16,17 @@ import { IntegrationsController } from './api/integrations.controller.js';
 @Module({
   imports: [OrderingModule],
   controllers: [WebhookController, IntegrationsController],
-  providers: [ConnectionService, IngestionService],
-  exports: [ConnectionService, IngestionService],
+  providers: [
+    ConnectionService,
+    IngestionService,
+    ChannelSyncService,
+    IntegrationsEventHandlers,
+  ],
+  exports: [
+    ConnectionService,
+    IngestionService,
+    ChannelSyncService,
+    IntegrationsEventHandlers,
+  ],
 })
 export class IntegrationsModule {}
