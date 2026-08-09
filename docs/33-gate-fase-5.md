@@ -16,7 +16,12 @@
 > alcance sí: tras firmar este gate se descubrió que **la fase no tenía
 > interfaz de usuario ninguna** —ni panel, ni POS, ni KDS— y que faltaba la
 > mitad de escritura del catálogo y la organización. Las tres deudas
-> (DT-09, DT-10, DT-11) están saldadas; se abrieron DT-12 y DT-13.
+> (DT-09, DT-10, DT-11) están saldadas. El repaso de `specs/ux/` encontró
+> después **dos pantallas más que no existían** —el centro de operaciones, sin
+> el cual no había forma de aceptar un pedido, y la bandeja de conversaciones—:
+> DT-04, DT-14 y DT-15 también quedan saldadas. Abiertas: DT-12 y DT-13. Con
+> esto, **las seis specs de `specs/ux/` tienen pantalla**, y §8.8 fija el
+> criterio de entrada de F6 que habría evitado los tres agujeros.
 
 ---
 
@@ -290,6 +295,9 @@ la pollería ficticia de las semillas demo.
 | **DT-09** | No existía ninguna interfaz: ni panel, ni POS, ni KDS | Panel Next.js (`apps/web/panel`) con sesión en cookies `httpOnly`; PWA de POS y KDS (`apps/pos`, ADR-0019) con IndexedDB, service worker propio y sesión por dispositivo + PIN, vendiendo y cobrando **sin red** |
 | **DT-10** | No había forma de crear datos de negocio | `OrganizationAdminService` y `CatalogAdminService` con `If-Match` sobre `row_version`, idempotentes por clave natural, más `setup-business` para dar de alta un negocio entero desde un archivo |
 | **DT-11** | El KDS no podía deshacer | Transición inversa `resume_preparing` en el dominio, `undoTicket` con ventana de 30 s y auditoría |
+| **DT-04** | La bandeja de excepciones tenía API y no pantalla (venció en este gate) | `/panel/excepciones` con su detalle: carta resuelta **para el canal del pedido**, modificadores obligatorios y opción de recordar el SKU |
+| **DT-15** | El centro de operaciones no existía — **y sin él no había forma de aceptar un pedido** | `/panel/operaciones` con las tres columnas de `specs/ux/05` y la cuenta atrás real hasta el rechazo automático |
+| **DT-14** | La bandeja de conversaciones no existía — una derivación bot→humano no llegaba a nadie | `/panel/conversaciones` con el resumen del bot antes que el hilo y la ventana de 24 h respetada |
 
 ### 8.3 Defectos de producción encontrados al construir esas pantallas
 
@@ -329,14 +337,38 @@ con la lista de excusas auditándose a sí misma para que no crezca hasta dejar
 de significar nada—. La cuarta comprobación es la simétrica: un handler cuyo
 evento nadie publica, que es una errata que de otro modo no falla jamás.
 
-### 8.4b DT-04, que vencía en este gate, queda saldada
+### 8.4b El repaso de `specs/ux/`: faltaban DOS pantallas más
 
-La bandeja de excepciones tenía API desde F4 y ninguna pantalla. Ahora existe
-`/panel/excepciones`, y construirla destapó dos huecos: el payload crudo del
-canal se guardaba y **no lo devolvía ninguna ruta** (`getTimeline` trae todo el
-evento menos `data`), y el formulario no resolvía **modificadores obligatorios**
-— mapear a un pollo con «Tamaño» devolvía un 422 que el operador no podía
-arreglar, con el pedido atascado en la bandeja para siempre.
+Aplicado el método que destapó DT-09 —leer la lista de specs con interfaz
+declarada y preguntar una por una si existe—, de seis specs de UX había cuatro
+construidas y **dos que no existían en absoluto**:
+
+- **Centro de operaciones** (`ux/05`, F4 básico / F5 completo). El efecto no era
+  estético: **no había forma de aceptar un pedido desde ninguna interfaz**. Los
+  canales con aceptación manual dependían de que alguien llamara al endpoint a
+  mano y, a los diez minutos, el barrido de RN-ORD-04 los rechazaba solo. Todo
+  pedido manual acababa rechazado por falta de un botón.
+- **Bandeja de conversaciones** (`ux/06`, F5). Una derivación bot→humano no
+  llegaba a nadie: el agente escribía el resumen, marcaba `handoff_at` y ahí
+  moría.
+
+Las dos existen ya. Con ellas, **las seis specs de `specs/ux/` tienen
+pantalla**.
+
+### 8.4c El mismo defecto, tres veces, en tres módulos distintos
+
+Construir esas pantallas destapó tres instancias del mismo fallo: **un dato que
+se guarda con un comentario explicando para qué, y que ninguna ruta devuelve.**
+
+| Dato | Se escribe desde | Para qué, según su propio comentario | Quién podía leerlo |
+|---|---|---|---|
+| `mapping_failed.data.rawPayload` | F4 | «sin él, resolver la excepción sería adivinar» | nadie |
+| `cnv_conversations.handoff_summary` | T5.28 | el traspaso con contexto (RN-CNV-02) | nadie |
+| modificadores en `resolve-mapping` | F4 | mapear un plato con talla obligatoria | no había formulario |
+
+Ninguno lo detectó una prueba porque todas las pruebas llamaban a los servicios
+directamente. Es la misma familia que las seis piezas sin llamador de §8.3, con
+una diferencia: aquí lo que falta no es el llamador sino **la salida**.
 
 ### 8.5 Deuda nueva
 
@@ -353,12 +385,13 @@ arreglar, con el pedido atascado en la bandeja para siempre.
 | API (integración contra Postgres + Redis reales) | 573 | **633** |
 | `@sahana/print-agent` | 117 | **117** |
 | `@sahana/ai-prompts` | 7 | **7** |
-| `@sahana/pos` (nuevo) | — | **23** |
-| Navegador | 6 (tienda) | **14** (tienda + panel) |
-| **Total** | **1 141** | **1 235** |
+| `@sahana/pos` | — | **23** |
+| `@sahana/web` (nuevo: plazos de la torre) | — | **7** |
+| Navegador | 6 (tienda) | **20** (tienda + panel) |
+| **Total** | **1 141** | **1 251** |
 
-Aislamiento de tenant: **66 casos** bloqueantes. dependency-cruiser: **365
-módulos, 1 289 dependencias, 0 violaciones**. Migraciones: **31**, todas
+Aislamiento de tenant: **67 casos** bloqueantes. dependency-cruiser: **380
+módulos, 1 317 dependencias, 0 violaciones**. Migraciones: **31**, todas
 admiten volver a la imagen anterior.
 
 ### 8.7 El veredicto no cambia, pero la lección sí
@@ -366,6 +399,26 @@ admiten volver a la imagen anterior.
 Sigue siendo **APTO CON EXCEPCIONES**, y las excepciones siguen siendo las
 mismas cuatro con la misma causa (DT-02). Lo que cambia es qué se le pide a un
 gate: **comprobar el backlog no es comprobar la fase**. Un backlog puede estar
-completo y dejar fuera media spec sin que ningún criterio se ponga rojo. El
-gate de F6 tiene que empezar por la lista de specs con interfaz declarada y
-preguntar, una por una, si existe — antes de mirar una sola prueba.
+completo y dejar fuera media spec sin que ningún criterio se ponga rojo — pasó
+tres veces (DT-09, DT-14, DT-15) y las tres se descubrieron leyendo, no
+fallando.
+
+### 8.8 Criterio de entrada de F6 (obligatorio antes de abrir la fase)
+
+Se ejecuta **antes** de mirar una sola prueba, y en este orden:
+
+1. **Superficie de spec.** Para cada `specs/modules/*.md` y `specs/ux/*.md` con
+   alcance en la fase que se cierra: ¿existe la API? ¿existe la pantalla? Una
+   spec con interfaz declarada y sin pantalla es un agujero, no alcance
+   pendiente — el alcance pendiente está escrito en la fase siguiente.
+2. **Superficie de salida.** Para cada dato que se escribe con un comentario
+   que explica para qué sirve: ¿hay una ruta que lo devuelva? Los tres casos de
+   §8.4c habrían caído aquí.
+3. **Cableado.** `apps/api/src/workers/wiring.test.ts` ya lo automatiza para
+   barridos, consumidores y eventos, y bloquea en CI. Nada que hacer a mano.
+4. Y solo entonces, los criterios comunes de `specs/phases/_gates-comunes.md`.
+
+Lo que queda del panel son secciones que `specs/ux/03` enumera y que aún no
+existen —Pedidos con buscador y timeline, Inventario, Caja y comprobantes,
+Clientes, Configuración completa, Novedades—. Todas son de **consulta** y
+ninguna bloquea operar, que es la diferencia con las tres que sí eran agujeros.
