@@ -154,6 +154,9 @@ services:
       # servicio, no por el dominio público. Un salto de más por internet en
       # cada carga de catálogo se nota en el móvil de quien está pidiendo.
       SAHANA_API_URL: ${SAHANA_API_URL:-http://api:3000}
+      # Dominio del panel. Sin él, `/panel` se sirve también en los dominios de
+      # las tiendas de los clientes; con él, ahí responde 404 (ver runbook §6).
+      SAHANA_PANEL_HOST: ${SAHANA_PANEL_HOST:-}
     ports:
       - '${WEB_BIND:-127.0.0.1}:3001:3001'
 

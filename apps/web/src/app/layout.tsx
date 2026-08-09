@@ -1,62 +1,23 @@
 import type { ReactNode } from 'react';
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import { shop } from '../lib/api';
 import './globals.css';
 
 /**
- * El marco de la tienda.
+ * Marco raíz de `apps/web`, que sirve DOS superficies distintas:
  *
- * El nombre de la marca sale del HOST, resuelto en el servidor: es la misma
- * regla que rige toda la tienda y aquí es visible a simple vista — no hay
- * ningún parámetro del que sacarlo.
+ *  · La **tienda** del comprador — `(tienda)`, resuelta por el `Host`.
+ *  · El **panel** de gestión — `/panel`, con sesión.
+ *
+ * Aquí no va nada más que `<html>` y `<body>`, y eso es el punto. Antes este
+ * archivo resolvía la marca por el host y pintaba la cabecera de la tienda: si
+ * el panel colgara de él, cada pantalla de gestión haría una llamada a la API
+ * de tienda para pintar un rótulo que no le corresponde, y en un host que no es
+ * de ninguna tienda esa llamada falla. Cada superficie tiene su usuario y su
+ * contexto (docs/25); comparten el documento, no el marco.
  */
-
-export async function generateMetadata(): Promise<Metadata> {
-  try {
-    const ctx = await shop.context();
-    return {
-      title: ctx.brandName,
-      description: `Pide en línea de ${ctx.brandName}.`,
-    };
-  } catch {
-    // Un host sin tienda no debe reventar el marco: la página de dentro ya
-    // explica lo que pasa.
-    return { title: 'Tienda' };
-  }
-}
-
-export default async function RootLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  let brandName = 'Tienda';
-  try {
-    brandName = (await shop.context()).brandName;
-  } catch {
-    // Se deja el rótulo neutro.
-  }
-
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="es">
-      <body>
-        <header className="cabecera">
-          <Link href="/" className="marca">
-            {brandName}
-          </Link>
-          <Link href="/carrito" className="enlace-carrito">
-            Carrito
-          </Link>
-        </header>
-        <main>{children}</main>
-        <footer className="pie">
-          <p>
-            Los precios incluyen IGV. Al pedir aceptas nuestros términos y la
-            política de privacidad.
-          </p>
-        </footer>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -1,0 +1,306 @@
+/*
+ * Estilos del panel de gestión (specs/ux/03, docs/25).
+ *
+ * Densidad «gestión», no «operación»: el panel se lee, no se toca con prisa.
+ * Y **consultar es mobile-first**: el dueño abre el celular a las 11 pm para
+ * ver cómo fue el día, así que las tarjetas de la portada apilan en una columna
+ * y solo se reparten cuando hay ancho. Configurar sí es de escritorio, y por
+ * eso las tablas de la carta se desplazan en horizontal en vez de encogerse
+ * hasta ser ilegibles.
+ *
+ * Va aparte de `globals.css` —que es de la tienda— porque son dos superficies
+ * con dos usuarios distintos, y mezclarlas obliga a que cada cambio de una
+ * pase por la revisión de la otra.
+ */
+
+.panel {
+  --panel-fondo: #f6f7f9;
+  --panel-tarjeta: #ffffff;
+  --panel-texto: #16181d;
+  --panel-suave: #5b6270;
+  --panel-borde: #dfe3ea;
+  --panel-acento: #14532d;
+  --panel-sube: #15803d;
+  --panel-baja: #b91c1c;
+
+  min-height: 100vh;
+  background: var(--panel-fondo);
+  color: var(--panel-texto);
+}
+
+.panel__cabecera {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  background: var(--panel-tarjeta);
+  border-bottom: 1px solid var(--panel-borde);
+}
+
+.panel__marca {
+  font-weight: 700;
+  color: var(--panel-acento);
+  text-decoration: none;
+}
+
+.panel__nav {
+  display: flex;
+  gap: 16px;
+  margin-right: auto;
+}
+
+.panel__nav a {
+  color: var(--panel-suave);
+  text-decoration: none;
+  font-size: 0.95rem;
+  padding: 6px 0;
+}
+
+.panel__nav a:hover {
+  color: var(--panel-texto);
+}
+
+.panel__salir {
+  width: auto;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  background: transparent;
+  color: var(--panel-suave);
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+}
+
+.panel__cuerpo {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.panel h1 {
+  font-size: 1.35rem;
+  margin: 0 0 4px;
+}
+
+.panel h2 {
+  font-size: 1.05rem;
+  margin: 28px 0 12px;
+}
+
+.panel__subtitulo {
+  color: var(--panel-suave);
+  font-size: 0.9rem;
+  margin: 0 0 20px;
+}
+
+/* --- Tarjetas de la portada ------------------------------------------- */
+
+.tarjetas {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .tarjetas {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
+
+.tarjeta {
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.tarjeta__rotulo {
+  color: var(--panel-suave);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+}
+
+.tarjeta__cifra {
+  /* Cifras tabulares SIEMPRE en dinero (docs/25 §4): un cierre de caja se lee
+     en columna, y con anchos distintos por dígito no se puede. */
+  font-variant-numeric: tabular-nums;
+  font-size: 1.7rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.tarjeta__pie {
+  color: var(--panel-suave);
+  font-size: 0.85rem;
+  margin: 6px 0 0;
+}
+
+.sube {
+  color: var(--panel-sube);
+  font-weight: 600;
+}
+
+.baja {
+  color: var(--panel-baja);
+  font-weight: 600;
+}
+
+/* --- Tablas ------------------------------------------------------------ */
+
+.tabla-envoltorio {
+  overflow-x: auto;
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--panel-borde);
+  white-space: nowrap;
+}
+
+th {
+  color: var(--panel-suave);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* Dinero a la derecha y tabular, sin excepción (docs/25 §4). */
+.dinero {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.etiqueta {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--panel-borde);
+  color: var(--panel-suave);
+}
+
+.etiqueta--pausado {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #fcd34d;
+}
+
+.etiqueta--sin-precio {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+/* --- Formularios ------------------------------------------------------- */
+
+.panel form.en-linea {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.panel input[type='text'],
+.panel input[type='email'],
+.panel input[type='password'],
+.panel input[type='number'] {
+  padding: 9px 10px;
+  font-size: 0.95rem;
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  font-family: inherit;
+  background: #fff;
+  width: 100%;
+}
+
+.panel input.corto {
+  width: 110px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel button {
+  width: auto;
+  padding: 9px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--panel-acento);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.panel button.discreto {
+  background: transparent;
+  color: var(--panel-suave);
+  border: 1px solid var(--panel-borde);
+}
+
+.panel label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.panel .campo {
+  margin-bottom: 14px;
+}
+
+.acceso {
+  max-width: 360px;
+  margin: 8vh auto 0;
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.acceso button {
+  width: 100%;
+}
+
+.panel__error {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  font-size: 0.9rem;
+}
+
+.panel__vacio {
+  background: var(--panel-tarjeta);
+  border: 1px dashed var(--panel-borde);
+  border-radius: 12px;
+  padding: 24px;
+  color: var(--panel-suave);
+}
+
+.ficha {
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}

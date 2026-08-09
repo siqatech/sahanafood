@@ -8,6 +8,7 @@ import {
   AnalyticsService,
   type BrandChannelProfitability,
   type ReconciliationResult,
+  type TodaySummary,
 } from '../app/analytics.service.js';
 
 /**
@@ -20,6 +21,20 @@ import {
 @Controller({ path: 'analytics', version: '1' })
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
+
+  /**
+   * «¿Cómo vamos hoy?»: lo primero que ve el dueño al abrir el panel.
+   *
+   * Sin parámetros a propósito. El día se corta en la zona del local y no en
+   * UTC —un pedido de las 23:40 en Lima es del día 7, no del 8—, así que
+   * dejar que el cliente mande la fecha solo serviría para que el panel y la
+   * conciliación hablaran de días distintos.
+   */
+  @Get('today')
+  @RequirePermission('reports.read')
+  today(@Req() req: AuthenticatedRequest): Promise<TodaySummary> {
+    return this.analytics.today(req.auth!.tid);
+  }
 
   /**
    * Rentabilidad por marca y canal.

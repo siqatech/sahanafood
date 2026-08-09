@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import { removeLine, applyCoupon, type ActionState } from '../actions';
-import type { Cart } from '../../lib/api';
+import type { Cart } from '../../../lib/api';
 
 /**
  * Los dos formularios del carrito: quitar una línea y aplicar un cupón.

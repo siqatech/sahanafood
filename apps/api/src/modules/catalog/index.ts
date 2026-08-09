@@ -16,6 +16,7 @@ export {
   CatalogVersionConflictError,
   type CategoryView,
   type ProductView,
+  type AdminProductView,
   type PriceView,
   type ModifierGroupView,
   type ModifierOptionView,

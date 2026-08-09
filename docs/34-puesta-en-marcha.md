@@ -63,7 +63,7 @@ curl -s localhost:3000/api/v1/health/ready
 
 `ready` exige que la base responda **y** que el esquema alcance al que trae la
 imagen. Un esquema *por delante* también está listo: es el estado normal tras
-revertir (§7).
+revertir (§9).
 
 ## 4. Dar de alta al primer cliente
 
@@ -85,18 +85,17 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
 
 Devuelve el `tenantId` en JSON.
 
-**Aquí hay que decir la verdad: NO existe todavía un panel de administración.**
-La cuenta creada sirve para la API, no para una pantalla. Lo que falta —marcas,
-locales, zona de reparto, horario, carta y dominio de la tienda— se configura
-con el comando de la sección siguiente, o llamando a la API de escritura
-(`POST /api/v1/org/…` y `POST /api/v1/catalog/…`) con esa cuenta. El panel está
-especificado (`specs/ux/03-panel.md`, asignado a F4–F5) y **no se construyó**;
-ver `docs/23-technical-debt.md` (DT-09).
+Con esa cuenta ya se entra al **panel** (§6): ver cómo va el día, editar la
+carta y sus precios, pausar un plato, dar de alta marcas y locales. Lo que el
+panel todavía no cubre —zonas de reparto, horarios, cocinas y estaciones— va por
+el archivo de la sección siguiente. **No hay POS ni KDS**: el mostrador y la
+cocina siguen sin interfaz (`docs/23-technical-debt.md`, DT-09).
 
 ## 5. Configurar el negocio
 
-Sin panel, la configuración va por archivo. Se describe el negocio una vez y se
-aplica de golpe — que además es lo que hace repetible dar de alta a diez
+La configuración inicial va por archivo. El panel edita la carta y da de alta
+marcas y locales, pero la empresa —con su RUC—, las zonas de reparto y los
+horarios se describen aquí. Y es lo que hace repetible dar de alta a diez
 clientes en vez de a uno:
 
 ```bash
@@ -121,7 +120,31 @@ El ejemplo del repositorio **se aplica en CI de punta a punta**
 se pide un pedido y se comprueba que cobra el precio del archivo. Un ejemplo que
 nadie ha ejecutado se descubre roto con el cliente delante.
 
-## 6. Poner la tienda en un dominio
+## 6. El panel
+
+```
+https://<dominio-del-panel>/panel
+```
+
+Se entra con la cuenta de §4. La sesión son dos cookies `httpOnly` puestas por
+el servidor: el token nunca llega a JavaScript, y el tenant sale del token, no
+de la URL.
+
+**Ponle un dominio propio y decláralo en `SAHANA_PANEL_HOST`.** Sin esa
+variable el panel se sirve en cualquier host, incluidos los de las tiendas de
+tus clientes: `polleria.pe/panel` enseñaría la pantalla de acceso de la
+plataforma dentro de una tienda ajena. No hay fuga de datos —el tenant sale del
+token— pero un formulario de acceso donde nadie lo espera es donde se pescan
+contraseñas. Con la variable puesta, en cualquier otro host el panel responde
+404, como cualquier ruta que no existe.
+
+Lo que hay hoy: portada «¿cómo vamos hoy?» (ventas, pedidos, ticket promedio y
+pedidos en marcha, comparados con el mismo día de la semana pasada), carta
+—precios por canal, pausar y reactivar, añadir platos— y negocio —marcas y
+locales—. Lo que no: pedidos, inventario, caja, clientes, integraciones. Está
+especificado en `specs/ux/03-panel.md` y se construye por partes.
+
+## 7. Poner la tienda en un dominio
 
 El tenant de cada tienda **sale del `Host`** y de nada más. Los pasos son:
 
@@ -134,7 +157,7 @@ El tenant de cada tienda **sale del `Host`** y de nada más. Los pasos son:
 Si el proxy reescribe el `Host`, **todas las tiendas resolverán a la misma
 marca**. Es el fallo más caro posible aquí y es silencioso: la página carga.
 
-## 7. Copias de seguridad — responsabilidad de quien levanta
+## 8. Copias de seguridad — responsabilidad de quien levanta
 
 En este despliegue Postgres vive en el mismo servidor. **Nadie hace copias por
 ti.** Lo mínimo antes de tener un cliente vendiendo:
@@ -148,7 +171,7 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
 Diario, **fuera de la máquina**, y probando la restauración de vez en cuando:
 una copia que nadie ha restaurado nunca no es una copia, es una carpeta.
 
-## 8. Desplegar una versión nueva, y revertirla
+## 9. Desplegar una versión nueva, y revertirla
 
 Las imágenes se fijan por **tag**, nunca `latest`: revertir es volver a poner el
 tag anterior, y con `latest` no hay tag anterior al que volver.
@@ -169,27 +192,27 @@ a la versión anterior: lo impide el gate `pnpm migrations:check`, que corre en
 CI y rechaza `DROP COLUMN`, renombrados, cambios de tipo y `NOT NULL` sin
 `DEFAULT`. Las dos piezas son la misma garantía (docs/17, T5.35).
 
-## 9. Qué mirar cuando algo va mal
+## 10. Qué mirar cuando algo va mal
 
 | Síntoma | Dónde mirar |
 |---|---|
 | La API reinicia en bucle | `docker logs sahana-api-1`. Casi siempre es configuración: el proceso valida al arrancar y prefiere no arrancar |
 | `/health/ready` dice `not_ready` con `database: ok` | El esquema va por detrás de la imagen: falta correr `migrate` |
-| Una tienda enseña la carta de otra | El proxy está reescribiendo el `Host` (§6) |
+| Una tienda enseña la carta de otra | El proxy está reescribiendo el `Host` (§7) |
 | Los pedidos no llegan a cocina | El worker. `docker logs sahana-worker-1`: al arrancar imprime qué barridos y qué consumidores tiene activos |
 | La cola crece | Métricas `outbox_pending` y `outbox_oldest_pending_seconds` (docs/18). Más de 1 000 pendientes es alerta |
 
-## 10. Lo que este despliegue NO trae
+## 11. Lo que este despliegue NO trae
 
 Se dice aquí para que nadie lo descubra el día que haga falta:
 
 - **Alta disponibilidad.** Un servidor. Si se cae, se cae todo.
-- **Copias gestionadas.** Ver §7.
+- **Copias gestionadas.** Ver §8.
 - **Escalado horizontal.** La API y el worker escalan con réplicas, pero el
   Postgres local no.
 - **Canario.** El reparto de tráfico al 10 % necesita balanceador (**DT-02**).
   Lo que sí está: revertir sin tocar la base.
 - **Certificados.** Los pone el proxy.
-- **Panel de administración, POS y KDS.** No existen (DT-09). El negocio vende
-  por la tienda web y por el agente de WhatsApp; el mostrador y la pantalla de
-  cocina todavía no tienen interfaz.
+- **POS y KDS.** No existen (DT-09). El panel ya está (§6), pero el mostrador y
+  la pantalla de cocina siguen sin interfaz: el negocio vende por la tienda web
+  y por el agente de WhatsApp.

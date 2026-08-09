@@ -31,6 +31,7 @@ import {
   type ModifierOptionView,
   type PriceView,
   type ProductView,
+  type AdminProductView,
 } from '../app/catalog-admin.service.js';
 
 /** Endpoints de catálogo (spec 04). */
@@ -237,6 +238,23 @@ export class CatalogController {
 @Controller({ path: 'catalog', version: '1' })
 export class CatalogAdminController {
   constructor(private readonly admin: CatalogAdminService) {}
+
+  /**
+   * La carta tal como está, para el panel. Incluye lo que la tienda oculta:
+   * el producto sin precio —el que hay que arreglar— y el pausado —el que hay
+   * que reactivar—. Con `catalog.read`: mirar la carta no es editarla.
+   */
+  @Get('products')
+  @RequirePermission('catalog.read')
+  products(
+    @Req() req: AuthenticatedRequest,
+    @Query('brand') brand?: string,
+  ): Promise<AdminProductView[]> {
+    if (!brand) {
+      throw new ValidationError('Se requiere el parámetro brand.');
+    }
+    return this.admin.listProducts(req.auth!.tid, { brandId: brand });
+  }
 
   @Post('categories')
   @RequirePermission('catalog.write')

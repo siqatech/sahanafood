@@ -4,6 +4,8 @@ export {
   AnalyticsService,
   type BrandChannelProfitability,
   type ReconciliationResult,
+  type TodaySummary,
+  type TodaySlice,
 } from './app/analytics.service.js';
 export {
   AnalyticsEventHandlers,

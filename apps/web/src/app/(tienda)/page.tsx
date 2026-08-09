@@ -1,5 +1,5 @@
-import { shop, ApiError, type CatalogProduct } from '../lib/api';
-import { formatMoney } from '../lib/money';
+import { shop, ApiError, type CatalogProduct } from '../../lib/api';
+import { formatMoney } from '../../lib/money';
 import { AddToCartForm } from './add-to-cart-form';
 
 /**

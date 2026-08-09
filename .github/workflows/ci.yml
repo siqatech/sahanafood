@@ -150,15 +150,20 @@ jobs:
         run: pnpm --filter @sahana/web budget
 
   # ---------------------------------------------------------------------------
-  # Navegador: la tienda, vista como la ve un cliente (ADR-0018, salda DT-08).
+  # Navegador: la tienda y el PANEL, vistos como los ve quien los usa
+  # (ADR-0018, salda DT-08 y cubre DT-09).
   #
   # Job propio y no un paso más del de integración porque necesita otra cosa:
   # la API y Next levantados a la vez, y un navegador. Tres fallos reales de
   # T5.08-T5.14 pasaron typecheck, lint y las 484 pruebas de la API — los tres
   # se veían igual: la página cargaba.
+  #
+  # El panel entra aquí por el mismo motivo y uno más: su sesión es una cookie
+  # `httpOnly` puesta por el servidor de Next, así que solo un navegador con su
+  # tarro de cookies recorre el camino real.
   # ---------------------------------------------------------------------------
   browser:
-    name: Browser (tienda)
+    name: Browser (tienda · panel)
     runs-on: ubuntu-latest
     services:
       postgres:

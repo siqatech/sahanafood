@@ -91,6 +91,29 @@ export interface ModifierOptionView {
   sortOrder: number;
 }
 
+/**
+ * Un producto visto por quien administra la carta: con TODOS sus precios por
+ * ámbito y sus pausas, incluidos los que la tienda oculta.
+ */
+export interface AdminProductView {
+  id: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  sku: string | null;
+  name: string;
+  active: boolean;
+  isCombo: boolean;
+  prepMinutes: number;
+  rowVersion: number;
+  prices: Array<{
+    channel: string | null;
+    locationId: string | null;
+    price: string;
+    active: boolean;
+  }>;
+  pauses: Array<{ channel: string; until: string | null }>;
+}
+
 export interface PriceView {
   id: string;
   productId: string;
@@ -713,6 +736,109 @@ export class CatalogAdminService {
         input.productId,
         { groupId: input.groupId },
       );
+    });
+  }
+
+  // -------------------------------------------------------------- Listado
+
+  /**
+   * La carta **tal como está**, para quien la administra.
+   *
+   * No es `getResolvedCatalog` con otro nombre, y la diferencia es justo lo que
+   * hace falta aquí: aquel omite a propósito los productos sin precio para el
+   * canal y los pausados, porque un cliente no debe verlos. Un panel que usara
+   * esa vista **no podría enseñar el producto al que le falta el precio** —el
+   * que hay que arreglar— ni el que está pausado —el que hay que reactivar—.
+   * Sería una pantalla que oculta exactamente el trabajo pendiente.
+   *
+   * Devuelve todos los precios por ámbito, no uno resuelto: quien edita la
+   * carta necesita ver que el mismo plato cuesta 55 de base y 69 en un
+   * marketplace.
+   */
+  async listProducts(
+    tenantId: string,
+    query: { brandId: string },
+  ): Promise<AdminProductView[]> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows: productos } = await ctx.client.query<{
+        id: string;
+        category_id: string | null;
+        category_name: string | null;
+        sku: string | null;
+        name: string;
+        active: boolean;
+        is_combo: boolean;
+        prep_minutes: number;
+        row_version: number;
+      }>(
+        `SELECT p.id, p.category_id, c.name AS category_name, p.sku, p.name,
+                p.active, p.is_combo, p.prep_minutes, p.row_version
+           FROM cat_products p
+           LEFT JOIN cat_categories c ON c.id = p.category_id
+          WHERE p.brand_id = $1
+          ORDER BY c.sort_order NULLS LAST, c.name NULLS LAST, p.name`,
+        [query.brandId],
+      );
+      if (productos.length === 0) return [];
+
+      const ids = productos.map((p) => p.id);
+      const { rows: precios } = await ctx.client.query<{
+        product_id: string;
+        channel: string | null;
+        location_id: string | null;
+        price: string;
+        active: boolean;
+      }>(
+        `SELECT product_id, channel, location_id, price, active
+           FROM cat_prices WHERE product_id = ANY($1::uuid[])
+          ORDER BY channel NULLS FIRST`,
+        [ids],
+      );
+      const { rows: pausas } = await ctx.client.query<{
+        product_id: string;
+        channel: string;
+        until: Date | null;
+      }>(
+        `SELECT product_id, channel, until
+           FROM cat_product_pauses WHERE product_id = ANY($1::uuid[])`,
+        [ids],
+      );
+
+      const preciosPor = new Map<string, AdminProductView['prices']>();
+      for (const p of precios) {
+        const lista = preciosPor.get(p.product_id) ?? [];
+        lista.push({
+          channel: p.channel,
+          locationId: p.location_id,
+          price: p.price,
+          active: p.active,
+        });
+        preciosPor.set(p.product_id, lista);
+      }
+
+      const pausasPor = new Map<string, AdminProductView['pauses']>();
+      for (const p of pausas) {
+        const lista = pausasPor.get(p.product_id) ?? [];
+        lista.push({
+          channel: p.channel,
+          until: p.until ? p.until.toISOString() : null,
+        });
+        pausasPor.set(p.product_id, lista);
+      }
+
+      return productos.map((p) => ({
+        id: p.id,
+        categoryId: p.category_id,
+        categoryName: p.category_name,
+        sku: p.sku,
+        name: p.name,
+        active: p.active,
+        isCombo: p.is_combo,
+        prepMinutes: p.prep_minutes,
+        rowVersion: p.row_version,
+        prices: preciosPor.get(p.id) ?? [],
+        pauses: pausasPor.get(p.id) ?? [],
+      }));
     });
   }
 

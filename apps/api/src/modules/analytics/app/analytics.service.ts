@@ -61,6 +61,45 @@ export interface ReconciliationResult {
   documentsWithoutSale: number;
 }
 
+/** Una línea del resumen de hoy: por marca o por canal, misma forma. */
+export interface TodaySlice {
+  key: string;
+  label: string;
+  orders: number;
+  cancelled: number;
+  netRevenue: string;
+}
+
+/**
+ * «¿Cómo vamos hoy?» — lo que el panel enseña al abrirse (specs/ux/03).
+ *
+ * La comparación es contra el **mismo día de la semana pasada** y no contra
+ * ayer, porque un martes no se parece a un lunes en un restaurante: comparar
+ * con ayer produce alarmas los lunes y euforia los viernes, y en las dos el
+ * dueño acaba ignorando el número.
+ */
+export interface TodaySummary {
+  businessDate: string;
+  comparedDate: string;
+  orders: number;
+  cancelled: number;
+  netRevenue: string;
+  averageTicket: string;
+  /** Lo mismo el mismo día de la semana pasada, para tener con qué comparar. */
+  comparedOrders: number;
+  comparedNetRevenue: string;
+  /**
+   * Variación de ingresos contra la semana pasada, en puntos básicos.
+   * `null` cuando no hubo venta ese día: dividir entre cero no es «+100 %», es
+   * «no hay con qué comparar», y decir lo primero es mentir con un número.
+   */
+  changeBps: number | null;
+  byBrand: TodaySlice[];
+  byChannel: TodaySlice[];
+  /** Pedidos vivos AHORA: los que la cocina todavía tiene entre manos. */
+  activeNow: number;
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -281,6 +320,142 @@ export class AnalyticsService {
       );
 
       return rows.map((r) => this.aVista(r));
+    });
+  }
+
+  /**
+   * Resumen de hoy para la portada del panel (specs/ux/03).
+   *
+   * Sale de la MISMA proyección que la rentabilidad, no de `ord_orders`: un
+   * `GROUP BY` sobre la tabla transaccional a las 20:30 de un viernes compite
+   * con las filas que está cerrando la caja, y el dueño mirando su celular a
+   * esa hora es justo el caso que hay que soportar.
+   *
+   * La única excepción son los **pedidos vivos ahora**, que por definición no
+   * están en una proyección diaria y se cuentan con un `count(*)` filtrado por
+   * estado: son decenas de filas, no un agregado del histórico.
+   */
+  async today(tenantId: string, at: Date = new Date()): Promise<TodaySummary> {
+    const hoy = this.aFechaNegocio(at);
+    const haceUnaSemana = this.aFechaNegocio(
+      new Date(at.getTime() - 7 * 24 * 3_600_000),
+    );
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        business_date: string;
+        brand_id: string;
+        brand_name: string;
+        channel: string;
+        orders: string;
+        cancelled: string;
+        gross_revenue: string;
+        discounts: string;
+      }>(
+        `SELECT s.business_date::text AS business_date,
+                s.brand_id, b.name AS brand_name, s.channel,
+                sum(s.orders)::text AS orders,
+                sum(s.cancelled)::text AS cancelled,
+                sum(s.gross_revenue)::text AS gross_revenue,
+                sum(s.discounts)::text AS discounts
+           FROM ana_daily_sales s
+           JOIN org_brands b ON b.id = s.brand_id
+          WHERE s.business_date IN ($1::date, $2::date)
+          GROUP BY s.business_date, s.brand_id, b.name, s.channel`,
+        [hoy, haceUnaSemana],
+      );
+
+      const neto = (r: { gross_revenue: string; discounts: string }): Money =>
+        this.aMoney(r.gross_revenue).subtract(this.aMoney(r.discounts));
+
+      const deHoy = rows.filter((r) => r.business_date === hoy);
+      const deLaSemanaPasada = rows.filter(
+        (r) => r.business_date === haceUnaSemana,
+      );
+
+      const sumar = (
+        filas: typeof rows,
+        clave: (r: (typeof rows)[number]) => { key: string; label: string },
+      ): TodaySlice[] => {
+        const acumulado = new Map<string, TodaySlice>();
+        for (const r of filas) {
+          const { key, label } = clave(r);
+          const previo = acumulado.get(key) ?? {
+            key,
+            label,
+            orders: 0,
+            cancelled: 0,
+            netRevenue: '0.0000',
+          };
+          acumulado.set(key, {
+            key,
+            label,
+            orders: previo.orders + Number(r.orders),
+            cancelled: previo.cancelled + Number(r.cancelled),
+            netRevenue: this.aMoney(previo.netRevenue)
+              .add(neto(r))
+              .toDecimalString(),
+          });
+        }
+        // De mayor a menor venta: lo que el dueño quiere ver primero es qué
+        // marca y qué canal están tirando hoy.
+        return [...acumulado.values()].sort(
+          (a, b) =>
+            this.aMoney(b.netRevenue).minorUnits -
+            this.aMoney(a.netRevenue).minorUnits,
+        );
+      };
+
+      const totalDe = (
+        filas: typeof rows,
+      ): { pedidos: number; neto: Money } => ({
+        pedidos: filas.reduce((n, r) => n + Number(r.orders), 0),
+        neto: filas.reduce(
+          (acc, r) => acc.add(neto(r)),
+          Money.fromMinor(0, 'PEN'),
+        ),
+      });
+
+      const hoyTotal = totalDe(deHoy);
+      const antesTotal = totalDe(deLaSemanaPasada);
+      const canceladosHoy = deHoy.reduce((n, r) => n + Number(r.cancelled), 0);
+
+      const { rows: vivos } = await ctx.client.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM ord_orders
+          WHERE status IN ('received','needs_review','scheduled','accepted',
+                           'preparing','ready','packed','dispatched')`,
+      );
+
+      return {
+        businessDate: hoy,
+        comparedDate: haceUnaSemana,
+        orders: hoyTotal.pedidos,
+        cancelled: canceladosHoy,
+        netRevenue: hoyTotal.neto.toDecimalString(),
+        averageTicket:
+          hoyTotal.pedidos === 0
+            ? '0.0000'
+            : Money.fromMinor(
+                Math.round(hoyTotal.neto.minorUnits / hoyTotal.pedidos),
+                'PEN',
+              ).toDecimalString(),
+        comparedOrders: antesTotal.pedidos,
+        comparedNetRevenue: antesTotal.neto.toDecimalString(),
+        changeBps:
+          antesTotal.neto.minorUnits === 0
+            ? null
+            : Math.round(
+                ((hoyTotal.neto.minorUnits - antesTotal.neto.minorUnits) /
+                  antesTotal.neto.minorUnits) *
+                  10_000,
+              ),
+        byBrand: sumar(deHoy, (r) => ({
+          key: r.brand_id,
+          label: r.brand_name,
+        })),
+        byChannel: sumar(deHoy, (r) => ({ key: r.channel, label: r.channel })),
+        activeNow: Number(vivos[0]?.n ?? '0'),
+      };
     });
   }
 

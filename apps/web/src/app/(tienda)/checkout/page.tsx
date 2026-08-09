@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { shop, type Cart } from '../../lib/api';
-import { getCartToken } from '../../lib/cart-cookie';
-import { formatDecimal } from '../../lib/money';
+import { shop, type Cart } from '../../../lib/api';
+import { getCartToken } from '../../../lib/cart-cookie';
+import { formatDecimal } from '../../../lib/money';
 import { CheckoutForm } from './checkout-form';
 
 /**

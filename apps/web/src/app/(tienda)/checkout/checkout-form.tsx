@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import { setAddress, confirmOrder, type ActionState } from '../actions';
-import { TEXTO_CONSENTIMIENTO } from '../../lib/consent';
+import { TEXTO_CONSENTIMIENTO } from '../../../lib/consent';
 
 /**
  * Dirección y datos del cliente.

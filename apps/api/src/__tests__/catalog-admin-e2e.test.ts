@@ -493,6 +493,49 @@ suite('Alta de la carta', () => {
     expect(r.body.detail).toContain('menor que el mínimo');
   });
 
+  it('EL LISTADO DEL PANEL enseña lo que la tienda oculta', async () => {
+    // La diferencia con `getResolvedCatalog` es justo lo que hace falta aquí:
+    // aquel omite a propósito el producto sin precio y el pausado, porque un
+    // cliente no debe verlos. Un panel que usara esa vista no podría enseñar
+    // el producto al que le falta el precio —el que hay que arreglar— ni el
+    // pausado —el que hay que reactivar—.
+    const a = como(tokenA);
+    const otra = await montarNegocio(tokenA, '20512345604', 'Panel');
+
+    await a(http().post('/api/v1/catalog/products'))
+      .send({ brandId: otra.brandId, sku: 'SIN-PRECIO', name: 'A medio subir' })
+      .expect(201);
+
+    const pausado = await a(http().post('/api/v1/catalog/products'))
+      .send({ brandId: otra.brandId, sku: 'PAUSADO', name: 'Sin pollo hoy' })
+      .expect(201);
+    await a(http().post('/api/v1/catalog/prices'))
+      .send({ productId: pausado.body.id, channel: 'web', priceMinor: 400_000 })
+      .expect(201);
+    await a(http().post(`/api/v1/catalog/products/${pausado.body.id}/pause`))
+      .send({ channels: ['web'], reason: 'Se acabó el pollo' })
+      .expect(201);
+
+    const catalogo = app.get(CatalogService);
+    const tienda = await catalogo.getResolvedCatalog(tenantA, {
+      brandId: otra.brandId,
+      channel: 'web',
+    });
+    // La tienda no enseña ninguno de los dos. Eso está bien.
+    expect(tienda.products).toHaveLength(0);
+
+    // El panel enseña los dos, y dice por qué cada uno no se vende.
+    const panel = await a(
+      http().get(`/api/v1/catalog/products?brand=${otra.brandId}`),
+    ).expect(200);
+    const porSku = new Map<string, (typeof panel.body)[number]>(
+      panel.body.map((p: { sku: string }) => [p.sku, p]),
+    );
+    expect(porSku.get('SIN-PRECIO')!.prices).toHaveLength(0);
+    expect(porSku.get('PAUSADO')!.prices[0].price).toBe('40.0000');
+    expect(porSku.get('PAUSADO')!.pauses[0].channel).toBe('web');
+  });
+
   // ------------------------------------------------------ AISLAMIENTO
 
   it('AISLAMIENTO: B no puede colgar productos de la marca de A', async () => {

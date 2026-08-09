@@ -303,4 +303,22 @@ Los importes van **como cadena en soles** —`"12.50"`— y se convierten a unid
 
 La lógica vive en `business-setup.ts`, separada del envoltorio de línea de comandos **para que una prueba pueda ejecutarla contra el ejemplo del repositorio**. Y la ejecuta: monta el negocio, resuelve la tienda por su host, comprueba la cobertura y su tarifa, manda un pedido y verifica el total; luego reaplica el mismo archivo con un precio cambiado y comprueba que corrige sin duplicar. Un ejemplo que nadie ha ejecutado se descubre roto con el cliente delante — que es exactamente lo que le pasó a la versión anterior de este runbook.
 
-**Próxima acción de Claude Code:** DT-09 — el panel mínimo sobre esta API (`specs/ux/03-panel.md`): entrar, ver la estructura del negocio, editar la carta y sus precios, pausar un producto. Y después POS y KDS, que son las pantallas que el mostrador y la cocina no tienen.
+### El panel existe — DT-09 se reduce al POS y al KDS
+
+`/panel`, dentro de `apps/web`. Entrar, ver cómo va el día, editar la carta y sus precios, pausar y reactivar un plato, dar de alta marcas y locales. Ocho pruebas de navegador, porque lo que puede romperse en un panel **sin que la API se entere** —que la sesión no persista entre pantallas, que un enlace lleve a la tienda, que el precio guardado no sea el escrito— no se ve desde la API.
+
+Cuatro decisiones que valen más que las pantallas:
+
+· **La sesión son dos cookies `httpOnly`, nunca `localStorage`.** Un token legible por JavaScript es un token que cualquier script inyectado se lleva, y con él se leen la carta, los pedidos y la facturación de un cliente entero. Como todas las llamadas salen del servidor de Next, el navegador tampoco necesita verlo.
+
+· **El panel puede NO servirse.** `apps/web` sirve la tienda de cada cliente en su propio dominio; sin la variable `SAHANA_PANEL_HOST`, `polleria.pe/panel` enseñaría la pantalla de acceso de la plataforma dentro de una tienda ajena. No hay fuga de datos —el tenant sale del token— pero un formulario de acceso donde nadie lo espera es donde se pescan contraseñas. Con la variable puesta, en los demás hosts responde 404.
+
+· **El listado de la carta NO es el catálogo resuelto.** Aquel omite a propósito el producto sin precio y el pausado, porque un cliente no debe verlos; un panel construido sobre esa vista no podría enseñar el producto al que le falta el precio —el que hay que arreglar— ni el pausado —el que hay que reactivar—. Sería una pantalla que oculta exactamente el trabajo pendiente. Por eso hay un `GET /catalog/products` propio.
+
+· **El refresco de sesión es una ruta, no parte del renderizado.** El token de acceso dura quince minutos y el panel se usa a ratos; sin refrescar, mirar las ventas, atender el mostrador y volver significaría escribir la contraseña otra vez. Pero un componente de servidor no puede escribir cookies mientras renderiza. Así que la página que se topa con un 401 redirige a `/panel/refrescar`, que renueva y devuelve — con un `intento` de ida y vuelta para que un token muerto no rebote para siempre entre dos redirecciones.
+
+La tienda se movió a un grupo de rutas `(tienda)` para que no comparta marco con el panel: antes el `layout` raíz resolvía la marca por el host, y colgar el panel de él habría hecho que cada pantalla de gestión llamara a la API de tienda para pintar un rótulo que no le corresponde. Hay una prueba de navegador que comprueba que la tienda siguió siendo la tienda.
+
+Y la comprobación que decide si el panel sirve, la misma de siempre: **lo que el dueño escribe es lo que el cliente ve**. La prueba cambia el precio del canal web a 61.50 desde el panel, recarga la tienda y comprueba que ahí pone S/ 61.50. Un panel que guardara en una tabla que la tienda no lee no es un panel, es un formulario bonito.
+
+**Próxima acción de Claude Code:** el POS (`specs/ux/01-pos.md`) y el KDS (`specs/ux/02-kds.md`), que es lo que queda de DT-09. La API de las dos ya está —caja, comandas por estación, cola offline, impresión—; faltan las pantallas.

@@ -404,4 +404,48 @@ suite('Analítica — rentabilidad y conciliación', () => {
       http().get('/api/v1/analytics/profitability?from=no-es-fecha'),
     ).expect(422);
   });
+  it('«¿CÓMO VAMOS HOY?» es lo que abre el panel, y compara con la semana pasada', async () => {
+    // La portada del panel (specs/ux/03). Se comprueba contra la MISMA
+    // proyección que la rentabilidad: si el resumen de hoy saliera de otro
+    // sitio, el dueño vería un número en la portada y otro al entrar al
+    // detalle, y no habría forma de saber cuál creer.
+    const hoy = await auth(http().get('/api/v1/analytics/today')).expect(200);
+
+    expect(hoy.body.businessDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(hoy.body.orders).toBeGreaterThan(0);
+    expect(hoy.body.byBrand.length).toBeGreaterThan(0);
+    expect(hoy.body.byChannel.length).toBeGreaterThan(0);
+
+    // El día comparado es SIETE días antes, no ayer: un martes no se parece a
+    // un lunes en un restaurante.
+    const dia = (t: string): number => Date.parse(`${t}T12:00:00Z`);
+    expect(dia(hoy.body.businessDate) - dia(hoy.body.comparedDate)).toBe(
+      7 * 24 * 3_600_000,
+    );
+
+    // Sin ventas la semana pasada NO se inventa un «+100 %»: no hay con qué
+    // comparar y se dice así.
+    expect(hoy.body.comparedNetRevenue).toBe('0.0000');
+    expect(hoy.body.changeBps).toBeNull();
+
+    // El total de la portada cuadra con la suma de sus partes. Un desglose que
+    // no suma el total es exactamente lo que hace desconfiar de un panel.
+    const sumaMarcas = hoy.body.byBrand.reduce(
+      (n: number, s: { orders: number }) => n + s.orders,
+      0,
+    );
+    const sumaCanales = hoy.body.byChannel.reduce(
+      (n: number, s: { orders: number }) => n + s.orders,
+      0,
+    );
+    expect(sumaMarcas).toBe(hoy.body.orders);
+    expect(sumaCanales).toBe(hoy.body.orders);
+
+    // Y el ticket promedio es el neto entre los pedidos NO cancelados.
+    const neto = Number(hoy.body.netRevenue);
+    expect(Number(hoy.body.averageTicket)).toBeCloseTo(
+      neto / hoy.body.orders,
+      3,
+    );
+  });
 });

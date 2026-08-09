@@ -2,9 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { shop, ApiError } from '../lib/api';
-import { ensureCartToken, clearCartToken } from '../lib/cart-cookie';
-import { TEXTO_CONSENTIMIENTO } from '../lib/consent';
+import { shop, ApiError } from '../../lib/api';
+import { ensureCartToken, clearCartToken } from '../../lib/cart-cookie';
+import { TEXTO_CONSENTIMIENTO } from '../../lib/consent';
 
 /**
  * Acciones de servidor de la tienda.

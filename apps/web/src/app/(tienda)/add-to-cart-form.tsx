@@ -2,8 +2,8 @@
 
 import { useActionState } from 'react';
 import { addToCart, type ActionState } from './actions';
-import type { CatalogProduct } from '../lib/api';
-import { formatDelta } from '../lib/money';
+import type { CatalogProduct } from '../../lib/api';
+import { formatDelta } from '../../lib/money';
 
 /**
  * El único componente de cliente del catálogo, y solo por una razón: enseñar el
