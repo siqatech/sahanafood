@@ -661,4 +661,45 @@ RUC de nueve dígitos es tirar un intento— y dice el **desenlace** del reenví
 no «enviado»: que lo vuelvan a rechazar es el caso normal, y ocultarlo hace que
 alguien pulse el botón diez veces.
 
+### Devolver dinero exigía un `curl`
+
+Tercer sitio de la misma familia, y el que más incomoda: **`POST
+/payments/intents/:id/refund` no lo llamaba nada en la interfaz**. Existe desde
+T5.05, con su umbral, su doble aprobación y sus pruebas; devolverle el dinero a
+un cliente exigía entrar al servidor.
+
+Al construir la pantalla salieron las dos mitades que faltaban debajo, las dos
+con el mismo patrón de siempre:
+
+· **El motivo de la devolución.** `refund_reason` se escribe desde T5.04 con el
+comentario «va al panel y a la auditoría». A la auditoría iba; al panel no,
+porque ninguna ruta lo devolvía.
+
+· **La alarma que nadie podía oír.** La migración 0020 dice, sobre
+`refund_attempts`: «una pasarela caída no puede dejar el dinero retenido para
+siempre en silencio: pasado el límite, esto es una alarma operativa que alguien
+tiene que atender a mano». El barrido efectivamente se rinde tras cinco intentos
+—y hace bien— pero **no había ningún sitio donde eso apareciera**: el cobro se
+veía en el panel igual que cualquier otro, con el dinero del cliente retenido y
+el cliente llamando. Ahora `GET /payments/refunds/stuck` los saca y la columna
+de problemas de operaciones los pone arriba, con el error que devolvió la
+pasarela y un enlace al pedido.
+
+En la pantalla, los campos de la segunda firma se enseñan **siempre**, no solo
+cuando la API se queja: quien va a devolver un importe grande ya sabe que
+necesita a alguien al lado, y enterarse después de rellenar el motivo es peor.
+El aprobador se elige de una lista de quienes **pueden** firmar; ofrecer a todo
+el equipo solo conseguiría que la mitad de los intentos muriera con «no tiene el
+permiso». Y el mensaje dice «en cola», no «devuelto»: el dinero lo mueve el
+barrido, y prometer por la pasarela es una promesa que el cliente comprueba en
+su banco.
+
+**Un apunte de entorno que costó una vuelta:** tras `seed:shop` hay que
+**reiniciar la API**. El sandbox del OSE recuerda en memoria qué números registró
+y la semilla rehace el tenant con el mismo RUC y la misma serie, así que el
+F001-00000001 nuevo es, para el sandbox, otro documento con un número ya visto:
+1033. Es el comportamiento correcto —un OSE real haría lo mismo— y por eso se
+resuelve reiniciando el proceso y no relajando la comprobación. Queda escrito en
+la cabecera de `seed-shop.ts`.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { panel } from '../../../../lib/panel-api';
+import { panel, type CobroDelPanel } from '../../../../lib/panel-api';
 import { cargar } from '../../../../lib/panel-guard';
-import { soles } from '../../caja/dinero';
+import { soles, solesDeTexto } from '../../caja/dinero';
+import { FormularioDevolucion } from './formularios';
 
 /**
  * Trazabilidad de UN pedido (specs/ux/03: «la misma vista del runbook 1,
@@ -52,6 +53,22 @@ export default async function PedidoPage({
     cargar(ruta, yaSeIntento, () => panel.pedido(id)),
     cargar(ruta, yaSeIntento, () => panel.hitos(id)),
   ]);
+
+  // Los cobros se degradan solos si falta `payments.read`: quien no ve el
+  // dinero tiene que poder seguir viendo el pedido, que es para lo que la
+  // mayoría entra aquí.
+  const cobros = await panel.cobrosDe(id).catch((): CobroDelPanel[] => []);
+  const equipo = await panel.usuarios().catch(() => []);
+  // Se ofrecen como aprobadores los que PUEDEN devolver dinero. El permiso lo
+  // comprueba la API de todas formas; ofrecer a todo el equipo solo conseguiría
+  // que la mitad de los intentos fallara con «no tiene el permiso».
+  const aprobadores = equipo
+    .filter(
+      (u) =>
+        u.status === 'active' &&
+        (u.isOwner || u.roles.some((r) => r.code === 'admin')),
+    )
+    .map((u) => ({ id: u.id, name: u.fullName }));
 
   return (
     <>
@@ -124,6 +141,55 @@ export default async function PedidoPage({
       </p>
       {pedido.notes ? (
         <p className="tarjeta__pie">Nota: {pedido.notes}</p>
+      ) : null}
+
+      {cobros.length > 0 ? (
+        <>
+          <h2>Cobros</h2>
+          {cobros.map((c) => (
+            <article key={c.id} className="ficha">
+              <p>
+                <strong>S/ {solesDeTexto(c.amount)}</strong> ·{' '}
+                <span className="etiqueta">{c.status}</span>
+              </p>
+
+              {c.refund ? (
+                <>
+                  {/* El motivo se escribió desde T5.04 «para el panel y la
+                      auditoría» y hasta ahora solo llegaba a la auditoría. */}
+                  <p className="tarjeta__pie">
+                    Devolución: {c.refund.reason ?? 'sin motivo'}
+                    {c.refund.refundedAt
+                      ? ` · devuelta el ${momento(c.refund.refundedAt)}`
+                      : ' · en cola'}
+                  </p>
+                  {c.refund.exhausted ? (
+                    // La alarma que la migración describía y nadie podía oír:
+                    // el barrido se rindió, el dinero sigue retenido y el
+                    // cobro se veía idéntico a uno normal.
+                    <p className="panel__error">
+                      La pasarela rechazó la devolución {c.refund.attempts}{' '}
+                      veces y el sistema dejó de intentarlo:{' '}
+                      {c.refund.lastError ?? 'sin detalle'}. Hay que resolverlo
+                      con la pasarela a mano — el dinero sigue retenido.
+                    </p>
+                  ) : null}
+                </>
+              ) : c.status === 'captured' ? (
+                <FormularioDevolucion
+                  intentId={c.id}
+                  orderId={id}
+                  importe={solesDeTexto(c.amount)}
+                  aprobadores={aprobadores}
+                />
+              ) : (
+                <p className="tarjeta__pie">
+                  Solo se devuelve un cobro capturado.
+                </p>
+              )}
+            </article>
+          ))}
+        </>
       ) : null}
 
       <h2>Qué le pasó</h2>

@@ -1087,6 +1087,17 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /payments/refunds/stuck no enseña las de B', async () => {
+    // Una lista sin parámetro es el caso donde el aislamiento se rompe sin que
+    // nadie lo note: no hay un id que «no encuentre», solo filas de más.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /payments/refunds/stuck', (r) =>
+        r.get('/api/v1/payments/refunds/stuck'),
+      ),
+    );
+  });
+
   it('POST /payments/intents sobre el pedido de B', async () => {
     // El más peligroso de los tres: si colara, A podría generar un cobro contra
     // un pedido ajeno y desviar el dinero a SU pasarela.

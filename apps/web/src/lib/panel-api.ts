@@ -324,6 +324,29 @@ export interface CartaMuerta {
   receivedAt: string;
 }
 
+/** Un cobro y, si la hay, su devolución (spec 10, RN-PAY-03). */
+export interface CobroDelPanel {
+  id: string;
+  orderId: string;
+  reference: string;
+  status: string;
+  amount: string;
+  currency: string;
+  expiresAt: string;
+  refund?:
+    | {
+        required: boolean;
+        reason: string | null;
+        requestedBy: string | null;
+        approvedBy: string | null;
+        refundedAt: string | null;
+        attempts: number;
+        lastError: string | null;
+        exhausted: boolean;
+      }
+    | undefined;
+}
+
 export interface DocumentoDelPanel {
   id: string;
   orderId: string | null;
@@ -582,6 +605,22 @@ export const panel = {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
+
+  cobrosDe: (orderId: string): Promise<CobroDelPanel[]> =>
+    llamar<CobroDelPanel[]>(`/payments/orders/${orderId}/intents`),
+
+  devolucionesAtascadas: (): Promise<CobroDelPanel[]> =>
+    llamar<CobroDelPanel[]>('/payments/refunds/stuck'),
+
+  /** Pide la devolución. Sobre el umbral hace falta una SEGUNDA persona. */
+  devolver: (
+    intentId: string,
+    input: { reason: string; approvedBy?: string; approverPin?: string },
+  ): Promise<{ status: string; requiresApproval: boolean }> =>
+    llamar<{ status: string; requiresApproval: boolean }>(
+      `/payments/intents/${intentId}/refund`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
 
   usuarios: (): Promise<UsuarioDelPanel[]> =>
     llamar<UsuarioDelPanel[]>('/users'),

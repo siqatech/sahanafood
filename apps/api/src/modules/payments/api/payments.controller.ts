@@ -168,6 +168,23 @@ export class PaymentsController {
     });
   }
 
+  /**
+   * Las devoluciones que se rindieron y necesitan a alguien (T5.04).
+   *
+   * El barrido deja de reintentar tras `MAX_REFUND_ATTEMPTS`, y eso es
+   * deliberado: una pasarela que rechaza la devolución no va a aceptarla al
+   * intento noventa. Rendirse en SILENCIO no lo era — el dinero se queda
+   * retenido y desde el panel ese cobro se ve igual que cualquier otro.
+   */
+  @Get('refunds/stuck')
+  @RequirePermission('payments.read')
+  async stuckRefunds(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<PaymentIntentView[]> {
+    return this.payments.listStuckRefunds(req.auth!.tid);
+  }
+
+  @Get('orders/:orderId/intents')
   @Get('orders/:orderId/intents')
   @RequirePermission('payments.read')
   async listForOrder(

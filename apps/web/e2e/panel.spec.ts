@@ -591,6 +591,46 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
   });
 
+  test('DEVOLVER EL DINERO se puede hacer desde el pedido, con su motivo', async ({
+    page,
+  }) => {
+    // `POST /payments/intents/:id/refund` existía desde T5.05 y no lo llamaba
+    // nada en la interfaz: devolver dinero exigía un `curl`. Y el motivo, que
+    // se guarda «para el panel y la auditoría», solo llegaba a la auditoría.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Pedidos', exact: true }).click();
+    // La lista no enseña el nombre del cliente —cabe el número, el canal y el
+    // total—, así que se llega por la búsqueda, que sí mira el nombre.
+    await page.getByLabel('Buscar pedidos').fill('Cliente que pagó online');
+    await page.getByRole('button', { name: 'Buscar' }).click();
+    await page
+      .locator('tbody tr')
+      .first()
+      .getByRole('link', { name: 'Ver' })
+      .click();
+
+    await expect(page.getByRole('heading', { name: 'Cobros' })).toBeVisible();
+
+    // Sin motivo no se devuelve: «se te devolvió» sin explicación es una
+    // llamada de soporte garantizada.
+    await page.getByRole('button', { name: /^Devolver S\// }).click();
+    await expect(page.getByText(/al menos 5 caracteres/i)).toBeVisible();
+
+    await page
+      .getByLabel('Por qué se devuelve')
+      .fill('Llegó frío y el cliente no lo quiso');
+    await page.getByRole('button', { name: /^Devolver S\// }).click();
+
+    // Se comprueba el EFECTO: el formulario deja sitio al estado de la
+    // devolución, con el motivo que se escribió.
+    await expect(
+      page.getByText(/Llegó frío y el cliente no lo quiso/),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^Devolver S\// }),
+    ).toHaveCount(0);
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { panel, type DocumentoDelPanel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
+import { solesDeTexto } from '../caja/dinero';
 import {
   FormularioCorreccion,
   BotonReenviar,
@@ -111,7 +112,7 @@ export default async function ComprobantesPage({
                 {ROTULO_TIPO[d.docType] ?? d.docType}{' '}
                 {d.number ?? '(sin número)'}
               </strong>{' '}
-              · S/ {d.total} · {momento(d.issuedAt)}
+              · S/ {solesDeTexto(d.total)} · {momento(d.issuedAt)}
             </p>
             <p>
               <Cliente doc={d} />
@@ -179,7 +180,7 @@ export default async function ComprobantesPage({
                   <td>
                     <Cliente doc={d} />
                   </td>
-                  <td className="dinero">S/ {d.total}</td>
+                  <td className="dinero">S/ {solesDeTexto(d.total)}</td>
                   <td>{momento(d.issuedAt)}</td>
                   <td>
                     {d.deferral ? (
@@ -232,7 +233,7 @@ export default async function ComprobantesPage({
                   <td>
                     <Cliente doc={d} />
                   </td>
-                  <td className="dinero">S/ {d.total}</td>
+                  <td className="dinero">S/ {solesDeTexto(d.total)}</td>
                   <td>{momento(d.issuedAt)}</td>
                   <td>
                     {/* Anular exige `billing.void`, que el cajero no tiene: un

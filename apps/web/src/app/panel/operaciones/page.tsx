@@ -4,10 +4,12 @@ import {
   type PedidoDelPanel,
   type CartaMuerta,
   type DocumentoDelPanel,
+  type CobroDelPanel,
   type ConexionDelPanel,
 } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { politicaPara, limiteDeRechazo } from './plazos';
+import { solesDeTexto } from '../caja/dinero';
 import {
   Cuenta,
   BotonesDeAceptacion,
@@ -96,11 +98,16 @@ export default async function OperacionesPage({
   // La columna de problemas se degrada sola: quien no tenga permiso de
   // integraciones o de facturación ve el resto de la pantalla igual, en vez de
   // un error que le impide aceptar pedidos.
-  const [cartasMuertas, rechazados, conexiones] = await Promise.all([
-    panel.cartasMuertas().catch((): CartaMuerta[] => []),
-    panel.documentos('rejected').catch((): DocumentoDelPanel[] => []),
-    panel.conexiones().catch((): ConexionDelPanel[] => []),
-  ]);
+  const [cartasMuertas, rechazados, conexiones, devoluciones] =
+    await Promise.all([
+      panel.cartasMuertas().catch((): CartaMuerta[] => []),
+      panel.documentos('rejected').catch((): DocumentoDelPanel[] => []),
+      panel.conexiones().catch((): ConexionDelPanel[] => []),
+      // Dinero de un cliente que sigue retenido porque la pasarela rechazó la
+      // devolución y el sistema dejó de intentarlo. Es lo más urgente de esta
+      // columna: hay alguien esperando que le devuelvan su plata.
+      panel.devolucionesAtascadas().catch((): CobroDelPanel[] => []),
+    ]);
 
   const degradadas = conexiones.filter((c) => c.status !== 'active');
 
@@ -113,7 +120,10 @@ export default async function OperacionesPage({
   }));
 
   const problemas =
-    cartasMuertas.length + rechazados.length + degradadas.length;
+    cartasMuertas.length +
+    rechazados.length +
+    degradadas.length +
+    devoluciones.length;
 
   return (
     <>
@@ -237,6 +247,25 @@ export default async function OperacionesPage({
                 La venta no se pierde:{' '}
                 <Link href="/panel/comprobantes">corrígelo y reenvíalo</Link>{' '}
                 (RN-BIL-02).
+              </p>
+            </article>
+          ))}
+
+          {devoluciones.map((c) => (
+            <article key={c.id} className="ficha ficha--revision">
+              <p>
+                <strong>Devolución atascada</strong> · S/{' '}
+                {solesDeTexto(c.amount)}
+              </p>
+              <p className="tarjeta__pie">
+                {c.refund?.reason ?? 'sin motivo'} · {c.refund?.attempts ?? 0}{' '}
+                intentos
+              </p>
+              <p className="tarjeta__pie">
+                {c.refund?.lastError ?? 'la pasarela no dio detalle'}. Hay que
+                resolverlo con la pasarela a mano: el dinero del cliente sigue
+                retenido.{' '}
+                <Link href={`/panel/pedidos/${c.orderId}`}>Ver el pedido</Link>
               </p>
             </article>
           ))}

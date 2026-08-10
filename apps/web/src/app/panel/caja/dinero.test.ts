@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { soles, hayDiferencia } from './dinero';
+import { solesDeTexto, soles, hayDiferencia } from './dinero';
 
 /**
  * El formateo de dinero del panel.
@@ -64,5 +64,23 @@ describe('hayDiferencia()', () => {
   it('un céntimo ya es diferencia, en los dos sentidos', () => {
     expect(hayDiferencia(PEN(100))).toBe(true);
     expect(hayDiferencia(PEN(-100))).toBe(true);
+  });
+});
+
+describe('solesDeTexto', () => {
+  it('recorta a dos decimales SIN redondear ni pasar por coma flotante', () => {
+    // 4 decimales es lo que guarda NUMERIC(14,4); nadie lee un importe así.
+    expect(solesDeTexto('32.0000')).toBe('32.00');
+    expect(solesDeTexto('1234.5678')).toBe('1234.56');
+  });
+
+  it('aguanta un entero sin parte decimal', () => {
+    expect(solesDeTexto('32')).toBe('32.00');
+  });
+
+  it('NO pierde precisión en importes que a un `number` se le escaparían', () => {
+    // 0.1 + 0.2 en coma flotante da 0.30000000000000004. Aquí no hay suma ni
+    // división: se corta la cadena, así que el valor llega intacto.
+    expect(solesDeTexto('99999999.9999')).toBe('99999999.99');
   });
 });

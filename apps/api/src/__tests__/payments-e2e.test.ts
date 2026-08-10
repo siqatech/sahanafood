@@ -17,6 +17,7 @@ import {
   MercadoPagoSandboxProvider,
   CULQI_PROVIDER,
   MERCADOPAGO_PROVIDER,
+  MAX_REFUND_ATTEMPTS,
 } from '../modules/payments/index.js';
 import { DeviceService, UserAdminService } from '../modules/identity/index.js';
 import { seedPlans } from '../database/seed.js';
@@ -979,6 +980,67 @@ suite('Pagos online', () => {
         thresholdMinor: 1,
       }),
     ).rejects.toThrow(/no puede ser quien lo pide/i);
+  });
+
+  it('LA DEVOLUCIÓN SE VE desde el pedido: motivo, quién la pidió y quién firmó', async () => {
+    // `refund_reason` se escribe desde T5.04 con el comentario «va al panel y a
+    // la auditoría». A la auditoría iba; al panel no, porque ninguna ruta lo
+    // devolvía — el cobro se veía idéntico a uno normal.
+    const intentId = await capturado();
+    const intencion = await payments.getIntent(tenantA, intentId);
+
+    await payments.requestRefund(tenantA, intentId, {
+      reason: 'Llegó frío y el cliente no lo quiso',
+      requestedBy: ownerId,
+      approvedBy: supervisorId,
+      approverPin: PIN_APROBADORA,
+      thresholdMinor: 1,
+    });
+
+    const cobros = await payments.listForOrder(tenantA, intencion.orderId);
+    const suyo = cobros.find((c) => c.id === intentId);
+    expect(suyo?.refund?.required).toBe(true);
+    expect(suyo?.refund?.reason).toMatch(/llegó frío/i);
+    expect(suyo?.refund?.requestedBy).toBe(ownerId);
+    expect(suyo?.refund?.approvedBy).toBe(supervisorId);
+    expect(suyo?.refund?.exhausted).toBe(false);
+  });
+
+  it('UN COBRO NORMAL no arrastra un bloque de devolución vacío', async () => {
+    // Un bloque con todo a null en cada cobro haría ruido en la pantalla y en
+    // el log, y enseñaría «devolución» donde no hay ninguna.
+    const intentId = await capturado();
+    const intencion = await payments.getIntent(tenantA, intentId);
+    const cobros = await payments.listForOrder(tenantA, intencion.orderId);
+    expect(cobros.find((c) => c.id === intentId)?.refund).toBeUndefined();
+  });
+
+  it('LA DEVOLUCIÓN QUE SE RINDIÓ sale en su propia lista, no en silencio', async () => {
+    // El barrido deja de reintentar tras MAX_REFUND_ATTEMPTS y eso es
+    // deliberado. Rendirse EN SILENCIO no lo era: el dinero se queda retenido,
+    // el cliente llama, y no había ninguna pantalla donde apareciera.
+    const intentId = await capturado();
+    await payments.requestRefund(tenantA, intentId, {
+      reason: 'Devolución que la pasarela no acepta',
+      requestedBy: ownerId,
+    });
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `UPDATE pay_intents
+            SET refund_attempts = $2, refund_last_error = 'La pasarela dice que el cargo es muy antiguo'
+          WHERE id = $1`,
+        [intentId, MAX_REFUND_ATTEMPTS],
+      ),
+    );
+
+    const atascadas = await payments.listStuckRefunds(tenantA);
+    const suya = atascadas.find((c) => c.id === intentId);
+    expect(
+      suya,
+      'la devolución agotada no aparece en ninguna parte',
+    ).toBeTruthy();
+    expect(suya!.refund?.exhausted).toBe(true);
+    expect(suya!.refund?.lastError).toMatch(/muy antiguo/i);
   });
 
   it('UN ID NO ES UNA FIRMA: nombrar a un compañero sin su PIN no aprueba', async () => {

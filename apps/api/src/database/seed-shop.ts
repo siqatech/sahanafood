@@ -13,6 +13,7 @@ import { ConversationsService } from '../modules/conversations/index.js';
 import { CashService } from '../modules/cash/index.js';
 import { InventoryService } from '../modules/inventory/index.js';
 import { BillingService } from '../modules/billing/index.js';
+import { PaymentsService, CULQI_PROVIDER } from '../modules/payments/index.js';
 
 /**
  * Siembra una tienda demo para levantar `apps/web` a mano (T5.08–T5.14).
@@ -22,6 +23,13 @@ import { BillingService } from '../modules/billing/index.js';
  * pasar, y por eso hace falta este atajo para desarrollo.
  *
  *   pnpm --filter @sahana/api seed:shop
+ *
+ * **Reinicia la API después de sembrar.** El sandbox del OSE recuerda EN
+ * MEMORIA qué números de comprobante ya registró, y la semilla rehace el tenant
+ * reusando el mismo RUC y la misma serie: para el sandbox, el F001-00000001
+ * nuevo es otro documento con un número ya visto, y lo rechaza con 1033. Es el
+ * comportamiento correcto —un OSE real haría lo mismo— y por eso se resuelve
+ * reiniciando el proceso, no relajando la comprobación.
  *
  * El host por defecto es `demo.localhost`, que resuelve a 127.0.0.1 en los
  * navegadores modernos sin tocar `/etc/hosts`.
@@ -277,6 +285,37 @@ async function main(): Promise<void> {
     docType: 'NONE',
   });
 
+  // Un cobro CAPTURADO sobre una venta. Sin él la sección de devoluciones del
+  // pedido solo se puede mirar vacía — y una pantalla que solo se puede mirar
+  // vacía es exactamente como el reembolso acabó sin tener pantalla.
+  const pagos = app.get(PaymentsService);
+  await pagos.createConnection(tenant.tenantId, {
+    provider: CULQI_PROVIDER,
+    webhookSecret: 'secreto-de-demo-para-la-firma',
+  });
+  const ventaPagada = await ordering.submit(tenant.tenantId, {
+    brandId,
+    locationId: org.locationId,
+    channel: 'web',
+    lines: [{ productId: catalogo.comboId, quantity: 1 }],
+    customerName: 'Cliente que pagó online',
+  });
+  const intencion = await pagos.createIntent(tenant.tenantId, {
+    orderId: ventaPagada.id,
+    provider: CULQI_PROVIDER,
+  });
+  // Se marca capturado directamente en vez de simular el webhook: el camino del
+  // webhook firmado tiene sus propias pruebas e2e y aquí lo único que hace
+  // falta es el ESTADO FINAL sobre el que se pide una devolución.
+  await withTenant(pool, tenant.tenantId, ({ client }) =>
+    client.query(
+      `UPDATE pay_intents
+          SET status = 'captured', captured_at = now(), paid_amount = amount
+        WHERE id = $1`,
+      [intencion.id],
+    ),
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -291,6 +330,7 @@ async function main(): Promise<void> {
         caja: `http://${HOST}:3001/panel/caja`,
         inventario: `http://${HOST}:3001/panel/inventario`,
         comprobantes: `http://${HOST}:3001/panel/comprobantes`,
+        pedidoConCobro: `http://${HOST}:3001/panel/pedidos/${ventaPagada.id}`,
       },
       null,
       2,

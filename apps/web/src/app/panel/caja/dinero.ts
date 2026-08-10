@@ -21,6 +21,19 @@ export function soles(total: Importe): string {
   return `${negativo ? '-' : ''}${digitos.slice(0, corte)}.${decimales}`;
 }
 
+/**
+ * Lo mismo para un importe que llega como DECIMAL de la base.
+ *
+ * `NUMERIC(14,4)` viaja como texto —«32.0000»— porque pasarlo por `Number`
+ * antes de enseñarlo lo metería en coma flotante justo delante de alguien que
+ * lo va a declarar. Aquí solo se recorta la cadena: dos decimales, que es como
+ * se lee el dinero, sin tocar el valor.
+ */
+export function solesDeTexto(valor: string): string {
+  const [entero = '0', decimales = ''] = valor.split('.');
+  return `${entero}.${decimales.slice(0, 2).padEnd(2, '0')}`;
+}
+
 /** ¿La diferencia del arqueo es distinta de cero? */
 export function hayDiferencia(diferencia: Importe | null): boolean {
   return diferencia !== null && diferencia.minorUnits !== 0;

@@ -108,6 +108,30 @@ export interface PaymentIntentView {
   currency: string;
   checkoutUrl: string | null;
   expiresAt: string;
+  /**
+   * Cómo va la devolución, si la hay.
+   *
+   * Se devuelve porque hasta ahora no lo devolvía nada. `refund_reason` se
+   * escribió desde T5.04 con el comentario «va al panel y a la auditoría» y a
+   * la auditoría iba; al panel no, porque ninguna ruta lo sacaba. Y sin
+   * `attempts`/`lastError`, la frase de la migración —«pasado el límite esto es
+   * una alarma operativa que alguien tiene que atender a mano»— describía una
+   * alarma que nadie podía oír: el dinero se queda retenido, el cliente llama,
+   * y desde el panel el cobro se ve idéntico a uno normal.
+   */
+  refund?:
+    | {
+        required: boolean;
+        reason: string | null;
+        requestedBy: string | null;
+        approvedBy: string | null;
+        refundedAt: string | null;
+        attempts: number;
+        lastError: string | null;
+        /** Se rindió: hace falta una persona. */
+        exhausted: boolean;
+      }
+    | undefined;
 }
 
 /** Lo que el webhook deja claro para el que llama. */
@@ -148,6 +172,13 @@ interface FilaIntencion {
   amount: string;
   currency: string;
   expires_at: Date;
+  refund_required?: boolean;
+  refund_reason?: string | null;
+  refund_requested_by?: string | null;
+  refund_approved_by?: string | null;
+  refunded_at?: Date | null;
+  refund_attempts?: number;
+  refund_last_error?: string | null;
 }
 
 @Injectable()
@@ -1246,7 +1277,11 @@ export class PaymentsService {
       c: TenantContext,
     ): Promise<PaymentIntentView[]> => {
       const { rows } = await c.client.query<FilaIntencion>(
-        `SELECT id, tenant_id, order_id, connection_id, reference, status, amount, currency, expires_at
+        `SELECT id, tenant_id, order_id, connection_id, reference, status,
+                amount, currency, expires_at,
+                refund_required, refund_reason, refund_requested_by,
+                refund_approved_by, refunded_at, refund_attempts,
+                refund_last_error
            FROM pay_intents WHERE order_id = $1 ORDER BY created_at`,
         [orderId],
       );
@@ -1257,7 +1292,39 @@ export class PaymentsService {
       : withTenant(this.pool, tenantId, (c) => consultar(c));
   }
 
+  /**
+   * Devoluciones que necesitan a una persona.
+   *
+   * Son las que el barrido dejó de reintentar tras `MAX_REFUND_ATTEMPTS`.
+   * Rendirse es parte del diseño —una pasarela que rechaza la devolución no va
+   * a aceptarla al intento noventa— pero rendirse **en silencio** no lo es: el
+   * dinero se queda retenido, el cliente llama, y desde el panel ese cobro se
+   * ve igual que cualquier otro. Esta lista es la que lo saca a la luz.
+   */
+  async listStuckRefunds(tenantId: string): Promise<PaymentIntentView[]> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<FilaIntencion>(
+        `SELECT id, tenant_id, order_id, connection_id, reference, status,
+                amount, currency, expires_at,
+                refund_required, refund_reason, refund_requested_by,
+                refund_approved_by, refunded_at, refund_attempts,
+                refund_last_error
+           FROM pay_intents
+          WHERE refund_required AND refunded_at IS NULL
+            AND refund_attempts >= $1
+          ORDER BY captured_at`,
+        [MAX_REFUND_ATTEMPTS],
+      );
+      return rows.map((f) => this.aVista(f));
+    });
+  }
+
   private aVista(fila: FilaIntencion): PaymentIntentView {
+    // Solo se adjunta si hay algo de devolución que contar: un bloque con todo
+    // a `null` en cada cobro normal haría ruido en la pantalla y en el log.
+    const hayDevolucion =
+      fila.refund_required === true || fila.refunded_at != null;
+
     return {
       id: fila.id,
       orderId: fila.order_id,
@@ -1267,6 +1334,20 @@ export class PaymentsService {
       currency: fila.currency,
       checkoutUrl: null,
       expiresAt: fila.expires_at.toISOString(),
+      ...(hayDevolucion
+        ? {
+            refund: {
+              required: fila.refund_required === true,
+              reason: fila.refund_reason ?? null,
+              requestedBy: fila.refund_requested_by ?? null,
+              approvedBy: fila.refund_approved_by ?? null,
+              refundedAt: fila.refunded_at?.toISOString() ?? null,
+              attempts: fila.refund_attempts ?? 0,
+              lastError: fila.refund_last_error ?? null,
+              exhausted: (fila.refund_attempts ?? 0) >= MAX_REFUND_ATTEMPTS,
+            },
+          }
+        : {}),
     };
   }
 }
