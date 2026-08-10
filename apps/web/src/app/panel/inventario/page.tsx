@@ -1,6 +1,11 @@
 import Link from 'next/link';
-import { panel, type MovimientoDeKardex } from '../../../lib/panel-api';
+import {
+  panel,
+  type MovimientoDeKardex,
+  type RecetaDelPanel,
+} from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
+import { FormularioInsumo, FormularioReceta } from './formularios';
 
 /**
  * Inventario: existencias y kardex (specs/ux/03, spec 08).
@@ -111,12 +116,29 @@ export default async function InventarioPage({
   const yaSeIntento = params['intento'] === '1';
   const insumo = typeof params['insumo'] === 'string' ? params['insumo'] : '';
 
-  const [existencias, movimientos] = await Promise.all([
-    cargar('/panel/inventario', yaSeIntento, () => panel.existencias()),
-    cargar('/panel/inventario', yaSeIntento, () =>
-      panel.kardex({ limit: 100, ...(insumo !== '' ? { item: insumo } : {}) }),
-    ),
-  ]);
+  const [existencias, movimientos, insumosDeclarados, recetas, estructura] =
+    await Promise.all([
+      cargar('/panel/inventario', yaSeIntento, () => panel.existencias()),
+      cargar('/panel/inventario', yaSeIntento, () =>
+        panel.kardex({
+          limit: 100,
+          ...(insumo !== '' ? { item: insumo } : {}),
+        }),
+      ),
+      cargar('/panel/inventario', yaSeIntento, () => panel.insumos()),
+      cargar('/panel/inventario', yaSeIntento, () => panel.recetas()),
+      cargar('/panel/inventario', yaSeIntento, () => panel.estructura()),
+    ]);
+
+  // Los platos de la primera marca: es una versión mínima a propósito, y el
+  // texto de la pantalla lo dice en vez de fingir que cubre el caso multimarca.
+  const primeraMarca = estructura.brands[0];
+  const productos = primeraMarca
+    ? (await panel.productos(primeraMarca.id).catch(() => [])).map((p) => ({
+        id: p.id,
+        name: p.name,
+      }))
+    : [];
 
   const bajoMinimo = existencias.filter((e) => e.belowMinimum);
   const elegido = existencias.find((e) => e.itemId === insumo);
@@ -201,6 +223,47 @@ export default async function InventarioPage({
         ) : null}
       </p>
       <Kardex movimientos={movimientos} />
+
+      <h2>Declarar un insumo</h2>
+      <p className="tarjeta__pie">
+        Guardar dos veces el mismo SKU no duplica: actualiza. Así el alta desde
+        un archivo se puede repetir sin miedo.
+      </p>
+      <FormularioInsumo />
+
+      <h2>Recetas</h2>
+      {recetas.length === 0 ? (
+        <p className="panel__vacio">
+          Ningún plato descuenta stock todavía. Sin receta, el consumo
+          automático no se dispara y el food cost se queda en cero.
+        </p>
+      ) : (
+        <ul>
+          {recetas.map((r: RecetaDelPanel) => (
+            <li key={r.id}>
+              <strong>{r.name}</strong>
+              {r.productName ? ` → ${r.productName}` : ' (subreceta)'} ·{' '}
+              {r.lines.map((l) => `${l.name} ${l.quantity}`).join(', ')}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h3>Añadir una receta</h3>
+      <p className="tarjeta__pie">
+        Versión mínima: un plato y su insumo principal, que es lo que hace que
+        el descuento empiece a ocurrir. Las recetas con varios componentes y
+        subrecetas se arman por API o por el archivo de alta.
+        {primeraMarca ? ` Platos de ${primeraMarca.name}.` : ''}
+      </p>
+      <FormularioReceta
+        insumos={insumosDeclarados.map((i) => ({
+          id: i.id,
+          name: i.name,
+          unit: i.unit,
+        }))}
+        productos={productos}
+      />
     </>
   );
 }

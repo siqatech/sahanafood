@@ -241,6 +241,22 @@ export interface ExistenciaDelPanel {
   belowMinimum: boolean;
 }
 
+export interface RecetaDelPanel {
+  id: string;
+  name: string;
+  productId: string | null;
+  productName: string | null;
+  yieldQuantity: string;
+  yieldUnit: string;
+  lines: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    quantity: string;
+    wasteBps: number;
+  }>;
+}
+
 export interface MovimientoDeKardex {
   id: string;
   occurredAt: string;
@@ -537,6 +553,40 @@ export const panel = {
       `/inventory/movements${cadena ? `?${cadena}` : ''}`,
     );
   },
+
+  insumos: (): Promise<
+    Array<{ id: string; name: string; unit: string; unitCost: string }>
+  > =>
+    llamar<Array<{ id: string; name: string; unit: string; unitCost: string }>>(
+      '/inventory/items',
+    ),
+
+  recetas: (): Promise<RecetaDelPanel[]> =>
+    llamar<RecetaDelPanel[]>('/inventory/recipes'),
+
+  guardarInsumo: (input: {
+    sku?: string;
+    name: string;
+    unit: string;
+    unitCostMinor: number;
+    minStock?: string;
+  }): Promise<unknown> =>
+    llamar('/inventory/items', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  guardarReceta: (input: {
+    name: string;
+    productId?: string;
+    yieldQuantity: string;
+    yieldUnit: string;
+    lines: Array<{ itemId: string; quantity: string }>;
+  }): Promise<unknown> =>
+    llamar('/inventory/recipes', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   turnos: (): Promise<TurnoDeCaja[]> => llamar<TurnoDeCaja[]>('/cash-sessions'),
 

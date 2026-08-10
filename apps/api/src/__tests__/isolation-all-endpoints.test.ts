@@ -646,6 +646,40 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /inventory/items', async () => {
+    // La lista de insumos con su costo unitario es la estructura de costos del
+    // negocio: quien la lea sabe con qué margen trabaja la competencia.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /inventory/items', (r) => r.get('/api/v1/inventory/items')),
+    );
+  });
+
+  it('GET /inventory/recipes', async () => {
+    // Y las recetas son literalmente el know-how: qué lleva cada plato y
+    // cuánto.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /inventory/recipes', (r) =>
+        r.get('/api/v1/inventory/recipes'),
+      ),
+    );
+  });
+
+  it('POST /inventory/items no escribe en el tenant ajeno', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /inventory/items',
+        (r) =>
+          r
+            .post('/api/v1/inventory/items')
+            .send({ name: 'Insumo de prueba', unit: 'g' }),
+        { expectedStatusForA: [201] },
+      ),
+    );
+  });
+
   it('GET /inventory/movements (kardex)', async () => {
     // El kardex lleva el costo unitario de cada consumo: quien lo lea sabe
     // cuánto le cuesta a la competencia cada plato que vende.

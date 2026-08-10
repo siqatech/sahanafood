@@ -14,6 +14,13 @@ export {
   type ConsumptionSummary,
 } from './app/inventory.service.js';
 export {
+  InventoryAdminService,
+  UnitLockedError,
+  type ItemView,
+  type RecipeView,
+  type RecipeLineView,
+} from './app/inventory-admin.service.js';
+export {
   InventoryEventHandlers,
   INVENTORY_CONSUMER,
 } from './app/inventory-event-handlers.js';

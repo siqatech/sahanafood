@@ -849,8 +849,18 @@ export class InventoryService {
    * transacción que acepta un pedido: allí no sería un error de validación,
    * sería la aceptación de pedidos colgada.
    */
-  async validateRecipe(tenantId: string, recipeId: string): Promise<void> {
-    await withTenant(this.pool, tenantId, async (ctx) => {
+  async validateRecipe(
+    tenantId: string,
+    recipeId: string,
+    /**
+     * Contexto existente, para validar DENTRO de la transacción que acaba de
+     * escribir la receta. Sin él, quien guarda un ciclo lo deja guardado y solo
+     * después recibe el error: la petición falla y la receta corrupta se queda
+     * en la base esperando al primer pedido.
+     */
+    existingCtx?: TenantContext,
+  ): Promise<void> {
+    const comprobar = async (ctx: TenantContext): Promise<void> => {
       const libro = await this.cargarLibroDeRecetas(ctx);
       try {
         assertValidRecipe(recipeId, libro);
@@ -863,7 +873,9 @@ export class InventoryService {
         }
         throw error;
       }
-    });
+    };
+    if (existingCtx) return comprobar(existingCtx);
+    await withTenant(this.pool, tenantId, comprobar);
   }
 
   /** Emite el aviso de stock por outbox para que lo recoja el panel. */

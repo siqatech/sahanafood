@@ -6,6 +6,11 @@ import {
 } from '../../../common/authz.js';
 import { ValidationError } from '../../../common/errors.js';
 import { InventoryService } from '../app/inventory.service.js';
+import {
+  InventoryAdminService,
+  type ItemView,
+  type RecipeView,
+} from '../app/inventory-admin.service.js';
 
 type StockView = Awaited<ReturnType<InventoryService['getStock']>>;
 type AdjustResult = Awaited<ReturnType<InventoryService['recordAdjustment']>>;
@@ -38,6 +43,38 @@ const ajusteSchema = z.object({
   reason: z.string().min(3, 'Un ajuste de inventario necesita un motivo.'),
 });
 
+const insumoSchema = z.object({
+  sku: z.string().max(60).optional(),
+  name: z.string().min(2).max(160),
+  unit: z.enum(['g', 'ml', 'unit']),
+  /** Costo por unidad en unidades menores. Entero, nunca un decimal. */
+  unitCostMinor: z.number().int().nonnegative().optional(),
+  minStock: z
+    .string()
+    .regex(/^\d+(\.\d{1,4})?$/, 'El mínimo es un decimal positivo.')
+    .optional(),
+  isActive: z.boolean().optional(),
+});
+
+const recetaSchema = z.object({
+  name: z.string().min(2).max(160),
+  productId: z.string().uuid().optional(),
+  yieldQuantity: z.string().regex(/^\d+(\.\d{1,4})?$/),
+  yieldUnit: z.enum(['g', 'ml', 'unit']),
+  lines: z
+    .array(
+      z.object({
+        itemId: z.string().uuid().optional(),
+        subRecipeId: z.string().uuid().optional(),
+        quantity: z.string().regex(/^\d+(\.\d{1,4})?$/),
+        // Puntos básicos enteros: 5 % = 500. Un decimal aquí sería la única
+        // puerta por la que entraría coma flotante al cálculo de consumo.
+        wasteBps: z.number().int().min(0).max(100_000).optional(),
+      }),
+    )
+    .min(1, 'Una receta sin componentes no descuenta nada.'),
+});
+
 function parse<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
   if (!result.success) {
@@ -51,7 +88,57 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T {
 
 @Controller({ path: 'inventory', version: '1' })
 export class InventoryController {
-  constructor(private readonly inventory: InventoryService) {}
+  constructor(
+    private readonly inventory: InventoryService,
+    private readonly admin: InventoryAdminService,
+  ) {}
+
+  // ------------------------------------------------- Insumos y recetas
+
+  @Get('items')
+  @RequirePermission('inventory.read')
+  items(@Req() req: AuthenticatedRequest): Promise<ItemView[]> {
+    return this.admin.listItems(req.auth!.tid);
+  }
+
+  /**
+   * Alta o edición de un insumo, idempotente por SKU (o por nombre si no lo
+   * hay). Exige `inventory.adjust` y no un permiso propio: quien puede mover
+   * el stock a mano ya puede alterar el inventario, y un permiso más fino aquí
+   * sería una distinción que nadie configuraría.
+   */
+  @Post('items')
+  @RequirePermission('inventory.adjust')
+  upsertItem(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<ItemView> {
+    const dto = parse(insumoSchema, body);
+    return this.admin.upsertItem(req.auth!.tid, {
+      ...dto,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  @Get('recipes')
+  @RequirePermission('inventory.read')
+  recipes(@Req() req: AuthenticatedRequest): Promise<RecipeView[]> {
+    return this.admin.listRecipes(req.auth!.tid);
+  }
+
+  /** Guarda la receta ENTERA: las líneas se reemplazan, no se mezclan. */
+  @Post('recipes')
+  @RequirePermission('inventory.adjust')
+  upsertRecipe(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<RecipeView> {
+    const dto = parse(recetaSchema, body);
+    return this.admin.upsertRecipe(req.auth!.tid, {
+      ...dto,
+      actorId: req.auth!.sub,
+    });
+  }
 
   /** Stock por almacén, con la marca de bajo mínimo ya resuelta. */
   @Get('stock')

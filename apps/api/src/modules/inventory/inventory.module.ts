@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../database/database.module.js';
 import { InventoryService } from './app/inventory.service.js';
+import { InventoryAdminService } from './app/inventory-admin.service.js';
 import { InventoryEventHandlers } from './app/inventory-event-handlers.js';
 import { InventoryController } from './api/inventory.controller.js';
 
@@ -14,7 +15,7 @@ import { InventoryController } from './api/inventory.controller.js';
 @Module({
   imports: [DatabaseModule],
   controllers: [InventoryController],
-  providers: [InventoryService, InventoryEventHandlers],
-  exports: [InventoryService, InventoryEventHandlers],
+  providers: [InventoryService, InventoryEventHandlers, InventoryAdminService],
+  exports: [InventoryService, InventoryEventHandlers, InventoryAdminService],
 })
 export class InventoryModule {}

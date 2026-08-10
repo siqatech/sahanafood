@@ -451,6 +451,34 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.getByText(/append-only/i)).toBeVisible();
   });
 
+  test('SE PUEDE DECLARAR un insumo desde el panel, sin SQL', async ({
+    page,
+  }) => {
+    // El hueco que tenían catálogo y organización antes de DT-10: la mitad de
+    // escritura. Sin ella un negocio nuevo no puede declarar sus insumos, y sin
+    // receta el consumo automático no se dispara — el food cost se queda en
+    // cero para todos menos para la pollería de las semillas.
+    await entrar(page);
+    await page.goto('/panel/inventario');
+
+    const nombre = `Ají panca ${Date.now()}`;
+    await page.getByLabel('Nombre', { exact: true }).fill(nombre);
+    // `exact` en las dos: «Unidad» es subcadena de «Costo por unidad», y sin
+    // ello el localizador resuelve a dos campos.
+    await page.getByLabel('Unidad', { exact: true }).selectOption('g');
+    await page.getByLabel('Costo por unidad', { exact: true }).fill('0.018');
+    await page.getByRole('button', { name: 'Guardar insumo' }).click();
+
+    await expect(page.getByText(/guardado/i).first()).toBeVisible();
+
+    // Y aparece en el desplegable de la receta: es lo que demuestra que el
+    // insumo quedó utilizable y no solo escrito.
+    await page.reload();
+    await expect(
+      page.getByLabel('Consume').locator('option', { hasText: nombre }),
+    ).toHaveCount(1);
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

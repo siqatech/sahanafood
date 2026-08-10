@@ -416,6 +416,163 @@ suite('Inventario — recetas y consumo', () => {
     );
   });
 
+  // ---------------------- La mitad de ESCRITURA (spec 08: CRUD insumos/recetas)
+
+  it('SE PUEDE DAR DE ALTA un insumo y su receta sin tocar SQL', async () => {
+    // Es el hueco que tenían catálogo y organización antes de DT-10: sin esto,
+    // un negocio nuevo no puede declarar sus insumos ni sus recetas, y sin
+    // receta el consumo automático no se dispara nunca — el food cost, que es
+    // la razón de ser de este módulo, se queda en cero.
+    const insumo = await auth(
+      http().post('/api/v1/inventory/items').send({
+        sku: 'AJI-1',
+        name: 'Ají amarillo',
+        unit: 'g',
+        unitCostMinor: 150, // S/ 0.0150 por gramo
+        minStock: '500',
+      }),
+    ).expect(201);
+
+    expect(insumo.body.name).toBe('Ají amarillo');
+    expect(insumo.body.unit).toBe('g');
+    expect(insumo.body.minStock).toBe('500.0000');
+
+    // Idempotente por SKU: volver a aplicar el mismo archivo no duplica.
+    const otraVez = await auth(
+      http().post('/api/v1/inventory/items').send({
+        sku: 'AJI-1',
+        name: 'Ají amarillo molido',
+        unit: 'g',
+        unitCostMinor: 200,
+      }),
+    ).expect(201);
+    expect(otraVez.body.id).toBe(insumo.body.id);
+    expect(otraVez.body.name).toBe('Ají amarillo molido');
+
+    const receta = await auth(
+      http()
+        .post('/api/v1/inventory/recipes')
+        .send({
+          name: 'Crema de ají',
+          yieldQuantity: '1000',
+          yieldUnit: 'ml',
+          lines: [{ itemId: insumo.body.id, quantity: '200', wasteBps: 500 }],
+        }),
+    ).expect(201);
+
+    expect(receta.body.lines).toHaveLength(1);
+    expect(receta.body.lines[0].quantity).toBe('200.0000');
+    expect(receta.body.lines[0].wasteBps).toBe(500);
+  });
+
+  it('CAMBIAR LA UNIDAD de un insumo ya movido se rechaza con 409', async () => {
+    // La regla que parece burocracia y no lo es: stock, kardex y recetas
+    // guardan números SIN unidad —vive en el insumo—, así que pasar de gramos a
+    // mililitros no convierte nada: reinterpreta todo el histórico. El pollo
+    // tiene movimientos de las pruebas anteriores.
+    const antes = await auth(http().get('/api/v1/inventory/items')).expect(200);
+    const pollo = antes.body.find((i: { name: string }) => i.name === 'Pollo');
+    expect(pollo).toBeDefined();
+
+    const rechazo = await auth(
+      http()
+        .post('/api/v1/inventory/items')
+        .send({ name: 'Pollo', unit: 'ml' }),
+    ).expect(409);
+    expect(rechazo.body.code).toBe('INVENTORY_UNIT_LOCKED');
+
+    // Y el insumo sigue en gramos: un rechazo que deja el dato a medias sería
+    // peor que aceptar el cambio.
+    const despues = await auth(http().get('/api/v1/inventory/items')).expect(
+      200,
+    );
+    expect(
+      despues.body.find((i: { name: string }) => i.name === 'Pollo').unit,
+    ).toBe('g');
+  });
+
+  it('una receta CÍCLICA se rechaza al guardarla, no al primer pedido', async () => {
+    // RN-INV-05. Descubrirlo a las ocho de la noche, con el pedido dentro,
+    // significa un plato que no sale y una cocina parada.
+    const base = await auth(
+      http()
+        .post('/api/v1/inventory/recipes')
+        .send({
+          name: 'Base cíclica',
+          yieldQuantity: '1000',
+          yieldUnit: 'g',
+          lines: [{ itemId: insumos.papa, quantity: '100' }],
+        }),
+    ).expect(201);
+
+    const ciclo = await auth(
+      http()
+        .post('/api/v1/inventory/recipes')
+        .send({
+          name: 'Base cíclica',
+          yieldQuantity: '1000',
+          yieldUnit: 'g',
+          lines: [{ subRecipeId: base.body.id, quantity: '100' }],
+        }),
+    );
+    // Se comprueba el CÓDIGO y no solo que falle: un 422 por otra razón
+    // —una unidad mal escrita, una cantidad inválida— haría pasar la prueba
+    // sin que el detector de ciclos hubiera intervenido.
+    expect(ciclo.status).toBe(422);
+    expect(ciclo.body.code).toBe('RECIPE_CYCLE');
+  });
+
+  it('un ciclo A→B→A NO se queda guardado: la transacción se deshace', async () => {
+    // El caso que la restricción de la base NO cubre —solo mira la
+    // autorreferencia directa— y el que revela dónde va la validación. Si se
+    // valida DESPUÉS de confirmar, la petición falla, el operador cree que no
+    // se guardó nada, y el ciclo espera al primer pedido de las ocho.
+    const a = await auth(
+      http()
+        .post('/api/v1/inventory/recipes')
+        .send({
+          name: 'Salsa A',
+          yieldQuantity: '1000',
+          yieldUnit: 'ml',
+          lines: [{ itemId: insumos.mayonesa, quantity: '100' }],
+        }),
+    ).expect(201);
+
+    const b = await auth(
+      http()
+        .post('/api/v1/inventory/recipes')
+        .send({
+          name: 'Salsa B',
+          yieldQuantity: '1000',
+          yieldUnit: 'ml',
+          lines: [{ subRecipeId: a.body.id, quantity: '100' }],
+        }),
+    ).expect(201);
+
+    // Ahora A pasa a llevar B: A → B → A.
+    const ciclo = await auth(
+      http()
+        .post('/api/v1/inventory/recipes')
+        .send({
+          name: 'Salsa A',
+          yieldQuantity: '1000',
+          yieldUnit: 'ml',
+          lines: [{ subRecipeId: b.body.id, quantity: '100' }],
+        }),
+    );
+    expect(ciclo.status).toBe(422);
+    expect(ciclo.body.code).toBe('RECIPE_CYCLE');
+
+    // LA COMPROBACIÓN QUE IMPORTA: A quedó como estaba, con su mayonesa. Si la
+    // validación fuera posterior al commit, aquí habría una línea apuntando a B.
+    const recetas = await auth(http().get('/api/v1/inventory/recipes')).expect(
+      200,
+    );
+    const salsaA = recetas.body.find((r: { id: string }) => r.id === a.body.id);
+    expect(salsaA.lines).toHaveLength(1);
+    expect(salsaA.lines[0].kind).toBe('item');
+  });
+
   it('EL KARDEX SE PUEDE LEER, que es lo que hace útil un append-only', async () => {
     // `inv_movements` tiene `UPDATE` y `DELETE` revocados al rol de aplicación
     // (RN-INV-02). Eso solo sirve de algo si alguien puede LEERLO, y durante
