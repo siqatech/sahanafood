@@ -513,4 +513,22 @@ El formateo de importes se unificó en `caja/dinero.ts` —tres pantallas lo usa
 
 **Dos aserciones mías que estaban mal, y lo que enseñan.** La del buscador prometía que buscar «12» solo devuelve el pedido 12; el código —a propósito— también encuentra teléfonos que contienen 12, porque quien dicta «termina en 12» busca así. Pasó en aislamiento y falló con la suite completa, que es cuando aparecieron teléfonos con esos dígitos. La aserción correcta no es «solo sale el mío» sino la que aísla el fallo real: **ningún resultado tiene un número que contenga los dígitos sin ser igual a ellos**. Y la de caja buscaba el texto «Tarjeta», que también está en el párrafo que explica la tabla: ahora busca la celda.
 
-**Próxima acción de Claude Code:** de `specs/ux/03` quedan Inventario, Clientes, Configuración completa y Novedades — todas de consulta y ninguna bloqueante. Antes de seguir sumando pantallas conviene volver a pasar el paso 2 del criterio sobre los módulos que aún no tienen ninguna: inventario (`inv_*`) y CRM, donde el patrón «se guarda y no se devuelve» ya ha aparecido cuatro veces.
+### Inventario: el kardex se podía escribir y no leer
+
+El paso 2 del criterio, aplicado a inventario y CRM antes de tocar nada. CRM salió limpio —no hay módulo porque la fase no lo pide; lo mínimo que la bandeja necesita vive en `wa_contacts`, y eso es alcance planificado, no un hueco—. Inventario, no.
+
+**`inv_movements` se escribía en tres sitios desde F4 y ninguna ruta lo devolvía.** Y es la tabla que RN-INV-02 declara append-only: `UPDATE` y `DELETE` están revocados al rol de aplicación precisamente para que el libro sea auditable. Un libro inalterable que nadie puede leer no es auditable, es solo inalterable. La restricción que obliga a poner motivo en cada ajuste y cada merma existe para que la respuesta a «¿por qué faltan 3 kg de carne?» no sea «alguien lo ajustó» — y hasta ahora esa respuesta seguía sin poder darse, porque el motivo estaba escrito donde nadie llegaba.
+
+Van cinco veces. Ahora hay `GET /inventory/movements` con filtro por insumo, almacén y pedido, y `/panel/inventario` con existencias y kardex.
+
+Tres detalles que importan:
+
+· **La cantidad viaja con signo**, tal como está en la tabla. Quitarle el signo obligaría a la pantalla a deducirlo del tipo, que es justo la tabla de signos que la migración evitó a propósito: una reversa suma y una merma resta bajo tipos distintos, y un ajuste puede ir en cualquier dirección.
+
+· **Se devuelve el costo unitario del momento** (RN-INV-04), no el de hoy. Es el dato del que depende todo F6: sin poder mirarlo, «teórico vs real» no se puede ni empezar a conciliar. Que estuviera guardado y fuera ilegible convertía la precondición de la fase siguiente en un acto de fe.
+
+· **Cada movimiento enlaza a su pedido**, para poder saltar de «falta pollo» a «este pedido se lo llevó».
+
+La prueba de aislamiento no es de trámite: el kardex lleva el costo unitario de cada consumo, así que quien lo lea sabe cuánto le cuesta a la competencia cada plato que vende.
+
+**Próxima acción de Claude Code:** con esto, los cinco módulos que mueven dinero o inventario tienen pantalla y lectura completa. Lo que queda de `specs/ux/03` —Clientes, Configuración completa, Novedades— es consulta secundaria. El siguiente trabajo con valor propio es la **parte de escritura de inventario**: la spec 08 pide «CRUD insumos/recetas» y hoy solo existe la mitad de lectura, igual que pasaba con catálogo y organización antes de DT-10. Sin ella, un negocio nuevo no puede declarar sus insumos ni sus recetas sin SQL, y el consumo automático —que es lo que hace que el food cost exista— nunca se dispara.

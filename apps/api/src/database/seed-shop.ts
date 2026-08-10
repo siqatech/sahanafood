@@ -11,6 +11,7 @@ import { StorefrontService } from '../modules/storefront/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
 import { ConversationsService } from '../modules/conversations/index.js';
 import { CashService } from '../modules/cash/index.js';
+import { InventoryService } from '../modules/inventory/index.js';
 
 /**
  * Siembra una tienda demo para levantar `apps/web` a mano (T5.08–T5.14).
@@ -164,6 +165,51 @@ async function main(): Promise<void> {
     reason: 'Compra de hielo',
   });
 
+  // Dos insumos con stock y un par de movimientos en el kardex. Sin esto la
+  // pantalla de inventario solo se puede mirar vacía, y una pantalla que solo
+  // se puede mirar vacía no se puede desarrollar ni probar.
+  const inventario = app.get(InventoryService);
+  const insumos = await withTenant(
+    pool,
+    tenant.tenantId,
+    async ({ client }) => {
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO inv_items (tenant_id, name, unit, unit_cost, min_stock)
+       VALUES ($1,'Pollo entero','g','0.0120','1000.0000'),
+              ($1,'Papa','g','0.0030', NULL)
+       RETURNING id`,
+        [tenant.tenantId],
+      );
+      for (const fila of rows) {
+        await client.query(
+          `INSERT INTO inv_stock (tenant_id, warehouse_id, item_id, quantity)
+         VALUES ($1,$2,$3,'0.0000')
+         ON CONFLICT (tenant_id, warehouse_id, item_id) DO NOTHING`,
+          [tenant.tenantId, org.warehouseId, fila.id],
+        );
+      }
+      return rows.map((r) => r.id);
+    },
+  );
+
+  // Una entrada y una merma: las dos caras que hacen legible un kardex. La
+  // merca lleva motivo porque la base lo exige — un descuadre sin explicación
+  // es peor que un descuadre.
+  await inventario.recordAdjustment(tenant.tenantId, {
+    warehouseId: org.warehouseId,
+    itemId: insumos[0]!,
+    quantity: '20000.0000',
+    reason: 'Carga inicial del almacén',
+    actorId: tenant.ownerUserId,
+  });
+  await inventario.recordAdjustment(tenant.tenantId, {
+    warehouseId: org.warehouseId,
+    itemId: insumos[0]!,
+    quantity: '-1500.0000',
+    reason: 'Merma: pollo que se pasó de tiempo en vitrina',
+    actorId: tenant.ownerUserId,
+  });
+
   console.log(
     JSON.stringify(
       {
@@ -176,6 +222,7 @@ async function main(): Promise<void> {
         operaciones: `http://${HOST}:3001/panel/operaciones`,
         conversaciones: `http://${HOST}:3001/panel/conversaciones`,
         caja: `http://${HOST}:3001/panel/caja`,
+        inventario: `http://${HOST}:3001/panel/inventario`,
       },
       null,
       2,

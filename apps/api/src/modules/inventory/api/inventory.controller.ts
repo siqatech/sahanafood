@@ -65,6 +65,30 @@ export class InventoryController {
     });
   }
 
+  /**
+   * El kardex: qué movimientos explican el stock actual.
+   *
+   * Sin filtro devuelve los últimos movimientos del tenant, que es lo que se
+   * mira al abrir la pantalla. Con `item` es la pregunta de verdad: «¿por qué
+   * faltan 3 kg de carne?».
+   */
+  @Get('movements')
+  @RequirePermission('inventory.read')
+  movements(
+    @Req() req: AuthenticatedRequest,
+    @Query('item') item?: string,
+    @Query('warehouse') warehouse?: string,
+    @Query('order') order?: string,
+    @Query('limit') limit?: string,
+  ): Promise<unknown[]> {
+    return this.inventory.kardex(req.auth!.tid, {
+      ...(item !== undefined ? { itemId: item } : {}),
+      ...(warehouse !== undefined ? { warehouseId: warehouse } : {}),
+      ...(order !== undefined ? { orderId: order } : {}),
+      ...(limit !== undefined ? { limit: Number(limit) } : {}),
+    });
+  }
+
   @Post('movements')
   @RequirePermission('inventory.adjust')
   adjust(

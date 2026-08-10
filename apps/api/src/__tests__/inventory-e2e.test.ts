@@ -416,6 +416,49 @@ suite('Inventario — recetas y consumo', () => {
     );
   });
 
+  it('EL KARDEX SE PUEDE LEER, que es lo que hace útil un append-only', async () => {
+    // `inv_movements` tiene `UPDATE` y `DELETE` revocados al rol de aplicación
+    // (RN-INV-02). Eso solo sirve de algo si alguien puede LEERLO, y durante
+    // F4 y F5 ninguna ruta lo devolvía: el libro era inalterable e ilegible.
+    // Al preguntar por qué faltan 3 kg de carne, la respuesta seguía siendo
+    // «alguien lo ajustó».
+    const pedido = await pedirPollo(2);
+    await aceptar(pedido.id);
+    await inventory.consumeForOrder(tenantA, pedido.id);
+
+    const kardex = await auth(
+      http().get(`/api/v1/inventory/movements?item=${insumos.pollo}`),
+    ).expect(200);
+
+    expect(kardex.body.length).toBeGreaterThan(0);
+    const consumo = kardex.body.find(
+      (m: { orderId: string | null }) => m.orderId === pedido.id,
+    );
+    expect(consumo).toBeDefined();
+
+    // Lo que hace útil la lectura, una por una:
+    // el signo —descuenta, así que negativo— y no un valor absoluto que
+    // obligue a la pantalla a deducirlo del tipo;
+    expect(Number(consumo.quantity)).toBeLessThan(0);
+    // el número de pedido, para poder saltar de «falta carne» a «este pedido»;
+    expect(consumo.orderNumber).toBe(pedido.orderNumber);
+    // y el COSTO DEL MOMENTO (RN-INV-04), del que depende toda la
+    // conciliación de F6.
+    expect(consumo.unitCost).toBeTruthy();
+    expect(consumo.itemName).toBeTruthy();
+  });
+
+  it('el kardex de OTRO insumo no trae los movimientos de este', async () => {
+    // El filtro por insumo es la pregunta real de la pantalla. Si no filtrara,
+    // «por qué faltan 3 kg de carne» devolvería el libro entero del local.
+    const kardex = await auth(
+      http().get(`/api/v1/inventory/movements?item=${insumos.papa}`),
+    ).expect(200);
+    expect(
+      kardex.body.every((m: { itemId: string }) => m.itemId === insumos.papa),
+    ).toBe(true);
+  });
+
   it('50 pedidos SIMULTÁNEOS del mismo insumo dejan el stock exacto', async () => {
     // Es la prueba que decide si el kardex sirve. El stock es un contador
     // compartido: leer-luego-escribir pierde actualizaciones justo en hora

@@ -646,6 +646,17 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /inventory/movements (kardex)', async () => {
+    // El kardex lleva el costo unitario de cada consumo: quien lo lea sabe
+    // cuánto le cuesta a la competencia cada plato que vende.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /inventory/movements', (r) =>
+        r.get('/api/v1/inventory/movements'),
+      ),
+    );
+  });
+
   it('GET /orders/:id/detail (pedido de A)', async () => {
     // El detalle lleva las LÍNEAS y los datos del cliente: es lo más concreto
     // que se puede pedir sobre un pedido ajeno.

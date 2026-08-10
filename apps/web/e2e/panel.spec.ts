@@ -424,6 +424,33 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(fila).toContainText('S/ 45.00');
   });
 
+  test('INVENTARIO explica POR QUÉ falta, no solo cuánto queda', async ({
+    page,
+  }) => {
+    // El kardex es append-only por diseño (RN-INV-02) y eso solo sirve si
+    // alguien puede leerlo. Se escribía desde F4 en tres sitios y ninguna ruta
+    // lo devolvía: el libro era inalterable e ilegible.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Inventario', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Inventario' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Existencias' }),
+    ).toBeVisible();
+
+    // Se salta al kardex de UN insumo, que es la pregunta real: «¿por qué
+    // faltan 3 kg de carne?».
+    const fila = page.locator('tbody tr').first();
+    await fila.getByRole('link', { name: 'Ver movimientos' }).click();
+    await expect(
+      page.getByRole('heading', { name: /^Movimientos de / }),
+    ).toBeVisible();
+
+    // Y el libro dice que no se edita: es la propiedad que lo hace auditable.
+    await expect(page.getByText(/append-only/i)).toBeVisible();
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

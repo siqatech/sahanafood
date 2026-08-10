@@ -366,6 +366,7 @@ se guarda con un comentario explicando para qué, y que ninguna ruta devuelve.**
 | `cnv_conversations.handoff_summary` | T5.28 | el traspaso con contexto (RN-CNV-02) | nadie |
 | modificadores en `resolve-mapping` | F4 | mapear un plato con talla obligatoria | no había formulario |
 | `ord_order_lines` | F4 | el **snapshot** de lo vendido (RN-ORD-02) | nadie — encontrado aplicando §8.8 |
+| `inv_movements` | F4 | el **kardex append-only** auditable (RN-INV-02) + el costo del momento (RN-INV-04) | nadie — encontrado aplicando §8.8 |
 
 El cuarto lo encontró el propio criterio de §8.8 en su primera aplicación: las
 líneas del pedido se guardaban desde F4 y ninguna ruta las devolvía, así que

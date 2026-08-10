@@ -230,6 +230,32 @@ export interface PoliticaDeAceptacion {
   autoRejectAfterMinutes: number;
 }
 
+export interface ExistenciaDelPanel {
+  warehouseId: string;
+  warehouseName: string;
+  itemId: string;
+  itemName: string;
+  unit: string;
+  quantity: string;
+  minStock: string | null;
+  belowMinimum: boolean;
+}
+
+export interface MovimientoDeKardex {
+  id: string;
+  occurredAt: string;
+  kind: string;
+  itemId: string;
+  itemName: string;
+  warehouseName: string;
+  unit: string;
+  quantity: string;
+  unitCost: string;
+  orderId: string | null;
+  orderNumber: number | null;
+  reason: string | null;
+}
+
 export interface TurnoDeCaja {
   id: string;
   locationId: string;
@@ -496,6 +522,21 @@ export const panel = {
     llamar<DocumentoDelPanel[]>(
       status ? `/documents?status=${encodeURIComponent(status)}` : '/documents',
     ),
+
+  existencias: (): Promise<ExistenciaDelPanel[]> =>
+    llamar<ExistenciaDelPanel[]>('/inventory/stock'),
+
+  kardex: (
+    filtros: { item?: string; limit?: number } = {},
+  ): Promise<MovimientoDeKardex[]> => {
+    const q = new URLSearchParams();
+    if (filtros.item) q.set('item', filtros.item);
+    if (filtros.limit) q.set('limit', String(filtros.limit));
+    const cadena = q.toString();
+    return llamar<MovimientoDeKardex[]>(
+      `/inventory/movements${cadena ? `?${cadena}` : ''}`,
+    );
+  },
 
   turnos: (): Promise<TurnoDeCaja[]> => llamar<TurnoDeCaja[]>('/cash-sessions'),
 

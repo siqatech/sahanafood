@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Pool } from 'pg';
 import {
+  Money,
   Quantity,
   calculateConsumption,
   reverseConsumption,
@@ -657,6 +658,103 @@ export class InventoryService {
           belowMinimum: minimo ? cantidad.compare(minimo) < 0 : false,
         };
       });
+    });
+  }
+
+  /**
+   * El KARDEX de un insumo: por qué el stock es el que es.
+   *
+   * `inv_movements` es append-only por diseño (RN-INV-02) —`UPDATE` y `DELETE`
+   * están revocados al rol de aplicación— y eso solo tiene sentido si alguien
+   * puede LEERLO. Se escribía en tres sitios desde F4 y ninguna ruta lo
+   * devolvía: el libro existía, era inalterable, y era ilegible. Cuando alguien
+   * preguntaba por qué faltan 3 kg de carne, la respuesta seguía siendo
+   * «alguien lo ajustó», que es exactamente lo que la restricción de motivo
+   * obligatorio venía a evitar.
+   *
+   * Devuelve además el **costo unitario del momento** (RN-INV-04), que es el
+   * dato del que depende todo F6: sin poder mirarlo, «teórico vs real» no se
+   * puede ni empezar a conciliar.
+   */
+  async kardex(
+    tenantId: string,
+    filtros: {
+      itemId?: string | undefined;
+      warehouseId?: string | undefined;
+      orderId?: string | undefined;
+      limit?: number | undefined;
+    } = {},
+  ): Promise<
+    Array<{
+      id: string;
+      occurredAt: string;
+      kind: string;
+      itemId: string;
+      itemName: string;
+      warehouseId: string;
+      warehouseName: string;
+      unit: Unit;
+      quantity: string;
+      unitCost: string;
+      orderId: string | null;
+      orderNumber: number | null;
+      reason: string | null;
+    }>
+  > {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        id: string;
+        occurred_at: Date;
+        kind: string;
+        item_id: string;
+        item_name: string;
+        warehouse_id: string;
+        warehouse_name: string;
+        unit: Unit;
+        quantity: string;
+        unit_cost: string;
+        order_id: string | null;
+        order_number: number | null;
+        reason: string | null;
+      }>(
+        `SELECT m.id, m.occurred_at, m.kind, m.item_id, i.name AS item_name,
+                m.warehouse_id, w.name AS warehouse_name, i.unit,
+                m.quantity, m.unit_cost, m.order_id, o.order_number, m.reason
+           FROM inv_movements m
+           JOIN inv_items i      ON i.id = m.item_id
+           JOIN org_warehouses w ON w.id = m.warehouse_id
+           LEFT JOIN ord_orders o ON o.id = m.order_id
+          WHERE ($1::uuid IS NULL OR m.item_id = $1)
+            AND ($2::uuid IS NULL OR m.warehouse_id = $2)
+            AND ($3::uuid IS NULL OR m.order_id = $3)
+          ORDER BY m.occurred_at DESC, m.id DESC
+          LIMIT $4`,
+        [
+          filtros.itemId ?? null,
+          filtros.warehouseId ?? null,
+          filtros.orderId ?? null,
+          Math.min(filtros.limit ?? 100, 500),
+        ],
+      );
+
+      return rows.map((r) => ({
+        id: r.id,
+        occurredAt: r.occurred_at.toISOString(),
+        kind: r.kind,
+        itemId: r.item_id,
+        itemName: r.item_name,
+        warehouseId: r.warehouse_id,
+        warehouseName: r.warehouse_name,
+        unit: r.unit,
+        // La cantidad viaja CON SIGNO, como está en la tabla: quitarle el signo
+        // aquí obligaría a la pantalla a deducirlo del tipo, que es justo la
+        // tabla de signos que la migración evitó a propósito.
+        quantity: Quantity.fromDatabase(r.quantity, r.unit).toDatabase(),
+        unitCost: Money.parse(r.unit_cost).toDecimalString(),
+        orderId: r.order_id,
+        orderNumber: r.order_number,
+        reason: r.reason,
+      }));
     });
   }
 
