@@ -267,6 +267,98 @@ suite('Facturación electrónica', () => {
     expect(cola.map((d) => d.id)).toContain(doc.id);
   });
 
+  it('LA COLA DE CORRECCIÓN SE PUEDE CORREGIR: mismo número, RUC bueno', async () => {
+    // La otra mitad de RN-BIL-02, y la que faltaba. La cola existía y no se
+    // podía vaciar: `retry` reenvía el MISMO RUC que el OSE acaba de rechazar
+    // y `createForOrder` se niega porque la venta ya tiene comprobante. La
+    // venta no se perdía —eso sí— pero se quedaba sin poder facturarse nunca.
+    const orderId = await vender();
+    const doc = await billing.createForOrder(tenantA, orderId, CON_RUC);
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `UPDATE bil_documents SET customer_doc_number = '123' WHERE id = $1`,
+        [doc.id],
+      ),
+    );
+    const rechazado = await billing.issue(tenantA, doc.id);
+    expect(rechazado.status).toBe('rejected');
+
+    const corregido = await billing.correctCustomer(tenantA, doc.id, CON_RUC);
+
+    expect(corregido.status).toBe('accepted');
+    // MISMO número: un rechazado nunca fue válido, así que darle uno nuevo
+    // dejaría el anterior como un hueco en la serie que hay que justificar.
+    expect(corregido.number).toBe(rechazado.number);
+
+    // Y sale de la cola.
+    const cola = await billing.list(tenantA, { status: 'rejected' });
+    expect(cola.map((d) => d.id)).not.toContain(doc.id);
+  });
+
+  it('LA CORRECCIÓN QUEDA AUDITADA con el dato viejo y el nuevo', async () => {
+    // Tres meses después alguien pregunta por qué este comprobante lleva dos
+    // identidades. Sin el rastro, la respuesta es que no se sabe.
+    const orderId = await vender();
+    const doc = await billing.createForOrder(tenantA, orderId, CON_RUC);
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `UPDATE bil_documents SET customer_doc_number = '123' WHERE id = $1`,
+        [doc.id],
+      ),
+    );
+    await billing.issue(tenantA, doc.id);
+    await billing.correctCustomer(tenantA, doc.id, CON_RUC);
+
+    const rastro = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        data: {
+          rejectionCode: string;
+          from: { docNumber: string };
+          to: { docNumber: string };
+        };
+      }>(
+        `SELECT data FROM audit_log
+          WHERE action = 'billing.customer_corrected' AND resource_id = $1`,
+        [doc.id],
+      );
+      return rows[0];
+    });
+    expect(rastro).toBeTruthy();
+    expect(rastro!.data.from.docNumber).toBe('123');
+    expect(rastro!.data.to.docNumber).toBe(CON_RUC.docNumber);
+    expect(rastro!.data.rejectionCode).toBe(OSE_REJECTION_CODES.RUC_INVALIDO);
+  });
+
+  it('NO SE CORRIGE lo que ya está aceptado: eso se anula', async () => {
+    const orderId = await vender();
+    const doc = await billing.createForOrder(tenantA, orderId, CON_RUC);
+    const aceptado = await billing.issue(tenantA, doc.id);
+    expect(aceptado.status).toBe('accepted');
+
+    await expect(
+      billing.correctCustomer(tenantA, doc.id, CON_RUC),
+    ).rejects.toThrow(/rechazados/i);
+  });
+
+  it('CAMBIAR DE FACTURA A BOLETA no es corregir: son series distintas', async () => {
+    const orderId = await vender();
+    const doc = await billing.createForOrder(tenantA, orderId, CON_RUC);
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `UPDATE bil_documents SET customer_doc_number = '123' WHERE id = $1`,
+        [doc.id],
+      ),
+    );
+    await billing.issue(tenantA, doc.id);
+
+    await expect(
+      billing.correctCustomer(tenantA, doc.id, {
+        docType: 'DNI',
+        docNumber: '45678912',
+      }),
+    ).rejects.toThrow(/series distintas/i);
+  });
+
   it('respuesta PERDIDA: el reintento reconcilia y NO duplica el comprobante', async () => {
     // El caso que produce comprobantes duplicados en los sistemas que no lo
     // contemplan: el OSE lo aceptó, la respuesta se perdió por el camino, y el

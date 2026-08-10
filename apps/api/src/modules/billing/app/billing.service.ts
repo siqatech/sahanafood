@@ -88,6 +88,14 @@ export interface DocumentView {
   rejectionCode: string | null;
   rejectionReason: string | null;
   attempts: number;
+  /**
+   * A nombre de quién va. Se devuelve porque **no se puede corregir lo que no
+   * se ve**: la cola de corrección existe justo para arreglar estos tres
+   * campos, y sin ellos la pantalla pediría escribirlos a ciegas.
+   */
+  customerDocType: string;
+  customerDocNumber: string | null;
+  customerName: string | null;
   /** Cómo va de plazo si sigue pendiente (RN-BIL-03). */
   deferral?:
     | { status: 'ok' | 'warning' | 'expired'; hoursRemaining: number }
@@ -304,6 +312,104 @@ export class BillingService {
    * la fila de la serie durante todo el viaje de red, y con ella a todas las
    * cajas del tenant. Un OSE lento pararía las ventas.
    */
+  /**
+   * Corrige los datos del cliente de un comprobante RECHAZADO y lo reenvía.
+   *
+   * Es la mitad que faltaba de RN-BIL-02. La regla dice «documento rechazado
+   * por OSE → **cola de corrección**», y la cola existía: el documento quedaba
+   * en `rejected` con el motivo del OSE al lado, y la pantalla de operaciones
+   * decía «hay que corregir y reenviar». **Corregir no se podía.** Lo único
+   * expuesto era reenviar, que manda otra vez exactamente el mismo RUC que el
+   * OSE acaba de rechazar, y `createForOrder` se niega a crear otro porque la
+   * venta ya tiene comprobante. La venta no se perdía —eso sí lo cumplía— pero
+   * se quedaba sin poder facturarse, que ante SUNAT es igual de malo.
+   *
+   * **Se conserva el número.** Un comprobante rechazado nunca fue válido, así
+   * que reenviarlo corregido con su mismo correlativo es lo correcto; darle uno
+   * nuevo dejaría el anterior como un hueco en la serie, y un hueco hay que
+   * justificarlo con una comunicación de baja.
+   *
+   * **Solo desde `rejected`.** Uno aceptado ya está declarado y se revierte con
+   * nota de crédito, no editándolo; uno en cola todavía no ha ido a ningún
+   * sitio y se corrige antes de emitirlo.
+   */
+  async correctCustomer(
+    tenantId: string,
+    documentId: string,
+    identidad: CustomerIdentity,
+    options: { actorId?: string | undefined; traceId?: string } = {},
+  ): Promise<DocumentView> {
+    try {
+      assertValidIdentity(identidad);
+    } catch (error) {
+      if (error instanceof DomainBillingError) {
+        throw new InvalidCustomerIdentityError(error.message, {
+          code: error.code,
+        });
+      }
+      throw error;
+    }
+
+    await withTenant(this.pool, tenantId, async (ctx) => {
+      const fila = await this.cargarDocumento(ctx, documentId);
+      if (fila.status !== 'rejected') {
+        throw new ValidationError(
+          `Solo se corrigen los comprobantes rechazados; este está en "${fila.status}".`,
+        );
+      }
+
+      const tipo = resolveDocumentType(identidad);
+      if (tipo !== fila.doc_type) {
+        // Boleta y factura son series distintas y correlativos distintos. Pasar
+        // de una a otra no es corregir un dato: es otro comprobante, y este hay
+        // que darlo de baja antes.
+        throw new ValidationError(
+          `Cambiar de ${fila.doc_type} a ${tipo} no es una corrección: son series distintas. Da de baja este comprobante y emite el otro.`,
+        );
+      }
+
+      await ctx.client.query(
+        `UPDATE bil_documents
+            SET customer_doc_type = $2, customer_doc_number = $3,
+                customer_name = $4, updated_at = now()
+          WHERE id = $1`,
+        [
+          documentId,
+          identidad.docType,
+          identidad.docNumber ?? null,
+          identidad.legalName ?? fila.customer_name,
+        ],
+      );
+
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(options.actorId !== undefined ? { actorId: options.actorId } : {}),
+        action: 'billing.customer_corrected',
+        resourceType: 'document',
+        resourceId: documentId,
+        // El motivo del rechazo queda al lado del dato nuevo: es lo que hace
+        // legible la corrección tres meses después, cuando el contador
+        // pregunta por qué este comprobante lleva dos identidades.
+        data: {
+          rejectionCode: fila.rejection_code,
+          from: {
+            docType: fila.customer_doc_type,
+            docNumber: fila.customer_doc_number,
+          },
+          to: {
+            docType: identidad.docType,
+            docNumber: identidad.docNumber ?? null,
+          },
+        },
+        ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
+      });
+    });
+
+    return this.issue(tenantId, documentId, {
+      ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
+    });
+  }
+
   async issue(
     tenantId: string,
     documentId: string,
@@ -884,6 +990,9 @@ export class BillingService {
       rejectionCode: fila.rejection_code,
       rejectionReason: fila.rejection_reason,
       attempts: fila.attempts,
+      customerDocType: fila.customer_doc_type,
+      customerDocNumber: fila.customer_doc_number,
+      customerName: fila.customer_name,
       ...(plazo
         ? {
             deferral: {

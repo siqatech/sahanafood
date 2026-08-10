@@ -928,6 +928,22 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('POST /documents/:id/correct sobre el comprobante de B', async () => {
+    // Corregir el comprobante de otro tenant es reescribir a nombre de quién
+    // declara una venta ajena, y además reenviarla.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /documents/:id/correct',
+        (r) =>
+          r
+            .post(`/api/v1/documents/${documentoDeB}/correct`)
+            .send({ docType: 'DNI', docNumber: '45678912' }),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
   it('POST /documents/:id/credit-note sobre el comprobante de B', async () => {
     await assertEndpointIsolation(
       app,

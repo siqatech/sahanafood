@@ -552,6 +552,45 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.locator('p.codigo')).toHaveCount(0);
   });
 
+  test('LA COLA DE CORRECCIÓN se puede corregir, que era lo que faltaba', async ({
+    page,
+  }) => {
+    // La pantalla de operaciones decía «hay que corregir y reenviar» y no
+    // existía forma de corregir: reenviar manda el mismo RUC que el OSE acaba
+    // de rechazar, y crear otro comprobante para la misma venta está prohibido.
+    // La venta no se perdía; simplemente no se podía facturar nunca.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Comprobantes' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Comprobantes' }),
+    ).toBeVisible();
+
+    const rechazado = page.locator('.ficha--revision').first();
+    await expect(rechazado).toBeVisible();
+    // El motivo del OSE se queda a la vista MIENTRAS se escribe el dato nuevo:
+    // si desapareciera, se corregiría de memoria.
+    await expect(rechazado).toContainText(/11 dígitos/);
+
+    // Un RUC de nueve dígitos ni siquiera sale de aquí: gastar un intento
+    // contra el OSE en algo que se ve mal desde la pantalla es tirar un envío.
+    await rechazado.getByLabel('Número').fill('201234567');
+    await rechazado
+      .getByRole('button', { name: 'Corregir y reenviar' })
+      .click();
+    await expect(rechazado.getByText(/11 dígitos/).last()).toBeVisible();
+
+    await rechazado.getByLabel('Número').fill('20123456789');
+    await rechazado
+      .getByRole('button', { name: 'Corregir y reenviar' })
+      .click();
+
+    // Se comprueba el EFECTO: el comprobante sale de la cola de rechazados.
+    await expect(page.locator('.ficha--revision')).toHaveCount(0);
+    await expect(
+      page.getByText('Nada rechazado. La venta se declara sola al cobrar.'),
+    ).toBeVisible();
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

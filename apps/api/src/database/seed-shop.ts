@@ -12,6 +12,7 @@ import { OrderingService } from '../modules/ordering/index.js';
 import { ConversationsService } from '../modules/conversations/index.js';
 import { CashService } from '../modules/cash/index.js';
 import { InventoryService } from '../modules/inventory/index.js';
+import { BillingService } from '../modules/billing/index.js';
 
 /**
  * Siembra una tienda demo para levantar `apps/web` a mano (T5.08–T5.14).
@@ -210,6 +211,72 @@ async function main(): Promise<void> {
     actorId: tenant.ownerUserId,
   });
 
+  // Series de comprobantes y TRES documentos: uno aceptado, uno en cola y uno
+  // RECHAZADO por el OSE. El rechazado es el que justifica la pantalla: sin él
+  // la cola de corrección solo se puede mirar vacía — que es exactamente cómo
+  // acabó sin poder corregirse.
+  await withTenant(pool, tenant.tenantId, ({ client }) =>
+    client.query(
+      `INSERT INTO bil_series (tenant_id, company_id, series, doc_type)
+       VALUES ($1,$2,'B001','boleta'), ($1,$2,'F001','factura'),
+              ($1,$2,'BC01','nota_credito')`,
+      [tenant.tenantId, org.companyId],
+    ),
+  );
+
+  const facturacion = app.get(BillingService);
+  const ventaFacturada = await ordering.submit(tenant.tenantId, {
+    brandId,
+    locationId: org.locationId,
+    channel: 'pos',
+    lines: [{ productId: catalogo.comboId, quantity: 1 }],
+    customerName: 'Constructora Los Andes S.A.C.',
+  });
+  const factura = await facturacion.createForOrder(
+    tenant.tenantId,
+    ventaFacturada.id,
+    {
+      docType: 'RUC',
+      docNumber: '20123456789',
+      legalName: 'Constructora Los Andes S.A.C.',
+    },
+  );
+  // Se corrompe el RUC como si hubiera llegado mal desde el canal: es el caso
+  // real de RN-BIL-02, y el único que produce un rechazo del OSE de verdad.
+  await withTenant(pool, tenant.tenantId, ({ client }) =>
+    client.query(
+      `UPDATE bil_documents SET customer_doc_number = '123' WHERE id = $1`,
+      [factura.id],
+    ),
+  );
+  await facturacion.issue(tenant.tenantId, factura.id);
+
+  const ventaBoleta = await ordering.submit(tenant.tenantId, {
+    brandId,
+    locationId: org.locationId,
+    channel: 'pos',
+    lines: [{ productId: catalogo.comboId, quantity: 1 }],
+    customerName: 'Cliente del mostrador',
+  });
+  const boleta = await facturacion.createForOrder(
+    tenant.tenantId,
+    ventaBoleta.id,
+    { docType: 'DNI', docNumber: '45678912' },
+  );
+  await facturacion.issue(tenant.tenantId, boleta.id);
+
+  // Y uno EN COLA, sin enviar: es el que enseña el plazo de RN-BIL-03.
+  const ventaEnCola = await ordering.submit(tenant.tenantId, {
+    brandId,
+    locationId: org.locationId,
+    channel: 'pos',
+    lines: [{ productId: catalogo.comboId, quantity: 1 }],
+    customerName: 'Cliente sin declarar',
+  });
+  await facturacion.createForOrder(tenant.tenantId, ventaEnCola.id, {
+    docType: 'NONE',
+  });
+
   console.log(
     JSON.stringify(
       {
@@ -223,6 +290,7 @@ async function main(): Promise<void> {
         conversaciones: `http://${HOST}:3001/panel/conversaciones`,
         caja: `http://${HOST}:3001/panel/caja`,
         inventario: `http://${HOST}:3001/panel/inventario`,
+        comprobantes: `http://${HOST}:3001/panel/comprobantes`,
       },
       null,
       2,

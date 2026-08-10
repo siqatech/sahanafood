@@ -332,8 +332,14 @@ export interface DocumentoDelPanel {
   status: string;
   total: string;
   issuedAt: string;
+  rejectionCode: string | null;
   rejectionReason: string | null;
   attempts: number;
+  /** A nombre de quién va: no se puede corregir lo que no se ve. */
+  customerDocType: string;
+  customerDocNumber: string | null;
+  customerName: string | null;
+  deferral?: { status: string; hoursRemaining: number } | undefined;
 }
 
 /** Lo que el bot entrega al humano al derivar (RN-CNV-02). */
@@ -557,6 +563,25 @@ export const panel = {
     llamar<DocumentoDelPanel[]>(
       status ? `/documents?status=${encodeURIComponent(status)}` : '/documents',
     ),
+
+  /** Corrige el cliente de un comprobante rechazado y lo reenvía (RN-BIL-02). */
+  corregirComprobante: (
+    id: string,
+    input: { docType: string; docNumber?: string; legalName?: string },
+  ): Promise<DocumentoDelPanel> =>
+    llamar<DocumentoDelPanel>(`/documents/${id}/correct`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  reenviarComprobante: (id: string): Promise<DocumentoDelPanel> =>
+    llamar<DocumentoDelPanel>(`/documents/${id}/retry`, { method: 'POST' }),
+
+  notaDeCredito: (id: string, reason: string): Promise<DocumentoDelPanel> =>
+    llamar<DocumentoDelPanel>(`/documents/${id}/credit-note`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
 
   usuarios: (): Promise<UsuarioDelPanel[]> =>
     llamar<UsuarioDelPanel[]>('/users'),

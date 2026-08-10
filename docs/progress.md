@@ -621,4 +621,44 @@ cierra. `pnpm sync:roles` reconcilia todos los tenants, es idempotente, **solo
 añade** —el catálogo es el mínimo de cada rol, no su techo— y está escrito en
 `docs/34` como paso del despliegue, no como rescate.
 
+### La cola de corrección no se podía corregir
+
+Siguiendo el mismo criterio, el siguiente sitio donde la pantalla pedía algo
+imposible era la columna de problemas de operaciones: enseñaba los comprobantes
+rechazados por la OSE con el texto «hay que corregir y reenviar». **Corregir no
+se podía.**
+
+RN-BIL-02 dice «documento rechazado por OSE → cola de corrección; NUNCA se
+pierde la venta», y la cola existía desde F4: el documento se quedaba en
+`rejected` con el motivo al lado. Lo único expuesto era `retry`, que reenvía
+exactamente el mismo RUC que la OSE acaba de rechazar, y `POST /documents` se
+niega —bien— porque la venta ya tiene comprobante. La venta no se perdía, que es
+lo que la regla exige literalmente; pero se quedaba **sin poder facturarse
+nunca**, que ante SUNAT viene a ser lo mismo.
+
+`POST /documents/:id/correct` cambia la identidad del cliente y reenvía. Tres
+decisiones que no son de formulario:
+
+· **Se conserva el número.** Un rechazado nunca fue válido, así que reenviarlo
+corregido con su mismo correlativo es lo correcto. Darle uno nuevo dejaría el
+anterior como un hueco en la serie, y un hueco hay que justificarlo con una
+comunicación de baja — justo lo que RN-BIL-01 existe para evitar.
+
+· **Solo desde `rejected`.** Uno aceptado ya está declarado y se revierte con
+nota de crédito, no editándolo.
+
+· **De factura a boleta no es corregir.** Son series y correlativos distintos:
+es otro comprobante, y el mensaje lo dice con esas palabras en vez de emitir en
+silencio en la serie equivocada.
+
+Y para poder corregir hubo que **enseñar lo que se corrige**: `DocumentView` no
+devolvía a nombre de quién iba el comprobante. La pantalla habría pedido
+escribir el RUC a ciegas, sin ver el que la OSE rechazó.
+
+La pantalla `/panel/comprobantes` deja el motivo de la OSE a la vista mientras
+se escribe el dato nuevo, valida el RUC antes de salir —gastar un envío en un
+RUC de nueve dígitos es tirar un intento— y dice el **desenlace** del reenvío,
+no «enviado»: que lo vuelvan a rechazar es el caso normal, y ocultarlo hace que
+alguien pulse el botón diez veces.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

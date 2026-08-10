@@ -234,7 +234,9 @@ export default async function OperacionesPage({
                 {d.rejectionReason ?? 'sin motivo devuelto'} · S/ {d.total}
               </p>
               <p className="tarjeta__pie">
-                La venta no se pierde: hay que corregir y reenviar (RN-BIL-02).
+                La venta no se pierde:{' '}
+                <Link href="/panel/comprobantes">corrígelo y reenvíalo</Link>{' '}
+                (RN-BIL-02).
               </p>
             </article>
           ))}

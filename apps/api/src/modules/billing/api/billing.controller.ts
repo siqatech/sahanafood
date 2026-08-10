@@ -31,6 +31,19 @@ const documentoSchema = z.object({
   issuedAt: z.string().datetime().optional(),
 });
 
+/**
+ * Corrección del cliente de un comprobante rechazado (RN-BIL-02).
+ *
+ * Mismos campos que el alta y por la misma razón: lo que el OSE rechaza casi
+ * siempre es el RUC o el nombre legal, y corregirlo es volver a decir quién es
+ * el cliente — no parchear un carácter.
+ */
+const correccionSchema = z.object({
+  docType: z.enum(['DNI', 'RUC', 'CE', 'PASAPORTE', 'NONE']),
+  docNumber: z.string().min(1).optional(),
+  legalName: z.string().min(1).optional(),
+});
+
 const notaCreditoSchema = z.object({
   reason: z.string().min(3, 'Una nota de crédito necesita un motivo.'),
 });
@@ -125,6 +138,40 @@ export class BillingController {
     return this.billing.issue(req.auth!.tid, id, {
       ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
     });
+  }
+
+  /**
+   * Corrige los datos del cliente de un comprobante RECHAZADO y lo reenvía.
+   *
+   * Es la mitad que faltaba de la cola de corrección: `retry` reenvía el mismo
+   * RUC que el OSE acaba de rechazar, y `POST /documents` se niega porque la
+   * venta ya tiene comprobante. Sin esto, un rechazo por dato del cliente
+   * dejaba la venta sin poder facturarse nunca.
+   *
+   * Permiso `billing.issue`, el mismo que emitir: quien puede facturar puede
+   * arreglar lo que facturó mal. Anular sigue siendo `billing.void`.
+   */
+  @Post(':id/correct')
+  @RequirePermission('billing.issue')
+  correct(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<DocumentView> {
+    const dto = parse(correccionSchema, body);
+    return this.billing.correctCustomer(
+      req.auth!.tid,
+      id,
+      {
+        docType: dto.docType,
+        docNumber: dto.docNumber,
+        legalName: dto.legalName,
+      },
+      {
+        actorId: req.auth!.sub,
+        ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
+      },
+    );
   }
 
   /**
