@@ -359,6 +359,38 @@ test.describe('Panel de gestión en navegador', () => {
     );
   });
 
+  test('PEDIDOS: buscar por teléfono y ver QUÉ pidió el cliente', async ({
+    page,
+  }) => {
+    // La pantalla que se abre cuando suena el teléfono. Lo que hasta ahora no
+    // se podía contestar desde ninguna interfaz es la primera pregunta: qué
+    // pidió. Las líneas se guardan desde F4 y ninguna ruta las devolvía.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Pedidos', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Pedidos' })).toBeVisible();
+
+    // El comprador de la prueba de la tienda dejó su teléfono en el checkout.
+    await page.getByLabel('Buscar pedidos').fill('999');
+    await page.getByRole('button', { name: 'Buscar' }).click();
+
+    const fila = page.locator('tbody tr').first();
+    await expect(fila).toBeVisible();
+    await fila.getByRole('link', { name: 'Ver' }).click();
+
+    await expect(
+      page.getByRole('heading', { name: /^Pedido #\d+$/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Qué pidió' }),
+    ).toBeVisible();
+    // Las líneas, con nombre e importe: el snapshot de lo vendido.
+    await expect(page.locator('tbody tr').first()).toContainText('S/');
+    // Y el historial, del más reciente al más antiguo.
+    await expect(
+      page.getByRole('heading', { name: 'Qué le pasó' }),
+    ).toBeVisible();
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

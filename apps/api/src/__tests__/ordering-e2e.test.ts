@@ -770,6 +770,82 @@ suite('Ordering e2e', () => {
     ]);
   });
 
+  // ------------------------- Trazabilidad: buscador y detalle (specs/ux/03)
+
+  it('el DETALLE devuelve las LÍNEAS del pedido', async () => {
+    // `ord_order_lines` guarda el snapshot de lo vendido desde F4 —«no se
+    // referencia el catálogo, se copia» (RN-ORD-02)— y ninguna ruta lo
+    // devolvía. Quien atendía «¿dónde está mi pedido?» veía el estado y el
+    // total, y no QUÉ pidió el cliente. El snapshot existe justamente para
+    // poder responder eso meses después.
+    const creado = await auth(
+      http()
+        .post('/api/v1/orders')
+        .send({
+          brandId,
+          locationId: org.locationId,
+          channel: 'pos',
+          lines: [{ productId: cat.comboId, quantity: 2 }],
+          customerName: 'Rosa Quispe',
+          customerPhone: '+51955111222',
+        }),
+    ).expect(201);
+
+    const detalle = await auth(
+      http().get(`/api/v1/orders/${creado.body.id}/detail`),
+    ).expect(200);
+
+    expect(detalle.body.lines).toHaveLength(1);
+    expect(detalle.body.lines[0].quantity).toBe(2);
+    expect(detalle.body.lines[0].productName).toBeTruthy();
+    expect(detalle.body.customerName).toBe('Rosa Quispe');
+    // Y el importe de la línea viaja como cadena decimal, no como número: es
+    // la misma regla que el resto de la API.
+    expect(typeof detalle.body.lines[0].lineTotal).toBe('string');
+  });
+
+  it('el BUSCADOR encuentra por número, teléfono y nombre', async () => {
+    const creado = await auth(
+      http()
+        .post('/api/v1/orders')
+        .send({
+          brandId,
+          locationId: org.locationId,
+          channel: 'pos',
+          lines: [{ productId: cat.comboId, quantity: 1 }],
+          customerName: 'Zoraida Buscable',
+          customerPhone: '+51944777888',
+        }),
+    ).expect(201);
+    const numero = creado.body.orderNumber as number;
+
+    const porNombre = await auth(
+      http().get('/api/v1/orders?search=Zoraida'),
+    ).expect(200);
+    expect(
+      porNombre.body.some((o: { id: string }) => o.id === creado.body.id),
+    ).toBe(true);
+
+    const porTelefono = await auth(
+      http().get('/api/v1/orders?search=944777'),
+    ).expect(200);
+    expect(
+      porTelefono.body.some((o: { id: string }) => o.id === creado.body.id),
+    ).toBe(true);
+
+    // El número va por IGUALDAD: quien dice «mi pedido es el 12» no quiere ver
+    // el 120 ni el 312. Buscar el número exacto no puede traer otros.
+    const porNumero = await auth(
+      http().get(`/api/v1/orders?search=${numero}`),
+    ).expect(200);
+    expect(
+      porNumero.body.every(
+        (o: { orderNumber: number }) => o.orderNumber === numero,
+      ),
+    ).toBe(true);
+    expect(porNumero.body.length).toBeGreaterThan(0);
+  });
+
   it('el detalle de la excepción devuelve LO QUE MANDÓ EL CANAL', async () => {
     // Sin esto, resolver una excepción era adivinar: el payload crudo se
     // guardaba desde F4 en `mapping_failed.data` y ninguna ruta lo devolvía —

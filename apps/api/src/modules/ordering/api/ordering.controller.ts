@@ -282,11 +282,13 @@ export class OrderingController {
     @Query('status') status?: string,
     @Query('channel') channel?: string,
     @Query('limit') limit?: string,
+    @Query('search') search?: string,
   ): Promise<OrderSummary[]> {
     return this.ordering.list(req.auth!.tid, {
       ...(status !== undefined ? { status: status as OrderState } : {}),
       ...(channel !== undefined ? { channel } : {}),
       ...(limit !== undefined ? { limit: Number(limit) } : {}),
+      ...(search !== undefined ? { search } : {}),
     });
   }
 
@@ -304,6 +306,23 @@ export class OrderingController {
    * tal cual los mandó el marketplace, y quien resuelve excepciones ya los
    * necesita — quien solo consulta pedidos, no.
    */
+  /**
+   * El pedido con sus líneas (specs/ux/03, «trazabilidad»).
+   *
+   * Va aparte de `GET /:id` en vez de engordarlo: el resumen lo consume el POS
+   * en cada sincronización y no necesita las líneas, que ya tiene. Cargarlas
+   * ahí sería mandar el pedido entero por la red en cada respuesta del
+   * mostrador.
+   */
+  @Get(':id/detail')
+  @RequirePermission('orders.read')
+  detail(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<unknown> {
+    return this.ordering.getDetail(req.auth!.tid, id);
+  }
+
   @Get(':id/exception')
   @RequirePermission('orders.review_exceptions')
   exception(

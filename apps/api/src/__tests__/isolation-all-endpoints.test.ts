@@ -646,6 +646,29 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /orders/:id/detail (pedido de A)', async () => {
+    // El detalle lleva las LÍNEAS y los datos del cliente: es lo más concreto
+    // que se puede pedir sobre un pedido ajeno.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /orders/:id/detail',
+        (r) => r.get(`/api/v1/orders/${pedidoDeA}/detail`),
+        { expectedStatusForA: [200] },
+      ),
+    );
+  });
+
+  it('GET /orders?search= no atraviesa el tenant', async () => {
+    // El buscador nuevo es un vector clásico: basta con que la condición de
+    // texto se aplique SIN la de tenant para que A encuentre a los clientes de
+    // B por su teléfono.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /orders?search=', (r) => r.get('/api/v1/orders?search=9')),
+    );
+  });
+
   it('GET /orders/:id/exception (excepción de A)', async () => {
     // Lo que se protege aquí no es el pedido: es el payload crudo del canal,
     // con el nombre y el teléfono del cliente de la competencia dentro.

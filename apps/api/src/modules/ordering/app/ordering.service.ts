@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import {
   Money,
@@ -912,7 +912,13 @@ export class OrderingService {
 
   async list(
     tenantId: string,
-    filters: { status?: OrderState; channel?: string; limit?: number } = {},
+    filters: {
+      status?: OrderState;
+      channel?: string;
+      limit?: number;
+      /** Nº de pedido, referencia del canal, teléfono o nombre del cliente. */
+      search?: string;
+    } = {},
   ): Promise<OrderSummary[]> {
     return withTenant(this.pool, tenantId, async (ctx) => {
       const conditions = [];
@@ -921,6 +927,26 @@ export class OrderingService {
       if (filters.channel)
         conditions.push(eq(schema.orders.channel, filters.channel));
 
+      const texto = filters.search?.trim();
+      if (texto) {
+        // Los cuatro campos por los que alguien pregunta cuando llama.
+        //
+        // El número va aparte y como IGUALDAD, no como `LIKE`: quien dice «mi
+        // pedido es el 12» no quiere ver el 120, el 121 y el 312. Los otros tres
+        // sí van por coincidencia parcial, porque el teléfono se dicta a medias
+        // y el nombre se escribe de diez maneras.
+        const numero = /^\d+$/.test(texto) ? Number(texto) : null;
+        const patron = `%${texto}%`;
+        conditions.push(
+          sql`(
+            ${numero !== null ? sql`${schema.orders.orderNumber} = ${numero} OR` : sql``}
+            ${schema.orders.externalRef} ILIKE ${patron} OR
+            ${schema.orders.customerPhone} ILIKE ${patron} OR
+            ${schema.orders.customerName} ILIKE ${patron}
+          )`,
+        );
+      }
+
       const query = ctx.db.select().from(schema.orders);
       const filtered =
         conditions.length > 0 ? query.where(and(...conditions)) : query;
@@ -928,6 +954,81 @@ export class OrderingService {
         .orderBy(desc(schema.orders.createdAt))
         .limit(Math.min(filters.limit ?? 50, 200));
       return rows.map((r) => this.toSummary(r));
+    });
+  }
+
+  /**
+   * El pedido con sus LÍNEAS, para la pantalla de trazabilidad (specs/ux/03).
+   *
+   * `ord_order_lines` se escribe desde F4 con un comentario que explica que es
+   * un **snapshot** —no se referencia el catálogo, se copia (RN-ORD-02)— y
+   * ninguna ruta las devolvía. El operador que atiende «¿dónde está mi pedido?»
+   * podía ver el estado y el total, y no QUÉ pidió el cliente; y el snapshot,
+   * que existe precisamente para poder responder eso meses después, no se podía
+   * consultar. Es el cuarto caso de la misma forma que §8.4c del gate.
+   */
+  async getDetail(
+    tenantId: string,
+    orderId: string,
+  ): Promise<
+    OrderSummary & {
+      externalRef: string | null;
+      customerName: string | null;
+      customerPhone: string | null;
+      deliveryAddress: string | null;
+      notes: string | null;
+      cancelReason: string | null;
+      acceptedAt: string | null;
+      closedAt: string | null;
+      lines: Array<{
+        id: string;
+        productName: string;
+        quantity: number;
+        lineTotal: string;
+        modifiers: unknown;
+        notes: string | null;
+        isAdjustment: boolean;
+      }>;
+    }
+  > {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const resumen = await this.getSummary(tenantId, orderId, ctx);
+
+      const filas = await ctx.db
+        .select()
+        .from(schema.orders)
+        .where(eq(schema.orders.id, orderId))
+        .limit(1);
+      const pedido = filas[0]!;
+
+      const lineas = await ctx.db
+        .select()
+        .from(schema.orderLines)
+        .where(eq(schema.orderLines.orderId, orderId))
+        .orderBy(schema.orderLines.createdAt);
+
+      return {
+        ...resumen,
+        externalRef: pedido.externalRef,
+        customerName: pedido.customerName,
+        customerPhone: pedido.customerPhone,
+        deliveryAddress: pedido.deliveryAddress,
+        notes: pedido.notes,
+        cancelReason: pedido.cancelReason,
+        acceptedAt: pedido.acceptedAt?.toISOString() ?? null,
+        closedAt: pedido.closedAt?.toISOString() ?? null,
+        lines: lineas.map((l) => ({
+          id: l.id,
+          productName: l.productName,
+          quantity: l.quantity,
+          // Importe como cadena decimal, igual que el resto de la API: pasarlo
+          // por `number` metería coma flotante en lo único que no la admite.
+          lineTotal: Money.parse(l.lineTotal).toDecimalString(),
+          modifiers: l.modifiers,
+          notes: l.notes,
+          isAdjustment: l.isAdjustment,
+        })),
+      };
     });
   }
 

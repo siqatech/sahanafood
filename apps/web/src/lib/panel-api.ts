@@ -144,6 +144,12 @@ export interface ProductoDelPanel {
 }
 
 /** Pedido tal como lo lista la API (subconjunto de `OrderSummary`). */
+export interface Importe {
+  minorUnits: number;
+  currency: string;
+  scale: number;
+}
+
 export interface PedidoDelPanel {
   id: string;
   orderNumber: number;
@@ -151,6 +157,7 @@ export interface PedidoDelPanel {
   channel: string;
   brandId: string;
   createdAt: string;
+  total: Importe;
 }
 
 /** Lo que llegó del canal para un pedido apartado (RN-ORD-10). */
@@ -178,6 +185,41 @@ export interface ProductoVendible {
     maxSelections: number;
     options: Array<{ id: string; name: string }>;
   }>;
+}
+
+/** Pedido con sus líneas, para la trazabilidad (specs/ux/03). */
+export interface PedidoConDetalle {
+  id: string;
+  orderNumber: number;
+  status: string;
+  channel: string;
+  createdAt: string;
+  total: Importe;
+  externalRef: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  deliveryAddress: string | null;
+  notes: string | null;
+  cancelReason: string | null;
+  acceptedAt: string | null;
+  closedAt: string | null;
+  lines: Array<{
+    id: string;
+    productName: string;
+    quantity: number;
+    lineTotal: string;
+    notes: string | null;
+    isAdjustment: boolean;
+  }>;
+}
+
+export interface HitoDelPedido {
+  occurredAt: string;
+  event: string;
+  fromStatus: string | null;
+  toStatus: string;
+  actorType: string;
+  reason: string | null;
 }
 
 export interface PoliticaDeAceptacion {
@@ -405,6 +447,12 @@ export const panel = {
     const cadena = q.toString();
     return llamar<PedidoDelPanel[]>(`/orders${cadena ? `?${cadena}` : ''}`);
   },
+
+  pedido: (id: string): Promise<PedidoConDetalle> =>
+    llamar<PedidoConDetalle>(`/orders/${id}/detail`),
+
+  hitos: (id: string): Promise<HitoDelPedido[]> =>
+    llamar<HitoDelPedido[]>(`/orders/${id}/timeline`),
 
   politicasDeAceptacion: (): Promise<PoliticaDeAceptacion[]> =>
     llamar<PoliticaDeAceptacion[]>('/ordering/acceptance-policies'),

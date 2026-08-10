@@ -365,6 +365,12 @@ se guarda con un comentario explicando para qué, y que ninguna ruta devuelve.**
 | `mapping_failed.data.rawPayload` | F4 | «sin él, resolver la excepción sería adivinar» | nadie |
 | `cnv_conversations.handoff_summary` | T5.28 | el traspaso con contexto (RN-CNV-02) | nadie |
 | modificadores en `resolve-mapping` | F4 | mapear un plato con talla obligatoria | no había formulario |
+| `ord_order_lines` | F4 | el **snapshot** de lo vendido (RN-ORD-02) | nadie — encontrado aplicando §8.8 |
+
+El cuarto lo encontró el propio criterio de §8.8 en su primera aplicación: las
+líneas del pedido se guardaban desde F4 y ninguna ruta las devolvía, así que
+quien atendía «¿dónde está mi pedido?» veía el estado y el total pero no **qué
+pidió el cliente**.
 
 Ninguno lo detectó una prueba porque todas las pruebas llamaban a los servicios
 directamente. Es la misma familia que las seis piezas sin llamador de §8.3, con

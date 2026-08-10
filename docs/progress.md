@@ -485,4 +485,22 @@ Las dos pruebas de navegador afirman el **efecto** y no un mensaje de éxito: al
 
 **Estado de `specs/ux/`: las seis specs tienen pantalla.** POS, KDS, panel, tienda, centro de operaciones y bandeja. Lo que queda del panel son secciones que la spec 03 enumera y que aún no existen —Pedidos con buscador y timeline, Inventario, Caja y comprobantes, Clientes, Configuración completa, Novedades—, todas de consulta y ninguna bloqueante para operar.
 
-**Próxima acción de Claude Code:** con las seis pantallas en pie, volver al gate: rehacer §8 de `docs/33-gate-fase-5.md` con lo saldado (DT-04, DT-14, DT-15) y las cifras nuevas, y dejar escrito el criterio de entrada de F6 —la lista de specs con interfaz declarada, comprobada una por una— que es lo que habría evitado los tres agujeros.
+### Pedidos: buscador y trazabilidad — y el criterio nuevo cazando su primera pieza
+
+El criterio de entrada de F6 que acababa de escribir (§8.8 del gate) tiene un paso 2: «para cada dato que se escribe con un comentario que explica para qué sirve, ¿hay una ruta que lo devuelva?». Aplicado a `ord_order_lines`, la respuesta era **no**, y van cuatro.
+
+Las líneas del pedido se guardan desde F4 con el comentario que explica que son un **snapshot** —«no se referencia el catálogo, se copia» (RN-ORD-02)— y ninguna ruta las devolvía. Quien atendía «¿dónde está mi pedido?» podía ver el estado y el total, y no **qué pidió el cliente**. El snapshot existe justamente para poder responder eso meses después, cuando el producto ya cambió de nombre o de precio.
+
+Ahora hay `/panel/pedidos` con buscador y `/panel/pedidos/[id]` con la trazabilidad de la spec 03. Cuatro decisiones:
+
+· **Se busca por número, referencia del canal, teléfono y nombre** — las cuatro cosas que una persona dice por teléfono. El número va por **igualdad** y no por coincidencia: quien dice «mi pedido es el 12» no quiere ver el 120, el 121 y el 312. Los otros tres sí van parciales, porque el teléfono se dicta a medias y el nombre se escribe de diez maneras.
+
+· **El detalle va aparte de `GET /:id`** en vez de engordarlo. El resumen lo consume el POS en cada sincronización y no necesita las líneas —ya las tiene—; cargarlas ahí sería mandar el pedido entero por la red en cada respuesta del mostrador.
+
+· **El historial se pinta del más reciente al más antiguo**, y distingue «Sistema» de «Una persona». Un rechazo automático por vencimiento y uno que alguien decidió no se explican igual al cliente ni al canal.
+
+· **El importe se formatea cortando la cadena de dígitos**, no dividiendo por `10 ** scale`. La forma obvia es la prohibida por CLAUDE.md; esta además es exacta para cualquier magnitud.
+
+El buscador nuevo llevó su propia prueba de aislamiento: es un vector clásico —basta con que la condición de texto se aplique sin la de tenant para que un negocio encuentre a los clientes de su competencia por el teléfono—.
+
+**Próxima acción de Claude Code:** seguir por `specs/ux/03` con lo que queda —Caja y comprobantes es la siguiente con dueño claro: el cajero cierra turno en el POS y hoy nadie puede revisar los arqueos ni los comprobantes desde el panel—, aplicando primero el paso 2 del criterio sobre `cash_sessions`, `cash_movements` y `bil_documents`.
