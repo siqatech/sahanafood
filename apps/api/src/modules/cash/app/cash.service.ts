@@ -443,13 +443,17 @@ export class CashService {
           },
         );
       }
-      // Reutiliza el PIN con bloqueo por intentos de F3 (RN-IDN-03): un PIN
-      // de supervisor sin límite de intentos se adivina en una tarde.
-      await this.devices.verifyPinForSensitiveAction(
+      // Dos personas de verdad: distinta de quien cierra, con su PIN —que va
+      // con bloqueo por intentos (RN-IDN-03)— y con el permiso que el cajero NO
+      // tiene. Antes bastaba un PIN cualquiera, así que el cajero podía poner
+      // el suyo y firmar su propio descuadre.
+      await this.devices.authorizeApproval({
         tenantId,
-        input.supervisorId,
-        input.supervisorPin,
-      );
+        approverId: input.supervisorId,
+        pin: input.supervisorPin,
+        requestedBy: input.closedBy,
+        permission: 'cash.approve_difference',
+      });
     }
 
     return withTenant(this.pool, tenantId, async (ctx) => {

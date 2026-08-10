@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../database/database.module.js';
+import { IdentityModule } from '../identity/index.js';
 import { OrderingModule } from '../ordering/index.js';
 import { PaymentsService } from './app/payments.service.js';
 import { SettlementsService } from './app/settlements.service.js';
@@ -27,7 +28,7 @@ import { PAYMENT_PROVIDERS } from './payments.tokens.js';
  * anti-corruption layer.
  */
 @Module({
-  imports: [DatabaseModule, OrderingModule],
+  imports: [DatabaseModule, OrderingModule, IdentityModule],
   controllers: [
     PaymentsController,
     SettlementsController,

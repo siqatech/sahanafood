@@ -25,6 +25,7 @@ import {
 import { recordAudit } from '../../audit/index.js';
 import { CredentialCipher } from '../../integrations/index.js';
 import { OrderingService } from '../../ordering/index.js';
+import { DeviceService } from '../../identity/index.js';
 import { enqueueEvent } from '../../../events/outbox.js';
 import { currentTraceId } from '../../../observability/tracing.js';
 import {
@@ -162,6 +163,7 @@ export class PaymentsService {
     private readonly ordering: OrderingService,
     private readonly publicTokens: PublicTokensService,
     private readonly settlements: SettlementsService,
+    private readonly devices: DeviceService,
   ) {
     this.cipher = new CredentialCipher(config.credentialsMasterKey);
     for (const p of providers) this.providers.set(p.name, p);
@@ -500,6 +502,7 @@ export class PaymentsService {
       reason: string;
       requestedBy: string;
       approvedBy?: string | undefined;
+      approverPin?: string | undefined;
       thresholdMinor?: number | undefined;
     },
   ): Promise<{ status: 'queued'; requiresApproval: boolean }> {
@@ -546,19 +549,24 @@ export class PaymentsService {
       const sobreUmbral = importe.minorUnits > umbral.minorUnits;
 
       if (sobreUmbral) {
-        if (!input.approvedBy) {
+        if (!input.approvedBy || !input.approverPin) {
           throw new RefundRequiresApprovalError(
             umbral.toDecimalString(),
             importe.toDecimalString(),
           );
         }
-        if (input.approvedBy === input.requestedBy) {
-          // DOS personas, no una con dos sombreros. Sin esto, el control es
-          // teatro: la misma cuenta comprometida se aprueba a sí misma.
-          throw new ForbiddenError(
-            'Quien aprueba un reembolso no puede ser quien lo pide: hacen falta dos personas.',
-          );
-        }
+        // DOS personas, no una con dos sombreros — y que la segunda lo
+        // DEMUESTRE. Comparar dos ids no prueba nada: los dos los escribe quien
+        // pide, así que bastaba con nombrar a un compañero. El PIN hay que
+        // tenerlo, y `authorizeApproval` exige además que quien firma tenga
+        // `payments.refund`, que ni el cajero ni el supervisor tienen.
+        await this.devices.authorizeApproval({
+          tenantId,
+          approverId: input.approvedBy,
+          pin: input.approverPin,
+          requestedBy: input.requestedBy,
+          permission: 'payments.refund',
+        });
       }
 
       await ctx.client.query(

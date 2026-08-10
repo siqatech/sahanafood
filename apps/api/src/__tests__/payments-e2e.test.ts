@@ -18,6 +18,7 @@ import {
   CULQI_PROVIDER,
   MERCADOPAGO_PROVIDER,
 } from '../modules/payments/index.js';
+import { DeviceService, UserAdminService } from '../modules/identity/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 
@@ -38,6 +39,10 @@ import { INTEGRATION_DB, deleteTenants } from './helpers.js';
  *   vocabularios y políticas de identificador de evento diferentes.
  */
 const suite = INTEGRATION_DB ? describe : describe.skip;
+
+/** PIN de quien firma un reembolso grande, y de quien no puede firmarlo. */
+const PIN_APROBADORA = '7391';
+const PIN_CAJERA = '1357';
 
 const SECRETO_CULQI = 'secreto-culqi-de-prueba-1234';
 const SECRETO_MP = 'secreto-mercadopago-de-prueba-1';
@@ -62,6 +67,7 @@ suite('Pagos online', () => {
   let tokenMp = '';
   let ownerId = '';
   let supervisorId = '';
+  let cajeraId = '';
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -93,15 +99,33 @@ suite('Pagos online', () => {
     created.push(tenantA);
     ownerId = a.ownerUserId;
     // Un segundo usuario: la doble aprobación necesita DOS personas de verdad,
-    // no la misma con dos sombreros.
-    supervisorId = await withTenant(pool, tenantA, async ({ client }) => {
-      const { rows } = await client.query<{ id: string }>(
-        `INSERT INTO idn_users (tenant_id, email, password_hash, full_name)
-         VALUES ($1,'pay-sup@sahana.test','x','Supervisora Pagos') RETURNING id`,
-        [tenantA],
-      );
-      return rows[0]!.id;
+    // no la misma con dos sombreros. Y con su ROL y su PIN, porque un id en el
+    // cuerpo de la petición lo escribe quien pide: no prueba nada.
+    const usuarios = app.get(UserAdminService);
+    supervisorId = (
+      await usuarios.create(tenantA, {
+        email: 'pay-sup@sahana.test',
+        fullName: 'Administradora Pagos',
+        password: 'password-pagos-sup',
+        // `payments.refund` no lo lleva ni el cajero ni el supervisor de sala:
+        // devolver dinero se firma arriba.
+        roleCode: 'admin',
+      })
+    ).id;
+    // La cajera existe para probar lo contrario: tiene PIN y no puede firmar.
+    cajeraId = (
+      await usuarios.create(tenantA, {
+        email: 'pay-cajera@sahana.test',
+        fullName: 'Cajera Pagos',
+        password: 'password-pagos-caj',
+        roleCode: 'cashier',
+      })
+    ).id;
+    const devices = app.get(DeviceService);
+    await devices.setPin(tenantA, supervisorId, PIN_APROBADORA, {
+      mustChange: false,
     });
+    await devices.setPin(tenantA, cajeraId, PIN_CAJERA, { mustChange: false });
 
     org = await withTenant(pool, tenantA, (ctx) => seedDemoOrganization(ctx));
     brandId = org.brandIds[0]!;
@@ -951,9 +975,53 @@ suite('Pagos online', () => {
         reason: 'Me apruebo yo mismo, que para eso soy el dueño',
         requestedBy: ownerId,
         approvedBy: ownerId,
+        approverPin: PIN_APROBADORA,
         thresholdMinor: 1,
       }),
     ).rejects.toThrow(/no puede ser quien lo pide/i);
+  });
+
+  it('UN ID NO ES UNA FIRMA: nombrar a un compañero sin su PIN no aprueba', async () => {
+    // Era el agujero. `approvedBy` lo escribe quien PIDE: bastaba con poner el
+    // id de cualquier compañero —que `GET /users` devuelve— para «aprobarse»
+    // un reembolso de mil soles sin que esa persona se enterara.
+    const intentId = await capturado();
+    await expect(
+      payments.requestRefund(tenantA, intentId, {
+        reason: 'Pongo el id de mi compañera y listo',
+        requestedBy: ownerId,
+        approvedBy: supervisorId,
+        thresholdMinor: 1,
+      }),
+    ).rejects.toThrow(/aprobación de un supervisor/i);
+  });
+
+  it('CON EL PIN EQUIVOCADO tampoco: hay que tenerlo, no conocer el nombre', async () => {
+    const intentId = await capturado();
+    await expect(
+      payments.requestRefund(tenantA, intentId, {
+        reason: 'Pruebo el PIN a ver si suena',
+        requestedBy: ownerId,
+        approvedBy: supervisorId,
+        approverPin: '0000',
+        thresholdMinor: 1,
+      }),
+    ).rejects.toThrow(/PIN incorrecto/i);
+  });
+
+  it('LA CAJERA TIENE PIN Y NO PUEDE FIRMAR un reembolso', async () => {
+    // Un PIN no es un permiso. Devolver dinero se firma arriba: ni el cajero
+    // ni el supervisor de sala llevan `payments.refund`.
+    const intentId = await capturado();
+    await expect(
+      payments.requestRefund(tenantA, intentId, {
+        reason: 'Que lo firme quien tenga el PIN a mano',
+        requestedBy: ownerId,
+        approvedBy: cajeraId,
+        approverPin: PIN_CAJERA,
+        thresholdMinor: 1,
+      }),
+    ).rejects.toThrow(/payments\.refund/);
   });
 
   it('con dos personas distintas el reembolso entra en cola y se AUDITA', async () => {
@@ -962,6 +1030,7 @@ suite('Pagos online', () => {
       reason: 'Producto llegó frío, se devuelve el importe completo',
       requestedBy: ownerId,
       approvedBy: supervisorId,
+      approverPin: PIN_APROBADORA,
       thresholdMinor: 1,
     });
     expect(r.requiresApproval).toBe(true);

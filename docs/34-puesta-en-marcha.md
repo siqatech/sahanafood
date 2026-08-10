@@ -223,6 +223,21 @@ SAHANA_API_IMAGE=…:2026-08-08-1 SAHANA_WEB_IMAGE=…:2026-08-08-1 \
   docker compose -f … --env-file .env up -d
 ```
 
+**Después de actualizar, sincroniza los roles.**
+
+```bash
+docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
+  run --rm api node dist/database/sync-roles.js
+```
+
+Los roles del sistema se siembran **una sola vez, al dar de alta el cliente**.
+Un permiso nuevo del catálogo llega así a los clientes futuros y a ninguno de
+los actuales: el código empieza a exigirlo el día del despliegue y ningún rol lo
+tiene. Lo que se ve entonces desde el local no se parece a un problema de
+permisos —se parece a que la caja no cierra—, y por eso el paso va aquí y no en
+un runbook de rescate. Es idempotente, solo añade, y correrlo cuando no hay nada
+que sincronizar no cuesta nada.
+
 **No se revierten migraciones.** El esquema se queda por delante, la sonda de
 readiness lo da por listo, y eso funciona porque ninguna migración puede romper
 a la versión anterior: lo impide el gate `pnpm migrations:check`, que corre en

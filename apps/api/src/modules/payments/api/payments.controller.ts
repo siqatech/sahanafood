@@ -60,8 +60,13 @@ const refundSchema = z.object({
    * Quién aprueba, cuando el importe supera el umbral (RN-PAY-03). Va en el
    * cuerpo y no se deduce del token: el que pulsa el botón es quien PIDE, y
    * quien aprueba es otra persona.
+   *
+   * **Y su PIN.** El id solo no vale: lo escribe quien pide, así que nombrar a
+   * un compañero bastaba para aprobarse a sí mismo. El PIN hay que tenerlo, va
+   * con bloqueo por intentos, y quien firma tiene que tener `payments.refund`.
    */
   approvedBy: z.string().uuid().optional(),
+  approverPin: z.string().min(4).max(12).optional(),
 });
 
 /**
@@ -156,6 +161,9 @@ export class PaymentsController {
       requestedBy: req.auth!.sub,
       ...(input.approvedBy !== undefined
         ? { approvedBy: input.approvedBy }
+        : {}),
+      ...(input.approverPin !== undefined
+        ? { approverPin: input.approverPin }
         : {}),
     });
   }

@@ -160,13 +160,17 @@ export class OrderingController {
 
     let approvedBy: string | undefined;
     if (dto.supervisorId && dto.supervisorPin) {
-      // Reutiliza el PIN con bloqueo por intentos de F3 (RN-IDN-03): un PIN de
-      // supervisor sin límite se adivina en una tarde de mostrador.
-      await this.devices.verifyPinForSensitiveAction(
-        req.auth!.tid,
-        dto.supervisorId,
-        dto.supervisorPin,
-      );
+      // Dos personas de verdad, no una con dos sombreros: distinta de quien
+      // aplica el descuento, con su PIN —que va con bloqueo por intentos
+      // (RN-IDN-03)— y con el permiso que autoriza descuentos. Sin las dos
+      // primeras comprobaciones, quien pide se aprobaba a sí mismo.
+      await this.devices.authorizeApproval({
+        tenantId: req.auth!.tid,
+        approverId: dto.supervisorId,
+        pin: dto.supervisorPin,
+        requestedBy: req.auth!.sub,
+        permission: 'orders.discount',
+      });
       approvedBy = dto.supervisorId;
     }
 

@@ -583,4 +583,42 @@ Ahora `/panel/equipo` pone el PIN por persona, emite el código de emparejamient
 
 · **Revocar exige motivo.** Una tablet revocada sin explicación deja sin respuesta la única pregunta que importa después: si se perdió o simplemente se devolvió.
 
+### Las aprobaciones de dos personas las daba una sola
+
+Con el equipo y los dispositivos cerrados, apliqué el paso 2 de §8.8 a lo que
+queda de superficie sin pantalla y acabé mirando los tres sitios donde el
+sistema exige **doble aprobación**. Los tres comprobaban menos de lo que su
+propio comentario decía comprobar, y en los tres el comentario era correcto
+sobre lo que hacía falta:
+
+· **Reembolso sobre el umbral (RN-PAY-03).** Solo comparaba dos identificadores,
+y los dos los escribe quien pide. Bastaba con poner el id de una compañera —que
+`GET /users` devuelve a cualquiera con `users.read`— para aprobarse mil soles
+sin que ella se enterara de nada. **No pedía PIN en absoluto.**
+
+· **Descuadre de caja (RN-POS-02).** Pedía el PIN de «un supervisor» y no
+comprobaba que fuera otra persona: el cajero ponía su propio id y su propio PIN
+y firmaba su propio faltante.
+
+· **Descuento sobre el umbral (RN-T08).** Lo mismo, y encima con un umbral que
+existe justo para que un descuento grande lo mire alguien más.
+
+Las tres se arreglan en un solo sitio, `DeviceService.authorizeApproval`, que
+exige las tres cosas a la vez y no dos: **que sean dos personas**, **que la
+segunda lo demuestre ahora** (PIN, con el bloqueo por intentos de RN-IDN-03) y
+**que pueda** —el permiso que autoriza la acción, que por eso no puede ser uno
+que ya tenga quien la pide—. Para caja hizo falta un permiso nuevo,
+`cash.approve_difference`, que el cajero **no** lleva: sin un permiso que él no
+tenga, la «aprobación del supervisor» la da él mismo. Ocho pruebas nuevas, una
+por cada forma concreta de saltárselo.
+
+**Y eso destapó la pieza que faltaba debajo:** los roles del sistema se siembran
+**una sola vez, al dar de alta el tenant**. Un permiso nuevo del catálogo llega
+a los clientes futuros y **a ningún cliente actual** — el código empieza a
+exigirlo el día del despliegue y ningún rol lo tiene. Lo que se ve entonces desde
+el local no se parece a un problema de permisos: se parece a que la caja no
+cierra. `pnpm sync:roles` reconcilia todos los tenants, es idempotente, **solo
+añade** —el catálogo es el mínimo de cada rol, no su techo— y está escrito en
+`docs/34` como paso del despliegue, no como rescate.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

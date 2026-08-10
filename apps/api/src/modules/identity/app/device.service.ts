@@ -12,6 +12,7 @@ import {
   ValidationError,
 } from '../../../common/errors.js';
 import { recordAudit } from '../../audit/index.js';
+import { grants, type Permission } from '../domain/permissions.js';
 
 /**
  * Dispositivos POS y PIN de operador (RN-IDN-03, RN-IDN-04).
@@ -452,6 +453,65 @@ export class DeviceService {
     const result = await this.verifyPin(tenantId, userId, pin);
     if (result.mustChange) {
       throw new PinMustChangeError();
+    }
+  }
+
+  /**
+   * Autoriza una acción que exige **una segunda persona**: reembolso sobre el
+   * umbral, descuadre de caja, descuento sobre el umbral.
+   *
+   * Verificar el PIN no basta, y esa era la trampa. Un control de dos personas
+   * se sostiene sobre tres cosas y hasta ahora solo se comprobaba una:
+   *
+   *  1. **Que sean dos.** Sin esto, quien pide se aprueba a sí mismo y el
+   *     control es teatro: el mismo turno, la misma cuenta, la misma mano.
+   *  2. **Que quien aprueba lo demuestre AHORA.** Un id en el cuerpo de la
+   *     petición no prueba nada — lo escribe quien pide. El PIN sí: hay que
+   *     tenerlo, y va con bloqueo por intentos (RN-IDN-03).
+   *  3. **Que quien aprueba pueda.** Sin esto, el PIN del cocinero autoriza un
+   *     reembolso de mil soles. Se exige el permiso que autoriza la acción, y
+   *     por eso ese permiso NO puede ser uno que tenga quien la pide.
+   */
+  async authorizeApproval(input: {
+    tenantId: string;
+    approverId: string;
+    pin: string;
+    requestedBy: string;
+    permission: Permission;
+  }): Promise<void> {
+    if (input.approverId === input.requestedBy) {
+      throw new ForbiddenError(
+        'Quien aprueba no puede ser quien lo pide: hacen falta dos personas.',
+      );
+    }
+
+    await this.verifyPinForSensitiveAction(
+      input.tenantId,
+      input.approverId,
+      input.pin,
+    );
+
+    const permisos = await withTenant(
+      this.pool,
+      input.tenantId,
+      async (ctx) => {
+        const { rows } = await ctx.client.query<{ permission: string }>(
+          `SELECT DISTINCT rp.permission
+           FROM idn_user_roles ur
+           JOIN idn_role_permissions rp ON rp.role_id = ur.role_id
+          WHERE ur.user_id = $1`,
+          [input.approverId],
+        );
+        return rows.map((r) => r.permission);
+      },
+    );
+
+    // `grants` honra el comodín del propietario y del administrador, que es
+    // justo quien firma estas cosas en un local pequeño.
+    if (!grants(permisos, input.permission)) {
+      throw new ForbiddenError(
+        `Quien aprueba necesita el permiso "${input.permission}", y no lo tiene.`,
+      );
     }
   }
 }

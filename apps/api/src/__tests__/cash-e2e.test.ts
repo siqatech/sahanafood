@@ -12,7 +12,7 @@ import { seedDemoOrganization } from '../modules/organization/index.js';
 import { seedDemoCatalog } from '../modules/catalog/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
 import { CashService } from '../modules/cash/index.js';
-import { DeviceService } from '../modules/identity/index.js';
+import { DeviceService, UserAdminService } from '../modules/identity/index.js';
 import { CashEventHandlers, CASH_CONSUMER } from '../modules/cash/index.js';
 import { consumeEvent } from '../events/consumer.js';
 import { relayOnce } from '../events/outbox.js';
@@ -29,6 +29,10 @@ import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 const suite = INTEGRATION_DB ? describe : describe.skip;
 
 const PIN_SUPERVISOR = '4821';
+/** El del dueño: existe desde F3 y sirve para probar la AUTOaprobación. */
+const PIN_SUPERVISOR_DUENO = PIN_SUPERVISOR;
+const PIN_CAJERA = '1357';
+const PIN_COCINERO = '2468';
 
 suite('Caja: sesiones, arqueo y descuentos', () => {
   let app: INestApplication;
@@ -38,6 +42,12 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
   let tenantA = '';
   let tokenA = '';
   let ownerId = '';
+  /** Quien cierra la caja. NO es quien la firma: ese es el control entero. */
+  let cajeroId = '';
+  /** Tiene PIN y no tiene `cash.approve_difference`: un PIN no es un permiso. */
+  let cocineroId = '';
+  /** El que FIRMA los descuentos: el dueño los pide, otro los aprueba. */
+  let supervisorId = '';
   let brandId = '';
   let org: Awaited<ReturnType<typeof seedDemoOrganization>>;
   let cat: Awaited<ReturnType<typeof seedDemoCatalog>>;
@@ -84,6 +94,43 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
     await app
       .get(DeviceService)
       .setPin(tenantA, ownerId, PIN_SUPERVISOR, { mustChange: false });
+
+    // Un cajero de verdad: hasta ahora el dueño cerraba la caja Y firmaba su
+    // propio descuadre, que es exactamente lo que la regla prohíbe.
+    const usuarios = app.get(UserAdminService);
+    cajeroId = (
+      await usuarios.create(tenantA, {
+        email: 'cajera-caja@sahana.test',
+        fullName: 'Cajera del turno',
+        password: 'password-cajera-1',
+        roleCode: 'cashier',
+      })
+    ).id;
+    cocineroId = (
+      await usuarios.create(tenantA, {
+        email: 'cocinero-caja@sahana.test',
+        fullName: 'Cocinero del turno',
+        password: 'password-cocinero',
+        roleCode: 'cook',
+      })
+    ).id;
+    await app
+      .get(DeviceService)
+      .setPin(tenantA, cajeroId, PIN_CAJERA, { mustChange: false });
+    supervisorId = (
+      await usuarios.create(tenantA, {
+        email: 'supervisora-caja@sahana.test',
+        fullName: 'Supervisora del turno',
+        password: 'password-supervisora',
+        roleCode: 'supervisor',
+      })
+    ).id;
+    await app
+      .get(DeviceService)
+      .setPin(tenantA, cocineroId, PIN_COCINERO, { mustChange: false });
+    await app
+      .get(DeviceService)
+      .setPin(tenantA, supervisorId, PIN_SUPERVISOR, { mustChange: false });
 
     const login = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -308,7 +355,7 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
     await expect(
       cash.closeSession(tenantA, sesion.id, {
         declaredCashMinor: soles('95.00'),
-        closedBy: ownerId,
+        closedBy: cajeroId,
         differenceReason: 'Faltan 5 soles, no sé por qué',
       }),
     ).rejects.toThrow(/PIN de un supervisor/);
@@ -319,12 +366,45 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
     await expect(
       cash.closeSession(tenantA, sesion.id, {
         declaredCashMinor: soles('95.00'),
-        closedBy: ownerId,
+        closedBy: cajeroId,
         differenceReason: 'Faltante',
         supervisorId: ownerId,
         supervisorPin: '0000',
       }),
     ).rejects.toThrow();
+    expect((await cash.getSession(tenantA, sesion.id)).status).toBe('open');
+  });
+
+  it('EL CAJERO NO SE FIRMA SU PROPIO DESCUADRE, aunque sepa su PIN', async () => {
+    // Era el agujero: bastaba con poner el propio id y el propio PIN. Un
+    // control de dos personas que una sola persona puede satisfacer no es un
+    // control, y el faltante de caja es justo lo que se firma solo.
+    const sesion = await abrirCaja('100.00');
+    await expect(
+      cash.closeSession(tenantA, sesion.id, {
+        declaredCashMinor: soles('60.00'),
+        closedBy: cajeroId,
+        differenceReason: 'Faltan 40 soles',
+        supervisorId: cajeroId,
+        supervisorPin: PIN_CAJERA,
+      }),
+    ).rejects.toThrow(/hacen falta dos personas/i);
+    expect((await cash.getSession(tenantA, sesion.id)).status).toBe('open');
+  });
+
+  it('UN PIN NO ES UN PERMISO: el del cocinero no firma un descuadre', async () => {
+    // Segunda mitad del mismo agujero: cualquiera con PIN servía. El cocinero
+    // tiene PIN —lo necesita para marcar preparación— y no responde de la caja.
+    const sesion = await abrirCaja('100.00');
+    await expect(
+      cash.closeSession(tenantA, sesion.id, {
+        declaredCashMinor: soles('60.00'),
+        closedBy: cajeroId,
+        differenceReason: 'Faltan 40 soles',
+        supervisorId: cocineroId,
+        supervisorPin: PIN_COCINERO,
+      }),
+    ).rejects.toThrow(/cash\.approve_difference/);
     expect((await cash.getSession(tenantA, sesion.id)).status).toBe('open');
   });
 
@@ -337,7 +417,7 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
 
     const cerrada = await cash.closeSession(tenantA, sesion.id, {
       declaredCashMinor: soles('155.00'),
-      closedBy: ownerId,
+      closedBy: cajeroId,
       differenceReason: 'Se dio un vuelto de más al cliente de la mesa 3',
       supervisorId: ownerId,
       supervisorPin: PIN_SUPERVISOR,
@@ -459,7 +539,9 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
       http().post(`/api/v1/orders/${pedido.id}/discount`).send({
         bps: 2500,
         reason: 'Pedido llegó tarde por nuestra culpa',
-        supervisorId: ownerId,
+        // Otra persona: el token es del dueño, así que el dueño PIDE. Firmar
+        // uno mismo su propio descuento es el fraude que la regla evita.
+        supervisorId,
         supervisorPin: PIN_SUPERVISOR,
       }),
     ).expect(201);
@@ -477,7 +559,7 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
     });
     const suya = auditoria.find((a) => a.resource_id === pedido.id);
     expect(suya).toBeTruthy();
-    expect(suya!.data.approvedBy).toBe(ownerId);
+    expect(suya!.data.approvedBy).toBe(supervisorId);
   });
 
   it('un PIN incorrecto NO aplica el descuento', async () => {
@@ -488,7 +570,7 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
       http().post(`/api/v1/orders/${pedido.id}/discount`).send({
         bps: 3000,
         reason: 'Intento sin autorización',
-        supervisorId: ownerId,
+        supervisorId,
         supervisorPin: '9999',
       }),
     ).expect(403);
@@ -496,6 +578,37 @@ suite('Caja: sesiones, arqueo y descuentos', () => {
 
     const sigue = await ordering.getSummary(tenantA, pedido.id);
     expect(sigue.total.minorUnits).toBe(soles('38.00'));
+  });
+
+  it('NADIE FIRMA SU PROPIO DESCUENTO, ni con su PIN bueno', async () => {
+    // El mismo agujero que en caja: bastaba con poner el propio id y el propio
+    // PIN. Un descuento del 25 % «autorizado» por quien lo aplica no está
+    // autorizado por nadie.
+    const pedido = await pedidoDe();
+    await auth(
+      http().post(`/api/v1/orders/${pedido.id}/discount`).send({
+        bps: 2500,
+        reason: 'Me lo apruebo yo',
+        supervisorId: ownerId,
+        supervisorPin: PIN_SUPERVISOR_DUENO,
+      }),
+    ).expect(403);
+
+    const sigue = await ordering.getSummary(tenantA, pedido.id);
+    expect(sigue.total.minorUnits).toBe(soles('38.00'));
+  });
+
+  it('EL PIN DE LA CAJERA no firma un descuento: no es su decisión', async () => {
+    const pedido = await pedidoDe();
+    const res = await auth(
+      http().post(`/api/v1/orders/${pedido.id}/discount`).send({
+        bps: 2500,
+        reason: 'Firmado por quien no puede',
+        supervisorId: cajeroId,
+        supervisorPin: PIN_CAJERA,
+      }),
+    ).expect(403);
+    expect(res.body.detail).toContain('orders.discount');
   });
 
   it('EL FRAUDE ENCADENADO: dos descuentos pequeños acumulan y piden PIN', async () => {

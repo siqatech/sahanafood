@@ -64,6 +64,9 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'cash.open',
       'cash.close',
       'cash.read',
+      // Firma el descuadre del cajero. El cajero NO lo tiene: si lo tuviera,
+      // se aprobaría a sí mismo y la aprobación no aprobaría nada.
+      'cash.approve_difference',
       'kitchen.read',
       'kitchen.transition',
       'delivery.read',

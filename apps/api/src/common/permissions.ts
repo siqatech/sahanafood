@@ -56,6 +56,11 @@ export const PERMISSIONS = [
   'cash.open',
   'cash.close',
   'cash.read',
+  // Autorizar un descuadre al cerrar. NO lo tiene el cajero, y ese es el punto
+  // entero: cerrar la caja es suyo, pero firmar que faltan cuarenta soles no
+  // puede serlo. Sin un permiso que el cajero NO tenga, la «aprobación del
+  // supervisor» la da el propio cajero con su PIN y no aprueba nada.
+  'cash.approve_difference',
   // Cocina (F4)
   'kitchen.read',
   'kitchen.transition',
