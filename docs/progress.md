@@ -571,4 +571,16 @@ Los roles que ofrece el desplegable **los sirve el servidor**, no la pantalla: s
 
 La pantalla dice además quién **no tiene PIN**, porque tener cuenta y no poder abrir caja en el POS es una forma silenciosa de no estar dado de alta.
 
+### …y dar de alta no bastaba: al POS se entra con un PIN y una tablet
+
+Al terminar la pantalla apliqué el paso 2 del criterio de §8.8 —«¿hay ruta que devuelva lo que se escribe?»— y salió otro hueco de la misma familia, esta vez al revés: **la API estaba completa y la pantalla no la llamaba**. `POST /devices/pairing-codes`, `POST /devices/pair`, `GET /devices`, `DELETE /devices/:id` y `POST /auth/pin` existen desde F3, con bloqueo por intentos y todo. Sin pantalla, dar de alta a alguien lo dejaba a medio camino: cuenta sí, POS no, y ninguna forma de poner en marcha una tablet que no fuera un `curl`.
+
+Ahora `/panel/equipo` pone el PIN por persona, emite el código de emparejamiento y revoca dispositivos. Tres detalles que no son de formulario:
+
+· **El código se enseña UNA vez y no se guarda.** Es la credencial con la que un aparato sin cuenta entra al sistema. La acción **no llama a `revalidatePath` a propósito**: emitir un código no crea ninguna fila —el dispositivo nace cuando la tablet canjea—, así que no hay nada que refrescar, y el remontaje se llevaría por delante el único momento en que el código está en pantalla.
+
+· **El segundo canje falla con 403, no con 422**, y con un mensaje que no distingue «ya usado» de «no existe» ni de «caducado». Decirlo confirmaría a quien prueba códigos cuáles fueron válidos alguna vez. El «un solo uso» lo garantiza la base de datos con un `UPDATE` condicional sobre `used_at`, no el orden de las llamadas.
+
+· **Revocar exige motivo.** Una tablet revocada sin explicación deja sin respuesta la única pregunta que importa después: si se perdió o simplemente se devolvió.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

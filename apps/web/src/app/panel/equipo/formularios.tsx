@@ -5,6 +5,9 @@ import {
   crearUsuario,
   cambiarRol,
   cambiarEstado,
+  ponerPin,
+  emitirCodigo,
+  revocarDispositivo,
   type EstadoEquipo,
 } from './acciones';
 
@@ -119,6 +122,74 @@ export function BotonEstado({
         <input type="hidden" name="active" value={activo ? 'false' : 'true'} />
         <button type="submit" className="discreto" disabled={pendiente}>
           {pendiente ? '…' : activo ? 'Desactivar' : 'Reactivar'}
+        </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+export function FormularioPin({ userId }: { userId: string }) {
+  const [estado, accion, pendiente] = useActionState<EstadoEquipo, FormData>(
+    ponerPin,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="userId" value={userId} />
+        <input
+          name="pin"
+          className="corto"
+          inputMode="numeric"
+          placeholder="4-6 dígitos"
+          aria-label={`PIN de ${userId}`}
+        />
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Poner PIN'}
+        </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+export function BotonCodigo() {
+  const [estado, accion, pendiente] = useActionState<EstadoEquipo, FormData>(
+    emitirCodigo,
+    {},
+  );
+  return (
+    <>
+      <form action={accion}>
+        <button type="submit" disabled={pendiente}>
+          {pendiente ? 'Emitiendo…' : 'Emitir código de emparejamiento'}
+        </button>
+      </form>
+      {/* El código se enseña UNA vez y en grande: es la credencial con la que
+          la tablet entra, y quien la teclea está mirando dos pantallas. */}
+      {estado.ok ? <p className="codigo">{estado.ok}</p> : null}
+      {estado.error ? <p className="panel__error">{estado.error}</p> : null}
+    </>
+  );
+}
+
+export function BotonRevocar({ deviceId }: { deviceId: string }) {
+  const [estado, accion, pendiente] = useActionState<EstadoEquipo, FormData>(
+    revocarDispositivo,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="deviceId" value={deviceId} />
+        <input
+          name="reason"
+          placeholder="Motivo"
+          aria-label={`Motivo de revocación de ${deviceId}`}
+        />
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Revocar'}
         </button>
       </form>
       <Resultado estado={estado} />

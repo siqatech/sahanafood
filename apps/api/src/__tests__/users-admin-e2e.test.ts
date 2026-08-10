@@ -171,6 +171,92 @@ suite('Equipo — alta, rol y baja', () => {
     ).expect(403);
   });
 
+  it('EL PIN es lo que le deja entrar al POS', async () => {
+    // Una cuenta sin PIN es una forma silenciosa de no estar dado de alta:
+    // la persona existe, puede entrar al panel, y no puede abrir caja.
+    const lista = await auth(http().get('/api/v1/users')).expect(200);
+    const cajero = lista.body.find(
+      (u: { email: string }) => u.email === 'cajero@sahana.test',
+    );
+    expect(cajero.hasPin).toBe(false);
+
+    await auth(
+      http().post('/api/v1/auth/pin').send({ userId: cajero.id, pin: '4821' }),
+    ).expect(201);
+
+    const despues = await auth(http().get('/api/v1/users')).expect(200);
+    expect(
+      despues.body.find((u: { id: string }) => u.id === cajero.id).hasPin,
+    ).toBe(true);
+  });
+
+  it('EL CÓDIGO DE EMPAREJAMIENTO caduca y empareja una sola vez', async () => {
+    // Sin esto no hay forma de poner en marcha una tablet: el código ES la
+    // credencial con la que un aparato sin cuenta entra al sistema.
+    const emitido = await auth(
+      http().post('/api/v1/devices/pairing-codes').send({}),
+    ).expect(201);
+    expect(emitido.body.code).toBeTruthy();
+    expect(new Date(emitido.body.expiresAt).getTime()).toBeGreaterThan(
+      Date.now(),
+    );
+
+    const emparejado = await http()
+      .post('/api/v1/devices/pair')
+      .send({ code: emitido.body.code, deviceName: 'Tablet del mostrador' })
+      .expect(201);
+    expect(emparejado.body.deviceToken).toBeTruthy();
+
+    // De UN SOLO USO: el segundo canje falla. Si no, el código anotado en el
+    // mostrador sigue sirviendo para emparejar tablets ajenas.
+    //
+    // Falla con 403, no con 422: lo que se rechaza es una CREDENCIAL gastada,
+    // no un cuerpo mal formado. Y el mensaje no distingue «ya usado» de «no
+    // existe» — decirlo confirmaría a quien prueba códigos cuáles fueron
+    // válidos alguna vez.
+    const gastado = await http()
+      .post('/api/v1/devices/pair')
+      .send({ code: emitido.body.code, deviceName: 'Tablet intrusa' })
+      .expect(403);
+    expect(gastado.body.detail).toMatch(/inválido o expirado/i);
+
+    const dispositivos = await auth(http().get('/api/v1/devices')).expect(200);
+    expect(
+      dispositivos.body.some(
+        (d: { name: string }) => d.name === 'Tablet del mostrador',
+      ),
+    ).toBe(true);
+    expect(
+      dispositivos.body.some(
+        (d: { name: string }) => d.name === 'Tablet intrusa',
+      ),
+    ).toBe(false);
+  });
+
+  it('REVOCAR una tablet exige motivo y la deja fuera', async () => {
+    const dispositivos = await auth(http().get('/api/v1/devices')).expect(200);
+    const tablet = dispositivos.body.find(
+      (d: { name: string }) => d.name === 'Tablet del mostrador',
+    );
+
+    // Sin motivo no se revoca: una tablet revocada sin explicación deja sin
+    // respuesta la pregunta de si se perdió o simplemente se devolvió.
+    await auth(
+      http().delete(`/api/v1/devices/${tablet.id}`).send({ reason: '' }),
+    ).expect(422);
+
+    await auth(
+      http()
+        .delete(`/api/v1/devices/${tablet.id}`)
+        .send({ reason: 'Se perdió en el reparto' }),
+    ).expect(200);
+
+    const despues = await auth(http().get('/api/v1/devices')).expect(200);
+    expect(
+      despues.body.find((d: { id: string }) => d.id === tablet.id).status,
+    ).not.toBe('active');
+  });
+
   it('DESACTIVAR no borra: el histórico lleva su nombre dentro', async () => {
     const lista = await auth(http().get('/api/v1/users')).expect(200);
     const cajero = lista.body.find(

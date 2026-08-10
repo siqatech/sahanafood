@@ -459,3 +459,17 @@ tr:last-child td {
   font: inherit;
   resize: vertical;
 }
+
+/* El código de emparejamiento. Grande y monoespaciado: alguien lo está
+   tecleando en una tablet mirando esta pantalla, y una O y un 0 mal leídos
+   cuestan otro código. */
+.panel p.codigo {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+  background: var(--panel-fondo);
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+}

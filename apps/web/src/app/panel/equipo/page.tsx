@@ -1,6 +1,13 @@
 import { panel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
-import { FormularioAlta, SelectorDeRol, BotonEstado } from './formularios';
+import {
+  FormularioAlta,
+  SelectorDeRol,
+  BotonEstado,
+  FormularioPin,
+  BotonCodigo,
+  BotonRevocar,
+} from './formularios';
 
 /**
  * El equipo (specs/ux/03 → Configuración/usuarios).
@@ -24,9 +31,10 @@ export default async function EquipoPage({
   const params = await searchParams;
   const yaSeIntento = params['intento'] === '1';
 
-  const [usuarios, roles] = await Promise.all([
+  const [usuarios, roles, dispositivos] = await Promise.all([
     cargar('/panel/equipo', yaSeIntento, () => panel.usuarios()),
     cargar('/panel/equipo', yaSeIntento, () => panel.rolesAsignables()),
+    cargar('/panel/equipo', yaSeIntento, () => panel.dispositivos()),
   ]);
 
   return (
@@ -73,13 +81,15 @@ export default async function EquipoPage({
                   {/* El PIN es lo que le deja entrar al POS. Sin él la persona
                       tiene cuenta y no puede abrir caja, que es una forma
                       silenciosa de no estar dado de alta. */}
-                  {u.hasPin ? (
-                    'sí'
-                  ) : (
-                    <span className="tarjeta__pie">
-                      sin PIN: no puede entrar al POS
-                    </span>
+                  {u.hasPin ? null : (
+                    <>
+                      <span className="tarjeta__pie">
+                        sin PIN: no puede entrar al POS
+                      </span>
+                      <br />
+                    </>
                   )}
+                  <FormularioPin userId={u.id} />
                 </td>
                 <td>
                   {u.status === 'active' ? (
@@ -106,6 +116,65 @@ export default async function EquipoPage({
 
       <h2>Dar de alta</h2>
       <FormularioAlta roles={roles} />
+
+      <h2>Dispositivos</h2>
+      <p className="panel__subtitulo">
+        Las tablets del POS y del KDS. Una tablet se empareja con un código de{' '}
+        <strong>un solo uso</strong> que caduca: ese código es la credencial con
+        la que un aparato sin cuenta entra, así que se enseña una vez y no se
+        guarda en ninguna pantalla.
+      </p>
+
+      <BotonCodigo />
+
+      {dispositivos.length === 0 ? (
+        <p className="panel__vacio">
+          Todavía no hay ninguna tablet emparejada. Emite un código y escríbelo
+          en la pantalla de emparejamiento del POS.
+        </p>
+      ) : (
+        <div className="tabla-envoltorio">
+          <table>
+            <thead>
+              <tr>
+                <th>Tablet</th>
+                <th>Estado</th>
+                <th>Vista por última vez</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {dispositivos.map((d) => (
+                <tr key={d.id}>
+                  <td>{d.name}</td>
+                  <td>
+                    {d.status === 'active' ? (
+                      'Activa'
+                    ) : (
+                      <strong className="baja">Revocada</strong>
+                    )}
+                  </td>
+                  <td>
+                    {/* «Vista por última vez» y no «emparejada»: lo que se
+                        pregunta cuando falta una tablet es cuándo dejó de
+                        aparecer, no cuándo se dio de alta. */}
+                    {d.lastSeenAt
+                      ? new Date(d.lastSeenAt).toLocaleString('es-PE', {
+                          timeZone: 'America/Lima',
+                        })
+                      : 'nunca'}
+                  </td>
+                  <td>
+                    {d.status === 'active' ? (
+                      <BotonRevocar deviceId={d.id} />
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }

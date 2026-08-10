@@ -240,6 +240,15 @@ export interface UsuarioDelPanel {
   roles: Array<{ code: string; name: string }>;
 }
 
+export interface DispositivoDelPanel {
+  id: string;
+  name: string;
+  locationId: string | null;
+  status: string;
+  pairedAt: string | null;
+  lastSeenAt: string | null;
+}
+
 export interface ExistenciaDelPanel {
   warehouseId: string;
   warehouseName: string;
@@ -573,6 +582,29 @@ export const panel = {
     llamar(`/users/${userId}/status`, {
       method: 'POST',
       body: JSON.stringify({ active }),
+    }),
+
+  dispositivos: (): Promise<DispositivoDelPanel[]> =>
+    llamar<DispositivoDelPanel[]>('/devices'),
+
+  emitirCodigo: (
+    locationId?: string,
+  ): Promise<{ code: string; expiresAt: string }> =>
+    llamar<{ code: string; expiresAt: string }>('/devices/pairing-codes', {
+      method: 'POST',
+      body: JSON.stringify(locationId ? { locationId } : {}),
+    }),
+
+  revocarDispositivo: (id: string, reason: string): Promise<unknown> =>
+    llamar(`/devices/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    }),
+
+  ponerPin: (userId: string, pin: string): Promise<unknown> =>
+    llamar('/auth/pin', {
+      method: 'POST',
+      body: JSON.stringify({ userId, pin }),
     }),
 
   existencias: (): Promise<ExistenciaDelPanel[]> =>

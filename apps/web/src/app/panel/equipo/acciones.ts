@@ -83,3 +83,81 @@ export async function cambiarEstado(
   revalidatePath('/panel/equipo');
   return { ok: active ? 'Cuenta reactivada.' : 'Cuenta desactivada.' };
 }
+
+/**
+ * Pone el PIN de un operador.
+ *
+ * El PIN es lo que le deja entrar al POS: sin él la persona tiene cuenta y no
+ * puede abrir caja, que es una forma silenciosa de no estar dado de alta. Lo
+ * fija un administrador y **la API marca que debe cambiarlo** en su primer uso
+ * (RN-IDN-03) — un PIN que puso otra persona y que nunca se cambia es un PIN
+ * que conocen dos.
+ */
+export async function ponerPin(
+  _prev: EstadoEquipo,
+  form: FormData,
+): Promise<EstadoEquipo> {
+  const userId = String(form.get('userId') ?? '');
+  const pin = String(form.get('pin') ?? '').trim();
+  if (!/^\d{4,6}$/.test(pin)) {
+    return { error: 'El PIN son 4 a 6 dígitos, nada más.' };
+  }
+  try {
+    await panel.ponerPin(userId, pin);
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/equipo');
+  return { ok: 'PIN puesto. Se lo pedirá cambiar la primera vez que entre.' };
+}
+
+/**
+ * Emite un código de emparejamiento para una tablet.
+ *
+ * Es de **un solo uso y caduca**: el código ES la credencial con la que un
+ * aparato sin cuenta entra al sistema, así que se enseña una vez y no se
+ * guarda en ninguna pantalla. Quien lo pierde emite otro; quien lo deja
+ * anotado en el mostrador ha dejado una llave.
+ */
+export async function emitirCodigo(
+  _prev: EstadoEquipo,
+  _form: FormData,
+): Promise<EstadoEquipo> {
+  try {
+    const { code, expiresAt } = await panel.emitirCodigo();
+    const caduca = new Date(expiresAt).toLocaleTimeString('es-PE', {
+      timeZone: 'America/Lima',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    // A propósito SIN `revalidatePath`: emitir un código no crea ningún
+    // dispositivo —la fila nace cuando la tablet canjea—, así que no hay nada
+    // que refrescar, y refrescar sí puede costar caro: el remontaje se llevaría
+    // por delante el único momento en que el código se enseña.
+    return {
+      ok: `Código: ${code} — caduca a las ${caduca}. Escríbelo en la tablet ahora; no se vuelve a enseñar.`,
+    };
+  } catch (error) {
+    return traducir(error);
+  }
+}
+
+export async function revocarDispositivo(
+  _prev: EstadoEquipo,
+  form: FormData,
+): Promise<EstadoEquipo> {
+  const id = String(form.get('deviceId') ?? '');
+  const reason = String(form.get('reason') ?? '').trim();
+  // El motivo es obligatorio también en la API: una tablet revocada sin
+  // explicación deja sin respuesta la pregunta de si se perdió o se rompió.
+  if (reason.length < 3) {
+    return { error: 'Di por qué se revoca: ¿perdida, rota, devuelta?' };
+  }
+  try {
+    await panel.revocarDispositivo(id, reason);
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/equipo');
+  return { ok: 'Dispositivo revocado: deja de poder entrar ahora mismo.' };
+}

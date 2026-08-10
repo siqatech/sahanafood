@@ -509,6 +509,49 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(fila).toContainText('sin PIN');
   });
 
+  test('UNA CUENTA NUEVA no entra al POS hasta que tiene PIN y hay una tablet', async ({
+    page,
+  }) => {
+    // Dar de alta no basta: al POS se entra con un aparato emparejado y un PIN.
+    // Sin estas dos cosas la persona tiene cuenta, aparece en la lista, y no
+    // puede abrir caja — que es una forma silenciosa de no estar dado de alta.
+    await entrar(page);
+    await page.goto('/panel/equipo');
+
+    const correo = `cajera-${Date.now()}@sahana.test`;
+    await page.getByLabel('Nombre', { exact: true }).fill('Cajera de prueba');
+    await page.getByLabel('Correo', { exact: true }).fill(correo);
+    await page.getByLabel('Rol', { exact: true }).selectOption('cashier');
+    await page
+      .getByLabel('Contraseña', { exact: true })
+      .fill('password-cajera-1');
+    await page.getByRole('button', { name: 'Dar de alta' }).click();
+    await expect(page.getByText(/ya puede entrar/i)).toBeVisible();
+
+    await page.reload();
+    const fila = page.locator('tbody tr').filter({ hasText: correo });
+    await expect(fila).toContainText('sin PIN');
+
+    await fila.getByRole('textbox', { name: /^PIN de / }).fill('4821');
+    await fila.getByRole('button', { name: 'Poner PIN' }).click();
+
+    // Se comprueba el EFECTO, no el mensaje: `revalidatePath` remonta la fila.
+    await expect(fila).not.toContainText('sin PIN');
+
+    // Y el código de emparejamiento: se enseña una vez, en grande, con su hora
+    // de caducidad. Es la credencial con la que la tablet entra.
+    await page
+      .getByRole('button', { name: 'Emitir código de emparejamiento' })
+      .click();
+    const codigo = page.locator('p.codigo');
+    await expect(codigo).toContainText(/Código: [A-Z0-9-]+/);
+    await expect(codigo).toContainText(/caduca a las \d{2}:\d{2}/);
+
+    // No se guarda en ninguna pantalla: al recargar ya no está.
+    await page.reload();
+    await expect(page.locator('p.codigo')).toHaveCount(0);
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {
