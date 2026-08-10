@@ -702,4 +702,47 @@ F001-00000001 nuevo es, para el sandbox, otro documento con un número ya visto:
 resuelve reiniciando el proceso y no relajando la comprobación. Queda escrito en
 la cabecera de `seed-shop.ts`.
 
+### El contrato de auditoría no lo comprobaba nadie
+
+Toda la trazabilidad que sostienen los tres cambios anteriores —cada cuenta con
+su nombre, cada descuadre firmado por dos, cada comprobante con su corrección—
+acaba en `audit_log`. Al ir a construir la pantalla apareció algo peor que una
+pantalla que falta.
+
+`AUDITED_ACTIONS` decía ser «las acciones auditadas obligatoriamente
+(docs/14#auditoria)». Era una lista de nombres bonitos que **no coincidía con lo
+que el código escribe**: enumeraba `price.changed`, `permissions.changed` y
+`order.refunded`, y el código escribe `catalog.price_set`,
+`identity.role_changed` y `payment.refunded`. **Diez de sus diecisiete entradas
+no las emitía nadie.** Y nada lo comprobaba, porque la constante no la usaba
+ningún camino de ejecución: parecía un contrato y era una nota.
+
+Esto no se nota nunca por sí solo — **nadie echa de menos una línea de auditoría
+que no sabe que debería existir**. Se nota el día que hay que demostrar quién
+cambió un precio, y ya es tarde. CLAUDE.md dice que la deuda de auditoría no es
+aceptable nunca, así que se arregla ahora:
+
+· `AUDIT_REQUIREMENTS` mapea **requisito de docs/14 → nombres reales** que lo
+satisfacen, y `auditoria-contrato.test.ts` falla en cuanto uno se queda
+huérfano. Comprobé que la prueba muerde de verdad rompiéndola a propósito —y de
+paso descubrí que se aprobaba a sí misma, porque el nombre aparecía en el mapa
+que la propia prueba leía; ahora el archivo del contrato queda excluido del
+barrido.
+
+· `AUDIT_REQUIREMENTS_PENDING` declara los dos que **no tienen emisor**:
+`support.cross_tenant_access` (no existe acceso de soporte cross-tenant;
+`recordAudit` ya exige motivo para ese caso, así que el día que se construya no
+se podrá escribir sin él) y `data.bulk_export` (no hay ningún endpoint de
+exportación masiva). Se declaran en vez de omitirse: una lista que solo contiene
+lo hecho no distingue «cumplido» de «olvidado».
+
+Y la pantalla, `/panel/auditoria`. El endpoint devolvía las filas crudas, con el
+actor en UUID: «3f2a8c… cambió un precio» no contesta la pregunta que trae a
+alguien a la auditoría, que **siempre es quién**. El nombre no se guarda en la
+fila a propósito —una persona se renombra y el histórico no se reescribe— así
+que se resuelve al leer, con `LEFT JOIN`: quien firmó puede haberse dado de
+baja, y perder su línea por eso sería lo contrario de auditar. El filtro por
+acción se ofrece con **las acciones que hay**, contadas, no con una lista escrita
+a mano que se desviaría al añadir una.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

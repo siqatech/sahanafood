@@ -1,50 +1,56 @@
-import { Controller, Get, Inject, Query, Req } from '@nestjs/common';
-import { and, desc, eq, gte, lte, type SQL } from 'drizzle-orm';
-import type { Pool } from 'pg';
-import { PG_POOL } from '../../../database/database.module.js';
-import { withTenant } from '../../../database/rls.js';
-import * as schema from '../../../database/schema/index.js';
+import { Controller, Get, Query, Req } from '@nestjs/common';
 import {
   RequirePermission,
   type AuthenticatedRequest,
 } from '../../../common/authz.js';
+import {
+  AuditQueryService,
+  type EntradaDeAuditoria,
+} from '../app/audit-query.service.js';
 
 /**
- * Consulta de auditoría (spec 17): GET /audit?entity&actor&range.
- * Requiere permiso `audit.read` (admin/contador según docs/03).
+ * Consulta de auditoría (spec 17, docs/14#auditoria).
+ *
+ * Requiere `audit.read` (administrador/contador según docs/03). Es de solo
+ * lectura y lo será siempre: `audit_log` es append-only y el rol de aplicación
+ * no tiene `UPDATE` ni `DELETE` sobre ella (migración 0002), así que no hay
+ * ninguna ruta que pueda corregir el histórico ni conviene que la haya.
  */
 @Controller({ path: 'audit', version: '1' })
 export class AuditController {
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(private readonly audit: AuditQueryService) {}
 
   @Get()
   @RequirePermission('audit.read')
   async list(
     @Req() req: AuthenticatedRequest,
+    @Query('action') action?: string,
     @Query('entity') entity?: string,
+    @Query('resource') resource?: string,
     @Query('actor') actor?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('limit') limit?: string,
-  ): Promise<{ items: unknown[] }> {
+  ): Promise<{ items: EntradaDeAuditoria[] }> {
     // El tenant SIEMPRE sale del token, nunca de la query (CLAUDE.md).
-    const tenantId = req.auth!.tid;
-    const take = Math.min(Number(limit ?? 100) || 100, 500);
-
-    const items = await withTenant(this.pool, tenantId, async (ctx) => {
-      const filters: SQL[] = [];
-      if (entity) filters.push(eq(schema.auditLog.resourceType, entity));
-      if (actor) filters.push(eq(schema.auditLog.actorId, actor));
-      if (from) filters.push(gte(schema.auditLog.occurredAt, new Date(from)));
-      if (to) filters.push(lte(schema.auditLog.occurredAt, new Date(to)));
-
-      const query = ctx.db.select().from(schema.auditLog);
-      const filtered =
-        filters.length > 0 ? query.where(and(...filters)) : query;
-
-      return filtered.orderBy(desc(schema.auditLog.occurredAt)).limit(take);
+    const items = await this.audit.list(req.auth!.tid, {
+      ...(action ? { action } : {}),
+      ...(entity ? { resourceType: entity } : {}),
+      ...(resource ? { resourceId: resource } : {}),
+      ...(actor ? { actorId: actor } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(limit ? { limit: Number(limit) || 100 } : {}),
     });
-
     return { items };
+  }
+
+  /** Las acciones registradas, para que el filtro ofrezca lo que HAY. */
+  @Get('actions')
+  @RequirePermission('audit.read')
+  async actions(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<Array<{ action: string; count: number }>> {
+    return this.audit.actions(req.auth!.tid);
   }
 }

@@ -13,28 +13,60 @@ import * as schema from '../../../database/schema/index.js';
  * que un intento de alterar el histórico falla en la base de datos.
  */
 
-/** Acciones auditadas obligatoriamente (docs/14#auditoria). */
-export const AUDITED_ACTIONS = [
-  'auth.login',
-  'auth.refresh_reuse_detected',
-  'tenant.created',
-  'tenant.updated',
-  'tenant.suspended',
-  'invoice.voided',
-  'invoice.credit_note',
-  'price.changed',
-  'discount.over_threshold',
-  'order.cancelled',
-  'order.refunded',
-  'order.modified_after_accept',
-  'inventory.adjusted',
-  'permissions.changed',
-  'cash.closed_with_difference',
-  'support.cross_tenant_access',
-  'data.bulk_export',
-] as const;
+/**
+ * Lo que docs/14#auditoria obliga a auditar, y CON QUÉ NOMBRE se cumple.
+ *
+ * Antes esto era una lista suelta de nombres bonitos —`price.changed`,
+ * `permissions.changed`, `order.refunded`— que **no coincidía con lo que el
+ * código escribe** y que nada comprobaba. Diez de sus diecisiete entradas no
+ * las emitía nadie: el módulo de catálogo escribe `catalog.price_set`, el de
+ * identidad `identity.role_changed`, el de pagos `payment.refunded`. La lista
+ * daba la impresión de ser un contrato y era una nota.
+ *
+ * Ahora cada requisito apunta a los nombres REALES que lo satisfacen, y
+ * `auditoria-contrato.test.ts` falla si alguno deja de tener quien lo escriba.
+ * Un requisito de auditoría sin emisor no se nota nunca —nadie echa de menos
+ * una línea que no sabe que debería existir— hasta el día que hay que
+ * demostrar quién cambió un precio.
+ */
+export const AUDIT_REQUIREMENTS: Readonly<Record<string, readonly string[]>> = {
+  'Acceso al sistema': ['auth.login', 'auth.refresh_reuse_detected'],
+  'Alta y suspensión de clientes': ['tenant.created', 'tenant.suspended'],
+  'Anulación de comprobante': ['invoice.credit_note'],
+  'Corrección de comprobante rechazado': ['billing.customer_corrected'],
+  'Cambio de precio': ['catalog.price_set'],
+  'Descuento sobre el umbral': ['order.discount_approved'],
+  'Cancelación de pedido': ['order.cancelled'],
+  'Devolución de dinero': ['payment.refund_requested', 'payment.refunded'],
+  'Modificación de un pedido ya aceptado': ['order.modified'],
+  'Ajuste de inventario': ['inventory.adjusted'],
+  'Cambio de permisos': [
+    'identity.role_changed',
+    'identity.user_created',
+    'identity.user_disabled',
+  ],
+  'Cierre de caja descuadrado': ['cash.session_closed_with_difference'],
+  'Alta y revocación de dispositivos': ['device.paired', 'device.revoked'],
+} as const;
 
-export type AuditedAction = (typeof AUDITED_ACTIONS)[number] | (string & {});
+/**
+ * Requisitos de docs/14 que HOY no tienen emisor, con el motivo.
+ *
+ * Se declaran aquí en vez de omitirse: una lista que solo contiene lo que ya
+ * está hecho no distingue «cumplido» de «olvidado».
+ */
+export const AUDIT_REQUIREMENTS_PENDING: Readonly<Record<string, string>> = {
+  'support.cross_tenant_access':
+    'No existe todavía acceso de soporte cross-tenant. `recordAudit` YA lo exige con motivo (ver abajo): el día que se construya, no se podrá escribir sin él.',
+  'data.bulk_export':
+    'No hay ningún endpoint de exportación masiva. El permiso `reports.export` existe y no lo usa ninguna ruta; cuando la haya, tiene que auditar.',
+} as const;
+
+/** Todos los nombres que el contrato de auditoría exige que alguien escriba. */
+export const AUDITED_ACTIONS: readonly string[] =
+  Object.values(AUDIT_REQUIREMENTS).flat();
+
+export type AuditedAction = string;
 
 export interface AuditEntry {
   actorType: 'user' | 'system' | 'support';

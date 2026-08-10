@@ -4,8 +4,15 @@
  */
 export { AuditModule } from './audit.module.js';
 export {
+  AuditQueryService,
+  type EntradaDeAuditoria,
+  type FiltrosDeAuditoria,
+} from './app/audit-query.service.js';
+export {
   recordAudit,
   AUDITED_ACTIONS,
+  AUDIT_REQUIREMENTS,
+  AUDIT_REQUIREMENTS_PENDING,
   AuditReasonRequiredError,
   type AuditEntry,
   type AuditedAction,

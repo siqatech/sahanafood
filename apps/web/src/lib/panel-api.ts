@@ -347,6 +347,21 @@ export interface CobroDelPanel {
     | undefined;
 }
 
+/** Una línea del histórico (spec 17, docs/14#auditoria). */
+export interface LineaDeAuditoria {
+  id: string;
+  occurredAt: string;
+  actorType: string;
+  actorId: string | null;
+  actorName: string | null;
+  action: string;
+  resourceType: string;
+  resourceId: string | null;
+  reason: string | null;
+  traceId: string | null;
+  data: Record<string, unknown>;
+}
+
 export interface DocumentoDelPanel {
   id: string;
   orderId: string | null;
@@ -621,6 +636,23 @@ export const panel = {
       `/payments/intents/${intentId}/refund`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
+
+  auditoria: (
+    filtros: {
+      action?: string;
+      limit?: number;
+    } = {},
+  ): Promise<LineaDeAuditoria[]> => {
+    const q = new URLSearchParams();
+    if (filtros.action) q.set('action', filtros.action);
+    q.set('limit', String(filtros.limit ?? 100));
+    return llamar<{ items: LineaDeAuditoria[] }>(`/audit?${q}`).then(
+      (r) => r.items,
+    );
+  },
+
+  accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
+    llamar<Array<{ action: string; count: number }>>('/audit/actions'),
 
   usuarios: (): Promise<UsuarioDelPanel[]> =>
     llamar<UsuarioDelPanel[]>('/users'),

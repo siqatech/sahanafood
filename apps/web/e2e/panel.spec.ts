@@ -631,6 +631,38 @@ test.describe('Panel de gestión en navegador', () => {
     ).toHaveCount(0);
   });
 
+  test('EL HISTÓRICO dice QUIÉN, no un UUID, y se filtra por lo que se busca', async ({
+    page,
+  }) => {
+    // Toda la trazabilidad que sostiene lo demás acaba aquí. `audit_log` se
+    // escribía desde F3 en cuarenta sitios y la única ruta que lo devolvía
+    // entregaba las filas crudas: «3f2a8c… cambió un precio» no contesta la
+    // pregunta que trae a alguien a mirar la auditoría, que siempre es quién.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Histórico' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Histórico' }),
+    ).toBeVisible();
+
+    // La entrada al panel que acaba de ocurrir, con nombre y apellido.
+    const fila = page
+      .locator('tbody tr')
+      .filter({ hasText: 'Entró al sistema' })
+      .first();
+    await expect(fila).toBeVisible();
+    await expect(fila).toContainText('Dueña de la tienda demo');
+
+    // Y el filtro por acción, que es como se busca de verdad.
+    await page.getByLabel('Filtrar por acción').selectOption('auth.login');
+    await page.getByRole('button', { name: 'Filtrar' }).click();
+    await expect(page).toHaveURL(/accion=auth.login/);
+    const filas = page.locator('tbody tr');
+    await expect(filas.first()).toContainText('Entró al sistema');
+    await expect(
+      page.locator('tbody tr').filter({ hasText: 'Cambio de precio' }),
+    ).toHaveCount(0);
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {
