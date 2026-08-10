@@ -10,6 +10,7 @@ import { seedDemoCatalog } from '../modules/catalog/index.js';
 import { StorefrontService } from '../modules/storefront/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
 import { ConversationsService } from '../modules/conversations/index.js';
+import { CashService } from '../modules/cash/index.js';
 
 /**
  * Siembra una tienda demo para levantar `apps/web` a mano (T5.08–T5.14).
@@ -136,6 +137,33 @@ async function main(): Promise<void> {
     text: '¿A qué hora abren hoy?',
   });
 
+  // Un turno de caja ABIERTO con movimientos de dos medios distintos. El de
+  // tarjeta está a propósito: cuadra el turno pero no pone billetes en la
+  // gaveta, y es justo la lectura que hace que un turno correcto parezca un
+  // faltante enorme si la pantalla no separa las dos columnas.
+  const caja = app.get(CashService);
+  const turno = await caja.open(tenant.tenantId, {
+    locationId: org.locationId,
+    openedBy: tenant.ownerUserId,
+    openingFloatMinor: 500_000, // S/ 50.00 de fondo
+  });
+  await caja.addMovement(tenant.tenantId, turno.id, {
+    kind: 'sale',
+    amountMinor: 320_000,
+    method: 'cash',
+  });
+  await caja.addMovement(tenant.tenantId, turno.id, {
+    kind: 'sale',
+    amountMinor: 450_000,
+    method: 'card',
+  });
+  await caja.addMovement(tenant.tenantId, turno.id, {
+    kind: 'cash_out',
+    amountMinor: 100_000,
+    method: 'cash',
+    reason: 'Compra de hielo',
+  });
+
   console.log(
     JSON.stringify(
       {
@@ -147,6 +175,7 @@ async function main(): Promise<void> {
         excepciones: `http://${HOST}:3001/panel/excepciones`,
         operaciones: `http://${HOST}:3001/panel/operaciones`,
         conversaciones: `http://${HOST}:3001/panel/conversaciones`,
+        caja: `http://${HOST}:3001/panel/caja`,
       },
       null,
       2,

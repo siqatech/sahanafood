@@ -391,6 +391,39 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
   });
 
+  test('CAJA separa lo que toca la gaveta de lo que no', async ({ page }) => {
+    // La lectura que esta pantalla existe para evitar: un turno con mucha
+    // tarjeta parece un faltante enorme si «esperado en efectivo» y «vendido»
+    // se leen como el mismo número. El cajero acaba defendiéndose de una
+    // acusación que era un error de lectura.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Caja', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Caja y comprobantes' }),
+    ).toBeVisible();
+
+    await page
+      .locator('tbody tr')
+      .first()
+      .getByRole('link', { name: 'Ver' })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Arqueo del turno' }),
+    ).toBeVisible();
+
+    // Fondo 50 + venta en efectivo 32 − salida 10 = 72. La venta con tarjeta
+    // (45) NO entra: si entrara, el esperado sería 117 y la gaveta faltaría 45.
+    await expect(page.getByText('S/ 72.00')).toBeVisible();
+
+    // Y el desglose por medio de pago sí la enseña, que es lo que permite
+    // explicar el turno completo. Se busca la CELDA y no el texto suelto: la
+    // palabra «tarjeta» también aparece en el párrafo que explica la tabla.
+    const fila = page.getByRole('row').filter({
+      has: page.getByRole('cell', { name: 'Tarjeta', exact: true }),
+    });
+    await expect(fila).toContainText('S/ 45.00');
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

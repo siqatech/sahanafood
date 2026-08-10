@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { panel, type Importe } from '../../../lib/panel-api';
+import { panel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
+import { soles } from '../caja/dinero';
 
 /**
  * Pedidos: buscador y estado (specs/ux/03, «Pedidos»).
@@ -37,26 +38,6 @@ const ROTULO: Record<string, string> = {
   cancelled: 'Cancelado',
   rejected: 'Rechazado',
 };
-
-/**
- * Importe a texto SIN pasar por coma flotante.
- *
- * `minorUnits / 10 ** scale` es la forma obvia y es la prohibida por CLAUDE.md:
- * el dinero no se divide, se corta. Aquí se corta la cadena de dígitos, que
- * además es exacto para cualquier magnitud.
- */
-function soles(total: Importe): string {
-  const negativo = total.minorUnits < 0;
-  const digitos = String(Math.abs(total.minorUnits)).padStart(
-    total.scale + 1,
-    '0',
-  );
-  const corte = digitos.length - total.scale;
-  // Se enseñan 2 decimales aunque se guarden 4: el resto solo aparece en
-  // cálculos intermedios y un ticket con cuatro decimales no lo lee nadie.
-  const decimales = digitos.slice(corte, corte + 2).padEnd(2, '0');
-  return `${negativo ? '-' : ''}${digitos.slice(0, corte)}.${decimales}`;
-}
 
 export default async function PedidosPage({
   searchParams,

@@ -230,6 +230,30 @@ export interface PoliticaDeAceptacion {
   autoRejectAfterMinutes: number;
 }
 
+export interface TurnoDeCaja {
+  id: string;
+  locationId: string;
+  openedBy: string;
+  closedBy: string | null;
+  status: 'open' | 'closing' | 'closed';
+  openingFloat: Importe;
+  declaredCash: Importe | null;
+  expectedCash: Importe | null;
+  difference: Importe | null;
+  differenceReason: string | null;
+  openedAt: string;
+  closedAt: string | null;
+}
+
+export interface ArqueoDeTurno {
+  sessionId: string;
+  openingFloat: Importe;
+  expectedCash: Importe;
+  byKind: Record<string, Importe>;
+  byMethod: Record<string, Importe>;
+  movements: number;
+}
+
 export interface CartaMuerta {
   id: string;
   provider: string;
@@ -242,9 +266,11 @@ export interface CartaMuerta {
 export interface DocumentoDelPanel {
   id: string;
   orderId: string | null;
+  docType: string;
   number: string | null;
   status: string;
   total: string;
+  issuedAt: string;
   rejectionReason: string | null;
   attempts: number;
 }
@@ -466,10 +492,15 @@ export const panel = {
   reintentarCartaMuerta: (id: string): Promise<unknown> =>
     llamar(`/integrations/dead-letters/${id}/retry`, { method: 'POST' }),
 
-  documentos: (status: string): Promise<DocumentoDelPanel[]> =>
+  documentos: (status?: string): Promise<DocumentoDelPanel[]> =>
     llamar<DocumentoDelPanel[]>(
-      `/documents?status=${encodeURIComponent(status)}`,
+      status ? `/documents?status=${encodeURIComponent(status)}` : '/documents',
     ),
+
+  turnos: (): Promise<TurnoDeCaja[]> => llamar<TurnoDeCaja[]>('/cash-sessions'),
+
+  arqueo: (sessionId: string): Promise<ArqueoDeTurno> =>
+    llamar<ArqueoDeTurno>(`/cash-sessions/${sessionId}/summary`),
 
   conversaciones: (
     filtros: { status?: string; queue?: string; search?: string } = {},

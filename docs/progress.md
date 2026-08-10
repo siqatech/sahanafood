@@ -503,4 +503,14 @@ Ahora hay `/panel/pedidos` con buscador y `/panel/pedidos/[id]` con la trazabili
 
 El buscador nuevo llevó su propia prueba de aislamiento: es un vector clásico —basta con que la condición de texto se aplique sin la de tenant para que un negocio encuentre a los clientes de su competencia por el teléfono—.
 
-**Próxima acción de Claude Code:** seguir por `specs/ux/03` con lo que queda —Caja y comprobantes es la siguiente con dueño claro: el cajero cierra turno en el POS y hoy nadie puede revisar los arqueos ni los comprobantes desde el panel—, aplicando primero el paso 2 del criterio sobre `cash_sessions`, `cash_movements` y `bil_documents`.
+### Caja y comprobantes
+
+El paso 2 del criterio se aplicó primero, y esta vez pasó limpio: `cash-sessions`, su resumen y `documents` ya exponían todo lo que la pantalla necesita. Faltaba solo la pantalla.
+
+`/panel/caja` enseña los turnos con su diferencia y los comprobantes con su estado; `/panel/caja/[id]` es el arqueo. Lo que hace que ese detalle valga son **dos vistas que el servidor ya calculaba y que no leía nadie**: por tipo en efectivo —lo que explica el esperado— y por medio de pago, incluidos los que no tocan la gaveta. Sin la segunda, un turno con mucha tarjeta parece un faltante enorme y el cajero acaba defendiéndose de una acusación que era un error de lectura. La prueba de navegador afirma exactamente eso: fondo 50 + venta en efectivo 32 − salida 10 = **72**, con la venta de 45 con tarjeta fuera del esperado y dentro del desglose.
+
+El formateo de importes se unificó en `caja/dinero.ts` —tres pantallas lo usaban y una tercera copia habría acabado siendo la que se desvía— y tiene prueba propia: la forma obvia, `minorUnits / 10 ** scale`, es la prohibida por CLAUDE.md, así que corta la cadena de dígitos. Los casos que valen son los que distinguen un corte correcto de uno que «funciona con los números de hoy»: 0.05, importes negativos, y 99 999 999.99, donde una división ya pierde el último céntimo.
+
+**Dos aserciones mías que estaban mal, y lo que enseñan.** La del buscador prometía que buscar «12» solo devuelve el pedido 12; el código —a propósito— también encuentra teléfonos que contienen 12, porque quien dicta «termina en 12» busca así. Pasó en aislamiento y falló con la suite completa, que es cuando aparecieron teléfonos con esos dígitos. La aserción correcta no es «solo sale el mío» sino la que aísla el fallo real: **ningún resultado tiene un número que contenga los dígitos sin ser igual a ellos**. Y la de caja buscaba el texto «Tarjeta», que también está en el párrafo que explica la tabla: ahora busca la celda.
+
+**Próxima acción de Claude Code:** de `specs/ux/03` quedan Inventario, Clientes, Configuración completa y Novedades — todas de consulta y ninguna bloqueante. Antes de seguir sumando pantallas conviene volver a pasar el paso 2 del criterio sobre los módulos que aún no tienen ninguna: inventario (`inv_*`) y CRM, donde el patrón «se guarda y no se devuelve» ya ha aparecido cuatro veces.

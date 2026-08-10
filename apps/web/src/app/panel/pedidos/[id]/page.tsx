@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { panel, type Importe } from '../../../../lib/panel-api';
+import { panel } from '../../../../lib/panel-api';
 import { cargar } from '../../../../lib/panel-guard';
+import { soles } from '../../caja/dinero';
 
 /**
  * Trazabilidad de UN pedido (specs/ux/03: «la misma vista del runbook 1,
@@ -30,17 +31,6 @@ const ROTULO: Record<string, string> = {
   cancelled: 'Cancelado',
   rejected: 'Rechazado',
 };
-
-/** Importe a texto sin coma flotante (mismo criterio que el listado). */
-function soles(total: Importe): string {
-  const digitos = String(Math.abs(total.minorUnits)).padStart(
-    total.scale + 1,
-    '0',
-  );
-  const corte = digitos.length - total.scale;
-  const decimales = digitos.slice(corte, corte + 2).padEnd(2, '0');
-  return `${total.minorUnits < 0 ? '-' : ''}${digitos.slice(0, corte)}.${decimales}`;
-}
 
 function momento(iso: string): string {
   return new Date(iso).toLocaleString('es-PE', { timeZone: 'America/Lima' });

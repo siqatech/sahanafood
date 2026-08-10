@@ -833,17 +833,28 @@ suite('Ordering e2e', () => {
       porTelefono.body.some((o: { id: string }) => o.id === creado.body.id),
     ).toBe(true);
 
-    // El número va por IGUALDAD: quien dice «mi pedido es el 12» no quiere ver
-    // el 120 ni el 312. Buscar el número exacto no puede traer otros.
+    // El número va por IGUALDAD y no por coincidencia: quien dice «mi pedido es
+    // el 12» no quiere ver el 120 ni el 312.
+    //
+    // Lo que SÍ puede aparecer es un pedido cuyo TELÉFONO contiene esos
+    // dígitos, y eso es deseado: quien dicta «termina en 12» también busca así.
+    // Por eso la comprobación no es «solo sale el mío» —sería falsa y frágil—
+    // sino la que aísla el fallo real: ningún resultado tiene un número que
+    // *contenga* los dígitos sin ser igual a ellos.
     const porNumero = await auth(
       http().get(`/api/v1/orders?search=${numero}`),
     ).expect(200);
     expect(
-      porNumero.body.every(
+      porNumero.body.some(
         (o: { orderNumber: number }) => o.orderNumber === numero,
       ),
     ).toBe(true);
-    expect(porNumero.body.length).toBeGreaterThan(0);
+    const porSubcadena = porNumero.body.filter(
+      (o: { orderNumber: number; customerPhone?: string | null }) =>
+        o.orderNumber !== numero &&
+        String(o.orderNumber).includes(String(numero)),
+    );
+    expect(porSubcadena).toEqual([]);
   });
 
   it('el detalle de la excepción devuelve LO QUE MANDÓ EL CANAL', async () => {
