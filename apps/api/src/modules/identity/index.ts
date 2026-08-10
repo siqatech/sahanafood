@@ -43,3 +43,8 @@ export {
   type OperadorDelPos,
   type ContextoDelDispositivo,
 } from './app/pos-session.service.js';
+export {
+  UserAdminService,
+  ROLES_ASIGNABLES,
+  type UsuarioDelEquipo,
+} from './app/user-admin.service.js';

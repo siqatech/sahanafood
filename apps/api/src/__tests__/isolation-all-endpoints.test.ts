@@ -646,6 +646,34 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /users no trae el equipo del vecino', async () => {
+    // La lista lleva nombres y correos del personal: es dato personal de
+    // terceros, y además el mapa de quién puede aprobar qué.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /users', (r) => r.get('/api/v1/users')),
+    );
+  });
+
+  it('POST /users no da de alta en el tenant ajeno', async () => {
+    // El peor de los dos: si escribiera cruzado, A se crearía una cuenta
+    // dentro del negocio de B.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /users',
+        (r) =>
+          r.post('/api/v1/users').send({
+            email: `alta-aislamiento-${Date.now()}@sahana.test`,
+            fullName: 'Alta de prueba',
+            password: 'password-aislamiento-1',
+            roleCode: 'cashier',
+          }),
+        { expectedStatusForA: [201] },
+      ),
+    );
+  });
+
   it('GET /inventory/items', async () => {
     // La lista de insumos con su costo unitario es la estructura de costos del
     // negocio: quien la lea sabe con qué margen trabaja la competencia.

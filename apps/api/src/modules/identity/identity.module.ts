@@ -8,6 +8,8 @@ import {
   DeviceController,
   PosSessionController,
 } from './api/device.controller.js';
+import { UsersController } from './api/users.controller.js';
+import { UserAdminService } from './app/user-admin.service.js';
 import { RequirePermissionGuard } from './api/require-permission.guard.js';
 
 /**
@@ -17,13 +19,19 @@ import { RequirePermissionGuard } from './api/require-permission.guard.js';
  * siendo públicos de forma explícita.
  */
 @Module({
-  controllers: [AuthController, DeviceController, PosSessionController],
+  controllers: [
+    AuthController,
+    DeviceController,
+    PosSessionController,
+    UsersController,
+  ],
   providers: [
     AuthService,
     DeviceService,
     PosSessionService,
     { provide: APP_GUARD, useClass: RequirePermissionGuard },
+    UserAdminService,
   ],
-  exports: [AuthService, DeviceService, PosSessionService],
+  exports: [AuthService, DeviceService, PosSessionService, UserAdminService],
 })
 export class IdentityModule {}

@@ -479,6 +479,36 @@ test.describe('Panel de gestión en navegador', () => {
     ).toHaveCount(1);
   });
 
+  test('EL EQUIPO se da de alta con SU cuenta y SU rol', async ({ page }) => {
+    // Sin esta pantalla el dueño le da su contraseña al cajero: la cuenta que
+    // aprueba descuadres, cambia precios y firma en auditoría. La trazabilidad
+    // se vuelve ficción el primer día.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Equipo', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Equipo' })).toBeVisible();
+
+    // El propietario aparece y NO se le puede cambiar el rol ni desactivar.
+    const filaDueno = page.locator('tbody tr').first();
+    await expect(filaDueno).toContainText('Propietario');
+
+    const correo = `cocinero-${Date.now()}@sahana.test`;
+    await page.getByLabel('Nombre', { exact: true }).fill('Cocinero de prueba');
+    await page.getByLabel('Correo', { exact: true }).fill(correo);
+    await page.getByLabel('Rol', { exact: true }).selectOption('cook');
+    await page
+      .getByLabel('Contraseña', { exact: true })
+      .fill('password-cocinero-1');
+    await page.getByRole('button', { name: 'Dar de alta' }).click();
+
+    await expect(page.getByText(/ya puede entrar/i)).toBeVisible();
+
+    // Y queda en la lista con su rol y SIN PIN, que es lo que la pantalla
+    // avisa: tiene cuenta pero todavía no puede abrir caja en el POS.
+    await page.reload();
+    const fila = page.locator('tbody tr').filter({ hasText: correo });
+    await expect(fila).toContainText('sin PIN');
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

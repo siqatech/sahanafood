@@ -551,4 +551,24 @@ La lección, que es la misma de la aserción del buscador: **una aserción laxa 
 
 Lo encontré porque la prueba del ejemplo no se queda en «el pedido cobra el precio del archivo»: ahora **lo acepta y comprueba el kardex**. 1200 g de pollo más un 5 % de merma son 1260 g descontados, y la subreceta de crema aparece estallada en mayonesa y ketchup, no como una línea. Sin ese paso, el ejemplo habría seguido pasando en verde con el agujero dentro — que es exactamente lo que llevaba pasando.
 
-**Próxima acción de Claude Code:** dar de alta un cliente es ya un archivo y un comando, con las siete pantallas en pie y las dos mitades de cada módulo. Lo que queda antes de F6 no es código: es **DT-02**, el entorno cloud, que bloquea los tres pilotos, el pentest, el canario completo y la medición de Lighthouse — y la precondición de F6 es que esos pilotos lleven un mes vendiendo. Si aparecen las credenciales, lo siguiente es el Terraform; si no, lo único con valor propio que queda es seguir bajando por `specs/ux/03` (Clientes, Configuración, Novedades), que es consulta secundaria.
+### El equipo: no había forma de crear un segundo usuario
+
+Antes de bajar por lo que queda de `specs/ux/03` comprobé si algo de ahí era bloqueante y no consulta. Lo era, y es de los peores que han salido: **no existía ninguna forma de crear un usuario**. Los nueve roles del sistema se crean en cada tenant, el guardia los comprueba en cada petición y el POS entra con usuario + PIN… y el único usuario era el propietario que nace con el negocio.
+
+Lo que pasa en un local sin eso es concreto y no hace falta imaginarlo: el dueño le da SU contraseña al cajero. Es la cuenta que aprueba descuadres, cambia precios y firma en `audit_log`. **La trazabilidad se vuelve ficción el primer día** — todo lo hizo el dueño, incluso lo que hizo el cocinero a las once de la noche. Y esa trazabilidad es la que sostiene la regla de CLAUDE.md de que auditoría es deuda inaceptable.
+
+`UserAdminService` + `/panel/equipo`. Cuatro reglas que no son de formulario:
+
+· **El rol es obligatorio al dar de alta.** Una cuenta sin rol entra y no puede hacer nada, y lo que ocurre entonces es que alguien le presta una con permisos «mientras tanto» — el atajo que la pantalla existe para evitar. Pedirlo cuesta un desplegable; no pedirlo cuesta la trazabilidad entera.
+
+· **`owner` no se puede asignar nunca.** Que un administrador pueda fabricar otro propietario convierte cualquier cuenta de administrador comprometida en una toma de control permanente.
+
+· **Al propietario no se le cambia el rol ni se le desactiva.** Es la única cuenta sin escalón por encima al que pedir ayuda: dejarla fuera deja el negocio sin nadie que pueda recuperarlo.
+
+· **Cambiar de rol reemplaza, no acumula.** Acumular deja cajeros que siguen aprobando descuadres porque un día cubrieron un turno de supervisor, y quitarlo exige saber cuántos roles se dieron antes — que nadie sabe.
+
+Los roles que ofrece el desplegable **los sirve el servidor**, no la pantalla: son los mismos nueve que comprueba el guardia, y una lista duplicada se desviaría el día que se añada uno, ofreciendo un rol inexistente o escondiendo uno real.
+
+La pantalla dice además quién **no tiene PIN**, porque tener cuenta y no poder abrir caja en el POS es una forma silenciosa de no estar dado de alta.
+
+**Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

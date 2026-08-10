@@ -230,6 +230,16 @@ export interface PoliticaDeAceptacion {
   autoRejectAfterMinutes: number;
 }
 
+export interface UsuarioDelPanel {
+  id: string;
+  email: string;
+  fullName: string;
+  status: string;
+  isOwner: boolean;
+  hasPin: boolean;
+  roles: Array<{ code: string; name: string }>;
+}
+
 export interface ExistenciaDelPanel {
   warehouseId: string;
   warehouseName: string;
@@ -538,6 +548,32 @@ export const panel = {
     llamar<DocumentoDelPanel[]>(
       status ? `/documents?status=${encodeURIComponent(status)}` : '/documents',
     ),
+
+  usuarios: (): Promise<UsuarioDelPanel[]> =>
+    llamar<UsuarioDelPanel[]>('/users'),
+
+  rolesAsignables: (): Promise<Array<{ code: string; name: string }>> =>
+    llamar<Array<{ code: string; name: string }>>('/users/roles'),
+
+  crearUsuario: (input: {
+    email: string;
+    fullName: string;
+    password: string;
+    roleCode: string;
+  }): Promise<unknown> =>
+    llamar('/users', { method: 'POST', body: JSON.stringify(input) }),
+
+  cambiarRol: (userId: string, roleCode: string): Promise<unknown> =>
+    llamar(`/users/${userId}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ roleCode }),
+    }),
+
+  cambiarEstadoUsuario: (userId: string, active: boolean): Promise<unknown> =>
+    llamar(`/users/${userId}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ active }),
+    }),
 
   existencias: (): Promise<ExistenciaDelPanel[]> =>
     llamar<ExistenciaDelPanel[]>('/inventory/stock'),
