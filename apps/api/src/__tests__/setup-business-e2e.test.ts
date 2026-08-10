@@ -14,6 +14,10 @@ import {
   CatalogAdminService,
 } from '../modules/catalog/index.js';
 import { StorefrontService } from '../modules/storefront/index.js';
+import {
+  InventoryAdminService,
+  InventoryService,
+} from '../modules/inventory/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
 import {
   aplicarNegocio,
@@ -81,10 +85,12 @@ suite('Configuración del negocio desde archivo', () => {
     org: OrganizationAdminService;
     carta: CatalogAdminService;
     tienda: StorefrontService;
+    inventario: InventoryAdminService;
   } => ({
     org: app.get(OrganizationAdminService),
     carta: app.get(CatalogAdminService),
     tienda: app.get(StorefrontService),
+    inventario: app.get(InventoryAdminService),
   });
 
   const leerEjemplo = (): DescripcionNegocio =>
@@ -96,6 +102,12 @@ suite('Configuración del negocio desde archivo', () => {
 
     expect(resumen.brandCount).toBe(1);
     expect(resumen.productCount).toBe(4);
+    // Y el negocio no solo vende: DESCUENTA. Sin la sección de inventario, el
+    // consumo automático no se dispara nunca y el food cost de un cliente
+    // nuevo se queda en cero — vendiendo con normalidad, eso sí, que es lo que
+    // hace el fallo difícil de ver.
+    expect(resumen.itemCount).toBe(5);
+    expect(resumen.recipeCount).toBe(4);
 
     // ---- La tienda resuelve por el host declarado en el archivo.
     const tienda = app.get(StorefrontService);
@@ -145,6 +157,32 @@ suite('Configuración del negocio desde archivo', () => {
       ],
     });
     expect(pedido.total.minorUnits).toBe(620_000); // 59.00 + 3.00
+
+    // ---- Y AL ACEPTARLO, la cocina descuenta de verdad.
+    //
+    // Es la comprobación que da sentido a la sección de inventario del
+    // archivo: sin receta el pedido entra igual, se cobra igual y NO descuenta
+    // nada. El fallo no se ve —el negocio funciona— hasta que alguien pregunta
+    // por el food cost tres meses después y es cero.
+    await app
+      .get(OrderingService)
+      .applyTransition(tenantId, pedido.id, 'accept', { actorType: 'system' });
+    const consumo = await app
+      .get(InventoryService)
+      .consumeForOrder(tenantId, pedido.id);
+    expect(consumo.movements).toBeGreaterThan(0);
+    // Y ningún producto se vendió sin costear: si la sección de inventario del
+    // archivo se quedara corta, aquí aparecería el nombre del plato huérfano.
+    expect(consumo.productsWithoutRecipe).toEqual([]);
+
+    // 1200 g de pollo + 5 % de merma = 1260 g. El pollo entero de la receta.
+    const kardex = await app.get(InventoryService).kardex(tenantId, {});
+    const pollos = kardex.filter((m) => m.itemName === 'Pollo crudo');
+    expect(pollos).toHaveLength(1);
+    expect(Number(pollos[0]!.quantity)).toBeCloseTo(-1260, 4);
+    // Y la subreceta estalló: la crema son mayonesa y ketchup, no una línea.
+    expect(kardex.some((m) => m.itemName === 'Mayonesa')).toBe(true);
+    expect(kardex.some((m) => m.itemName === 'Ketchup')).toBe(true);
   });
 
   it('VOLVER A APLICARLO con la carta cambiada corrige el precio', async () => {

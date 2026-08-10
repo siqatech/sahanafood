@@ -4,6 +4,7 @@ import { AppModule } from '../app.module.js';
 import { OrganizationAdminService } from '../modules/organization/index.js';
 import { CatalogAdminService } from '../modules/catalog/index.js';
 import { StorefrontService } from '../modules/storefront/index.js';
+import { InventoryAdminService } from '../modules/inventory/index.js';
 import { aplicarNegocio, type DescripcionNegocio } from './business-setup.js';
 
 /**
@@ -67,6 +68,7 @@ async function main(): Promise<void> {
         org: app.get(OrganizationAdminService),
         carta: app.get(CatalogAdminService),
         tienda: app.get(StorefrontService),
+        inventario: app.get(InventoryAdminService),
       },
       opciones.tenant,
       negocio,

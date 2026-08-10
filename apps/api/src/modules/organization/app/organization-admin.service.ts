@@ -352,6 +352,68 @@ export class OrganizationAdminService {
   }
 
   /**
+   * Almacén de un local, opcionalmente atado a una cocina (RN-INV-01).
+   *
+   * Faltaba, y su ausencia no se veía: un local sin almacén vende con toda
+   * normalidad y **revienta al aceptar el primer pedido con receta**, con un
+   * `WarehouseNotConfiguredError` que llega por el consumidor de eventos —o
+   * sea, en el worker, donde nadie lo está mirando—. La venta ya está cobrada
+   * para entonces.
+   *
+   * Una cocina consume de UN almacén: el índice único de la migración lo
+   * impone, y aquí se reutiliza el existente en vez de fallar, porque el alta
+   * por archivo se vuelve a aplicar y no debería romperse la segunda vez.
+   */
+  async upsertWarehouse(
+    tenantId: string,
+    input: {
+      locationId: string;
+      name: string;
+      kitchenId?: string | undefined;
+      actorId?: string | undefined;
+    },
+  ): Promise<{ id: string; name: string }> {
+    const nombre = input.name.trim();
+    if (!nombre) throw new ValidationError('El almacén necesita un nombre.');
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      await this.exigeLocal(ctx, input.locationId);
+
+      const { rows: existente } = await ctx.client.query<{ id: string }>(
+        'SELECT id FROM org_warehouses WHERE location_id = $1 AND lower(name) = lower($2)',
+        [input.locationId, nombre],
+      );
+      if (existente[0]) {
+        if (input.kitchenId !== undefined) {
+          // Se ata la cocina en un UPDATE aparte y no en el INSERT: el almacén
+          // puede existir de antes sin cocina, y volver a aplicar el archivo
+          // tiene que poder completarlo.
+          await ctx.client.query(
+            'UPDATE org_warehouses SET kitchen_id = $2 WHERE id = $1',
+            [existente[0].id, input.kitchenId],
+          );
+        }
+        return { id: existente[0].id, name: nombre };
+      }
+
+      const { rows } = await ctx.client.query<{ id: string }>(
+        `INSERT INTO org_warehouses (tenant_id, location_id, name, kitchen_id)
+         VALUES ($1,$2,$3,$4) RETURNING id`,
+        [tenantId, input.locationId, nombre, input.kitchenId ?? null],
+      );
+      await this.auditar(
+        ctx,
+        input.actorId,
+        'org.warehouse_created',
+        'warehouse',
+        rows[0]!.id,
+        { name: nombre },
+      );
+      return { id: rows[0]!.id, name: nombre };
+    });
+  }
+
+  /**
    * Une una marca con una cocina (M:N).
    *
    * Es la relación que define una dark kitchen: varias marcas produciéndose en

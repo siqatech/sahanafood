@@ -1,6 +1,7 @@
 import { OrganizationAdminService } from '../modules/organization/index.js';
 import { CatalogAdminService } from '../modules/catalog/index.js';
 import { StorefrontService } from '../modules/storefront/index.js';
+import { InventoryAdminService } from '../modules/inventory/index.js';
 import type { Ring, Schedule, WeeklySlot } from '@sahana/domain';
 
 /**
@@ -56,6 +57,15 @@ export interface DescripcionNegocio {
       /** Marcas que se producen en esta cocina (por nombre o slug). */
       marcas?: string[];
       estaciones?: Array<{ nombre: string; orden?: number }>;
+      /**
+       * Almacén del que descuenta esta cocina (RN-INV-01).
+       *
+       * Si no se declara y el negocio tiene recetas, se crea uno llamado
+       * «Almacén principal»: un local sin almacén vende con normalidad y
+       * revienta al aceptar el primer pedido con receta, en el worker, donde
+       * nadie lo está mirando y con la venta ya cobrada.
+       */
+      almacen?: string;
     }>;
     zonas?: Array<{
       nombre: string;
@@ -103,6 +113,45 @@ export interface DescripcionNegocio {
       precios: Record<string, string>;
     }>;
   }>;
+  /**
+   * Insumos y recetas (spec 08).
+   *
+   * Va DESPUÉS de la carta en el archivo y en la ejecución, porque una receta
+   * cuelga de un producto: declararlas antes obligaría a resolver referencias
+   * hacia adelante y a que el orden del archivo importara de una forma que
+   * nadie recuerda al escribirlo.
+   *
+   * Sin esta sección el alta deja el negocio vendiendo pero **sin descontar
+   * nada**: el consumo automático solo se dispara si el plato tiene receta, así
+   * que el food cost se quedaba en cero en todo cliente nuevo.
+   */
+  inventario?: {
+    insumos: Array<{
+      sku?: string;
+      nombre: string;
+      /** `g`, `ml` o `unit`. La unidad no se puede cambiar una vez hay movimientos. */
+      unidad: string;
+      /** Costo POR UNIDAD (por gramo, no por kilo), en soles: «0.0120». */
+      costoUnitario?: string;
+      minimo?: string;
+    }>;
+    recetas?: Array<{
+      nombre: string;
+      /** Producto de la carta al que cuelga, por SKU o nombre. */
+      producto?: string;
+      rendimiento?: string;
+      unidadRendimiento?: string;
+      componentes: Array<{
+        /** Insumo por SKU o nombre, tal como se declaró arriba. */
+        insumo?: string;
+        /** O una subreceta, por su nombre. */
+        receta?: string;
+        cantidad: string;
+        /** Merma en puntos básicos enteros: 5 % = 500. */
+        mermaBps?: number;
+      }>;
+    }>;
+  };
 }
 
 /**
@@ -132,6 +181,7 @@ export interface ServiciosDeAlta {
   org: OrganizationAdminService;
   carta: CatalogAdminService;
   tienda: StorefrontService;
+  inventario: InventoryAdminService;
 }
 
 /**
@@ -147,6 +197,8 @@ export interface ResumenDeAlta {
   locationCount: number;
   productCount: number;
   priceCount: number;
+  itemCount: number;
+  recipeCount: number;
 }
 
 /**
@@ -243,6 +295,20 @@ export async function aplicarNegocio(
           ...(e.orden !== undefined ? { sortOrder: e.orden } : {}),
         });
       }
+
+      // El almacén se crea SIEMPRE que el negocio declare inventario, se haya
+      // nombrado o no. Dejarlo opcional de verdad significaría que un archivo
+      // con recetas y sin almacén se aplica sin quejarse y falla al aceptar el
+      // primer pedido — en el worker, con la venta ya cobrada.
+      if (c.almacen !== undefined || negocio.inventario) {
+        const almacen = await org.upsertWarehouse(tenantId, {
+          locationId: local.id,
+          name: c.almacen ?? 'Almacén principal',
+          kitchenId: cocina.id,
+        });
+        paso(`  Almacén: ${almacen.name} (cocina ${cocina.name})`);
+      }
+
       paso(
         `  Cocina: ${cocina.name} — ${(c.marcas ?? []).length} marca(s), ${(c.estaciones ?? []).length} estación(es)`,
       );
@@ -308,6 +374,10 @@ export async function aplicarNegocio(
   }
 
   // --------------------------------------------------------------- Carta
+  //
+  // Índice de productos de TODAS las cartas, para que las recetas del bloque
+  // de inventario puedan nombrar su plato sin repetir la marca.
+  const productosDeTodasLasCartas = new Map<string, string>();
   let productosCreados = 0;
   let preciosPuestos = 0;
   for (const c of negocio.carta ?? []) {
@@ -385,6 +455,11 @@ export async function aplicarNegocio(
       productosCreados += 1;
       productos.set(p.nombre.toLowerCase(), creado.id);
       if (p.sku) productos.set(p.sku.toLowerCase(), creado.id);
+      // Y en el índice GLOBAL, que es el que usan las recetas más abajo: una
+      // receta nombra su plato sin decir de qué marca es, porque en el archivo
+      // los nombres de plato ya son únicos por definición.
+      productosDeTodasLasCartas.set(p.nombre.toLowerCase(), creado.id);
+      if (p.sku) productosDeTodasLasCartas.set(p.sku.toLowerCase(), creado.id);
 
       for (const [canal, importe] of Object.entries(p.precios)) {
         await carta.setPrice(tenantId, {
@@ -436,11 +511,99 @@ export async function aplicarNegocio(
     );
   }
 
+  // --------------------------------------------------------- Inventario
+  //
+  // Al final del todo: las recetas cuelgan de productos que la carta acaba de
+  // crear, y los componentes de insumos declarados en esta misma sección.
+  let insumosCreados = 0;
+  let recetasCreadas = 0;
+  const { inventario } = negocio;
+  if (inventario) {
+    /** Insumo por SKU y por nombre, ambos en minúsculas: el archivo mezcla. */
+    const porClave = new Map<string, string>();
+
+    for (const i of inventario.insumos) {
+      const guardado = await servicios.inventario.upsertItem(tenantId, {
+        name: i.nombre,
+        unit: i.unidad,
+        ...(i.sku !== undefined ? { sku: i.sku } : {}),
+        ...(i.costoUnitario !== undefined
+          ? {
+              unitCostMinor: aUnidadesMenores(
+                i.costoUnitario,
+                `costo del insumo "${i.nombre}"`,
+              ),
+            }
+          : {}),
+        ...(i.minimo !== undefined ? { minStock: i.minimo } : {}),
+      });
+      porClave.set(i.nombre.toLowerCase(), guardado.id);
+      if (i.sku) porClave.set(i.sku.toLowerCase(), guardado.id);
+      insumosCreados++;
+    }
+    paso(`Inventario: ${insumosCreados} insumo(s)`);
+
+    const recetasPorNombre = new Map<string, string>();
+    for (const r of inventario.recetas ?? []) {
+      const productId = r.producto
+        ? productosDeTodasLasCartas.get(r.producto.toLowerCase())
+        : undefined;
+      if (r.producto && !productId) {
+        throw new Error(
+          `receta "${r.nombre}": el producto "${r.producto}" no está en ninguna carta de este archivo.`,
+        );
+      }
+
+      const guardada = await servicios.inventario.upsertRecipe(tenantId, {
+        name: r.nombre,
+        ...(productId !== undefined ? { productId } : {}),
+        yieldQuantity: r.rendimiento ?? '1',
+        yieldUnit: r.unidadRendimiento ?? 'unit',
+        lines: r.componentes.map((c) => {
+          if (!c.insumo === !c.receta) {
+            throw new Error(
+              `receta "${r.nombre}": cada componente es un insumo O una receta, no ambos ni ninguno.`,
+            );
+          }
+          if (c.insumo) {
+            const itemId = porClave.get(c.insumo.toLowerCase());
+            if (!itemId) {
+              throw new Error(
+                `receta "${r.nombre}": el insumo "${c.insumo}" no está declarado en este archivo.`,
+              );
+            }
+            return {
+              itemId,
+              quantity: c.cantidad,
+              ...(c.mermaBps !== undefined ? { wasteBps: c.mermaBps } : {}),
+            };
+          }
+          const subId = recetasPorNombre.get(c.receta!.toLowerCase());
+          if (!subId) {
+            throw new Error(
+              `receta "${r.nombre}": la subreceta "${c.receta}" no está declarada ANTES en este archivo.`,
+            );
+          }
+          return {
+            subRecipeId: subId,
+            quantity: c.cantidad,
+            ...(c.mermaBps !== undefined ? { wasteBps: c.mermaBps } : {}),
+          };
+        }),
+      });
+      recetasPorNombre.set(r.nombre.toLowerCase(), guardada.id);
+      recetasCreadas++;
+    }
+    if (recetasCreadas > 0) paso(`Inventario: ${recetasCreadas} receta(s)`);
+  }
+
   return {
     companyId: empresa.id,
     brandCount: negocio.marcas.length,
     locationCount: negocio.locales.length,
     productCount: productosCreados,
     priceCount: preciosPuestos,
+    itemCount: insumosCreados,
+    recipeCount: recetasCreadas,
   };
 }

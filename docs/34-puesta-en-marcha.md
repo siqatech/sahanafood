@@ -105,10 +105,19 @@ docker compose -f infra/docker/docker-compose.prod.yml --env-file .env \
 ```
 
 El archivo describe empresa, marcas, dominio de tienda, locales, cocinas,
-estaciones, zonas de reparto, horarios y la carta entera con sus precios por
-canal y sus modificadores. **Los importes van como cadena en soles** (`"12.50"`)
-y se convierten a unidades menores con aritmética entera: el precio que paga un
-cliente no pasa por coma flotante en ningún punto.
+estaciones, zonas de reparto, horarios, la carta entera con sus precios por
+canal y sus modificadores, y **los insumos y recetas**. **Los importes van como
+cadena en soles** (`"12.50"`) y se convierten a unidades menores con aritmética
+entera: el precio que paga un cliente no pasa por coma flotante en ningún punto.
+
+**La sección `inventario` no es opcional en la práctica.** Sin ella el negocio
+vende con toda normalidad y **no descuenta nada**: el consumo automático solo se
+dispara si el plato tiene receta, así que el food cost se queda en cero y nadie
+lo nota hasta que alguien lo mira tres meses después. El costo de un insumo va
+**por unidad** —por gramo, no por kilo— y la merma en **puntos básicos enteros**
+(5 % = 500). Declarar inventario crea además el **almacén** del local si no se
+nombró: un local sin almacén revienta al aceptar el primer pedido con receta, en
+el worker, con la venta ya cobrada.
 
 Es **idempotente**: volver a aplicarlo con la carta cambiada actualiza precios y
 añade productos nuevos sin duplicar nada. Así se corrige un precio mal escrito
@@ -116,8 +125,10 @@ sin tocar la base a mano.
 
 El ejemplo del repositorio **se aplica en CI de punta a punta**
 (`setup-business-e2e`): se monta el negocio, se resuelve la tienda por su host,
-se pide un pedido y se comprueba que cobra el precio del archivo. Un ejemplo que
-nadie ha ejecutado se descubre roto con el cliente delante.
+se pide un pedido, se comprueba que cobra el precio del archivo **y que al
+aceptarlo el kardex descuenta lo que dice la receta** —1200 g de pollo más un
+5 % de merma, con la subreceta de crema estallada en mayonesa y ketchup—. Un
+ejemplo que nadie ha ejecutado se descubre roto con el cliente delante.
 
 ## 6. El panel
 
