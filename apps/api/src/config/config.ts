@@ -92,7 +92,15 @@ function sinVacios(valor: string | undefined): string | undefined {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = configSchema.safeParse({
     nodeEnv: env.NODE_ENV,
-    apiPort: env.API_PORT,
+    // `PORT` como respaldo de `API_PORT`: es la convención que usan Railway,
+    // Render, Fly y Heroku para decirle al proceso en qué puerto tiene que
+    // escuchar, y el balanceador sondea ESE puerto. Sin esto la aplicación
+    // arranca perfectamente en 3000, la sonda no encuentra a nadie y el
+    // despliegue se marca fallido con la aplicación funcionando — que es
+    // exactamente lo que pasó en el primer despliegue a Railway.
+    //
+    // `API_PORT` manda cuando está: es el explícito, el que fija el compose.
+    apiPort: env.API_PORT ?? env.PORT,
     logLevel: sinVacios(env.LOG_LEVEL),
     databaseUrl: env.DATABASE_URL,
     migrationDatabaseUrl: sinVacios(env.MIGRATION_DATABASE_URL),

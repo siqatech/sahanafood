@@ -63,3 +63,39 @@ describe('Configuración de arranque', () => {
     expect(config.nodeEnv).toBe('production');
   });
 });
+
+describe('Puerto de escucha', () => {
+  /**
+   * El balanceador sondea el puerto que él elige, no el que nos guste.
+   *
+   * Railway, Render, Fly y Heroku inyectan `PORT`. Ignorarlo deja la aplicación
+   * escuchando en 3000, funcionando, y la sonda buscando en otro sitio: el
+   * despliegue se marca fallido sin que nada esté roto. Pasó en el primer
+   * despliegue a Railway.
+   */
+  const base = {
+    DATABASE_URL: 'postgres://u:p@localhost:5432/db',
+    JWT_ACCESS_SECRET: 'un-secreto-de-acceso-suficientemente-largo',
+    JWT_REFRESH_SECRET: 'un-secreto-de-refresco-suficientemente-largo',
+  };
+
+  it('USA PORT cuando la plataforma lo inyecta', () => {
+    expect(
+      loadConfig({ ...base, PORT: '8080' } as NodeJS.ProcessEnv).apiPort,
+    ).toBe(8080);
+  });
+
+  it('API_PORT MANDA sobre PORT: es el explícito', () => {
+    expect(
+      loadConfig({
+        ...base,
+        API_PORT: '3000',
+        PORT: '8080',
+      } as NodeJS.ProcessEnv).apiPort,
+    ).toBe(3000);
+  });
+
+  it('Y SIN NINGUNO, 3000', () => {
+    expect(loadConfig(base as NodeJS.ProcessEnv).apiPort).toBe(3000);
+  });
+});
