@@ -361,6 +361,32 @@ test.describe('Tienda web en navegador', () => {
     await expect(page).not.toHaveURL(/gracias/);
   });
 
+  test('EL MANUAL DE LA API se puede LEER, no solo citar', async ({ page }) => {
+    // ADR-0020 dio tres motivos por los que una tienda de tercero no podía usar
+    // la API. Dos se arreglaron con código; el tercero era que no había
+    // documentación. El panel remitía a `docs/38-api-de-pedidos.md`, un archivo
+    // de nuestro repositorio: quien tenía que leerlo no podía abrirlo.
+    await page.goto('/desarrolladores');
+    await expect(
+      page.getByRole('heading', { name: 'API de pedidos' }),
+    ).toBeVisible();
+    await expect(page.getByText(/No calcules precios/)).toBeVisible();
+
+    // Y el manual completo se sirve de verdad. Lo que puede fallar aquí es el
+    // DESPLIEGUE: la imagen de producción solo copia `public/`, así que un
+    // manual que viviera en `docs/` daría 404 solo en producción.
+    //
+    // Se pide DESDE EL NAVEGADOR y no con `page.request`: ese usa el resolvedor
+    // de Node, que no entiende `*.localhost` —solo el navegador lo resuelve por
+    // especificación— y fallaría por DNS sin llegar a mirar el manual.
+    const manual = await page.evaluate(async () => {
+      const r = await fetch('/manual-api.md');
+      return { estado: r.status, texto: await r.text() };
+    });
+    expect(manual.estado).toBe(200);
+    expect(manual.texto).toContain('X-Sahana-Key');
+  });
+
   test('un dominio SIN tienda no enseña la carta de otra', async ({
     browser,
   }) => {

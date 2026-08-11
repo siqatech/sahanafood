@@ -48,3 +48,6 @@ apps/web/playwright-report/
 
 # Volcado de Redis: lo deja el servidor local al pararse, no es del proyecto.
 dump.rdb
+
+# Generado en cada build desde docs/38-api-de-pedidos.md (una sola fuente)
+apps/web/public/manual-api.md

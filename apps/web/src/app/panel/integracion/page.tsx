@@ -107,9 +107,15 @@ curl https://api.sahana.food/api/v1/shop/catalog \\
 # Un carrito, un plato y el pedido
 curl -X POST https://api.sahana.food/api/v1/shop/carts \\
   -H "X-Sahana-Key: pk_..."`}</pre>
+      {/* Antes esto ponía «está en docs/38-api-de-pedidos.md», que es un archivo
+          de NUESTRO repositorio: quien tenía que leerlo —el desarrollador que
+          contrató el restaurante— no podía abrirlo. */}
       <p className="tarjeta__pie">
         El manual completo, con el pedido de punta a punta, está en{' '}
-        <code>docs/38-api-de-pedidos.md</code>.
+        <a href="/desarrolladores" target="_blank" rel="noreferrer">
+          sahana.food/desarrolladores
+        </a>
+        . Ese enlace se le puede pasar a quien haga la web.
       </p>
 
       <h2>Desde qué direcciones puede llamar</h2>

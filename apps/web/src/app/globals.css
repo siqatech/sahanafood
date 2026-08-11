@@ -906,3 +906,53 @@ main.con-barra {
   font-size: 0.8rem;
   margin-top: 6px;
 }
+
+/* ---------------------------------------------------------------------------
+ * Documento de lectura (`/desarrolladores`).
+ *
+ * Ni tienda ni panel: una página de texto que lee alguien que no es cliente del
+ * restaurante ni trabaja en él, sino quien le está montando la web.
+ * ------------------------------------------------------------------------- */
+.documento {
+  /* Ancho de lectura, no ancho de pantalla: una línea de 200 caracteres se lee
+     mal aunque quepa. */
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: var(--espacio);
+  line-height: 1.65;
+}
+
+.documento h2 {
+  margin-top: 2rem;
+}
+
+.documento .entradilla {
+  font-size: 1.1rem;
+  color: var(--color-suave);
+}
+
+.documento code {
+  background: var(--color-aviso-fondo, #f3f3f3);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 0.9em;
+}
+
+/* El bloque de ejemplo. `overflow-x` no es cosmético: sin él una línea larga de
+   `curl` estira la página entera y en un móvil se desplaza en horizontal el
+   documento completo para leer una orden. */
+pre.codigo {
+  background: #1d1f21;
+  color: #e8e8e8;
+  border-radius: var(--radio);
+  padding: 14px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+pre.codigo code {
+  background: none;
+  padding: 0;
+}
