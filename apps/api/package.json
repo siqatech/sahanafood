@@ -19,6 +19,7 @@
     "seed:load": "node --import @swc-node/register/esm-register src/database/seed-load.ts",
     "seed:shop": "node --import @swc-node/register/esm-register src/database/seed-shop.ts",
     "test:golden": "vitest run src/__tests__/ai-golden-suite.test.ts",
+    "bootstrap:roles": "node --import @swc-node/register/esm-register src/database/bootstrap-roles.ts",
     "sync:roles": "node --import @swc-node/register/esm-register src/database/sync-roles.ts",
     "provision": "node --import @swc-node/register/esm-register src/database/provision.ts",
     "setup:business": "node --import @swc-node/register/esm-register src/database/setup-business.ts"

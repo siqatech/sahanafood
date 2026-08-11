@@ -5,6 +5,7 @@ import type { Pool } from 'pg';
 import { AppModule } from '../app.module.js';
 import { CONFIG, type AppConfig } from '../config/config.js';
 import { PG_POOL } from '../database/database.module.js';
+import { assertTenantIsolationEnforced } from '../database/preflight.js';
 import { AcceptanceService } from '../modules/ordering/index.js';
 import {
   relayOnce,
@@ -86,6 +87,12 @@ async function bootstrap(): Promise<void> {
   });
   const config = app.get<AppConfig>(CONFIG);
   const pool = app.get<Pool>(PG_POOL);
+
+  // El worker toca las mismas tablas que la API, y por los mismos consumidores
+  // cross-tenant: si su rol se salta RLS, un barrido escribiría en el tenant
+  // equivocado sin que nadie lo viera.
+  await assertTenantIsolationEnforced(pool);
+
   const acceptance = app.get(AcceptanceService);
   const billing = app.get(BillingService);
   const ingestion = app.get(IngestionService);

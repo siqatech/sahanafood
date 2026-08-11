@@ -1010,3 +1010,71 @@ Van tres fallos en dos sesiones que **solo aparecen cuando hay datos de verdad**
 realistas y comprobar el resultado —no la mera presencia— es lo que los saca.
 
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.
+
+---
+
+## Railway: el despliegue gestionado, y el fallo que había que evitar
+
+DT-02 deja de estar bloqueada: el proveedor es **Railway**. El despliegue está
+descrito como código en `infra/railway/{api,worker,web}.json` y el
+procedimiento en `docs/35-railway.md`.
+
+Lo primero al saber el destino no fue configurar servicios, sino esto: **un
+Postgres gestionado entrega una sola `DATABASE_URL`, y es la del administrador.**
+Pegarla en la variable de la aplicación es el camino corto, evidente, y el que
+sugiere el propio panel del proveedor. También es el peor fallo que este sistema
+puede tener, porque un rol superusuario —o con `BYPASSRLS`— hace que Postgres
+**ignore la Row Level Security entera**. Las consultas responden, las pruebas
+pasan, los pedidos entran, y cada cliente ve los datos de todos los demás. Sin
+excepción, sin log, sin síntoma.
+
+Se ataca por los dos lados:
+
+- `bootstrap-roles.ts` prepara la base con el rol administrador: instala
+  pgvector, crea `sahana_migrator` (dueño del esquema) y `sahana_app` con
+  `NOSUPERUSER NOCREATEROLE NOBYPASSRLS` explícitos, y devuelve las dos URLs
+  correctas por stdout.
+- `preflight.ts` corre al arrancar la API y el worker, y **el proceso no
+  arranca** si el rol de conexión puede saltarse RLS. Fallar ruidosamente al
+  desplegar es incomparablemente mejor que servir dos meses con los datos
+  mezclados.
+
+Ensayo completo contra una base **vacía**, que es lo que será Railway el primer
+día: arranque de roles → **31 migraciones** → re-arranque idempotente. Falló a
+la primera, y por algo que solo aparece en una base recién creada: `CREATE
+EXTENSION` exige superusuario, el migrador no lo es a propósito, y la migración
+0028 se paraba pidiendo pgvector. Ahora lo instala el arranque, con el rol que
+sí puede, en el **primer** comando del despliegue — enterarse ahí es media hora
+menos que enterarse con veintisiete tablas ya creadas.
+
+### Dos cosas que el ensayo destapó y no se habrían visto de otra forma
+
+**El arranque desactivaba el append-only al repetirse.** Concede DML sobre todas
+las tablas —hace falta para el caso «la base ya estaba migrada»— y ese permiso
+masivo volvía a conceder justo lo que cada migración revoca. Yo había revocado
+dos tablas a mano; son **ocho**. Re-ejecutar el arranque en un despliegue
+cualquiera habría dejado el histórico de auditoría editable, en silencio. Ahora
+la lista vive en `append-only.ts` y una prueba la compara con los `REVOKE`
+reales de `infra/migrations/`: si alguien añade una tabla append-only y no la
+añade a la lista, la prueba falla. Comprobado quitando una a propósito.
+
+**La sonda de salud de la tienda habría impedido el despliegue.** La tienda
+deduce la marca del `Host` del visitante, y la sonda de Railway llega con el
+host interno del proveedor. Medido: `GET /` sin una tienda para ese host
+devuelve **500**, así que el servicio nunca habría entrado en servicio y el
+síntoma habría sido «Railway no despliega». Ahora hay `/api/salud`, que no
+depende del `Host` y responde 200 aunque la API no conteste —informando de su
+estado en el cuerpo—: si la tienda se declarara enferma cada vez que la API se
+reinicia, un despliegue normal de la API tiraría también la tienda.
+
+Las migraciones van en el `preDeployCommand` del servicio `api`, con
+`sync-roles` detrás. Railway lo ejecuta antes de poner la versión nueva en
+servicio y, si falla, **no la pone**: la anterior sigue atendiendo. Es lo que ya
+conseguía el servicio `migrate` del compose, por el mismo motivo.
+
+**Próxima acción de Claude Code:** el despliegue está listo para ejecutarse y lo
+que falta son las credenciales de la cuenta de Railway. Con ellas: crear el
+Postgres **con pgvector**, correr `bootstrap:roles`, configurar las variables de
+§4 y desplegar `api` antes que `worker`. Detrás vienen las tres cosas que
+esperaban a DT-02 y ahora sí tienen dónde correr: medición de carga real
+(DT-05), pentest (T5.36) y los pilotos.

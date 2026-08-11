@@ -52,8 +52,10 @@ EXPOSE 3001
 
 # La tienda resuelve la marca por el `Host` del visitante, así que la sonda va
 # por IP y SIN nombre: pedirle a la sonda que use un dominio de cliente ataría
-# la salud del contenedor a que ese cliente siga siendo cliente.
+# la salud del contenedor a que ese cliente siga siendo cliente. Por eso la
+# sonda es su propia ruta y no `/`, que sin `Host` conocido responde según haya
+# o no una tienda dada de alta — el alta de un cliente, no la salud del proceso.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/api/salud').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "apps/web/server.js"]

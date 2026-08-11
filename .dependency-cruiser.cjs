@@ -76,6 +76,10 @@ module.exports = {
           // directorio y no las importa nadie. La regla no puede decir nada
           // útil sobre ellas, así que avisar solo añade ruido.
           'apps/web/src/app/.*/(page|layout|error|loading|not-found)\\.tsx$',
+          // Manejadores de ruta (`route.ts`), por lo mismo. Solo aparecen aquí
+          // los que no importan nada del proyecto —una sonda de salud, por
+          // ejemplo—; los demás ya tienen dependencias y no son huérfanos.
+          'apps/web/src/app/.*/route\\.ts$',
           // Service worker: lo registra el navegador por URL, no lo importa
           // nadie. Es huérfano por definición, igual que un `.config.`.
           'apps/pos/src/sw\\.ts$',
