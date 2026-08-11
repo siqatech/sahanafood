@@ -17,6 +17,7 @@ import {
   type TenantContext,
 } from '../../../database/rls.js';
 import { NotFoundError, ValidationError } from '../../../common/errors.js';
+
 import { recordAudit } from '../../audit/index.js';
 import {
   PublicTokensService,
@@ -94,6 +95,18 @@ export interface CartView {
   /** Problemas que impiden confirmar. Vacío = se puede pagar. */
   blockers: Array<{ code: string; detail: string }>;
 }
+
+/**
+ * Tope de unidades por línea de carrito.
+ *
+ * No es una regla de negocio: es un freno. Sin él, el campo de cantidad acepta
+ * lo que se le mande —el carrito es público y sin autenticar— y un número
+ * absurdo se convierte en una comanda absurda que alguien tiene que cancelar a
+ * mano, o en un cálculo de stock que deja la cocina en negativo. Cincuenta
+ * unidades de un mismo plato cubre de sobra una reunión familiar; por encima de
+ * eso, es un pedido para hablarlo por teléfono.
+ */
+export const MAX_CANTIDAD_LINEA = 50;
 
 const CART_TTL_HOURS = 72;
 
@@ -475,6 +488,11 @@ export class StorefrontService {
         'La cantidad tiene que ser un entero positivo.',
       );
     }
+    if (input.quantity > MAX_CANTIDAD_LINEA) {
+      throw new ValidationError(
+        `Como máximo ${MAX_CANTIDAD_LINEA} unidades por producto. Para un pedido mayor, llámanos.`,
+      );
+    }
 
     const catalogo = await this.catalogoDeMarca(tenantId, brandId);
     const producto = catalogo.products.find((p) => p.id === input.productId);
@@ -520,6 +538,47 @@ export class StorefrontService {
       client.query(
         'DELETE FROM sto_cart_lines WHERE id = $1 AND cart_id = $2',
         [lineId, cartId],
+      ),
+    );
+    return this.getCart(token);
+  }
+
+  /**
+   * Cambia la CANTIDAD de una línea ya puesta.
+   *
+   * Sin esto, «quiero dos» obliga a añadir el producto otra vez —y `addLine`
+   * siempre inserta, así que salen dos líneas de uno en vez de una de dos— o a
+   * quitarlo y empezar de nuevo eligiendo otra vez todos los modificadores.
+   * Es la operación que más se usa en un carrito y era la única que faltaba.
+   *
+   * Bajar a cero BORRA la línea en lugar de guardar una de cantidad cero: un
+   * carrito con «0 × Pollo» dentro no es un carrito, es un error de contabilidad
+   * esperando a que alguien lo sume.
+   *
+   * El importe no se toca aquí. Se vuelve a leer el carrito entero, que lo
+   * recalcula en el servidor con `@sahana/domain`: la cantidad es lo único que
+   * viaja desde el navegador.
+   */
+  async setLineQuantity(
+    token: string,
+    lineId: string,
+    quantity: number,
+  ): Promise<CartView> {
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      throw new ValidationError('La cantidad tiene que ser un entero.');
+    }
+    if (quantity > MAX_CANTIDAD_LINEA) {
+      throw new ValidationError(
+        `Como máximo ${MAX_CANTIDAD_LINEA} unidades por producto. Para un pedido mayor, llámanos.`,
+      );
+    }
+    if (quantity === 0) return this.removeLine(token, lineId);
+
+    const { tenantId, cartId } = await this.resolveCart(token);
+    await withTenant(this.pool, tenantId, ({ client }) =>
+      client.query(
+        'UPDATE sto_cart_lines SET quantity = $3 WHERE id = $1 AND cart_id = $2',
+        [lineId, cartId, quantity],
       ),
     );
     return this.getCart(token);

@@ -18,28 +18,26 @@ const PRODUCTO = 'Pollo a la brasa entero';
  * El grupo «Tamaño» es obligatorio, así que hay que elegir: la validación vive
  * en el servidor y esto comprueba de paso que el formulario deja cumplirla.
  */
+/**
+ * Pone el plato con opciones en el carrito, pasando por su ficha.
+ *
+ * Refleja el flujo real desde que la carta dejó de traer los modificadores
+ * dentro: la tarjeta lleva a la ficha, allí se elige y allí se añade.
+ */
 async function agregarAlCarrito(page: Page): Promise<void> {
   await page.goto('/');
-  const tarjeta = page
-    .locator('article.producto', { hasText: PRODUCTO })
-    .first();
-  await tarjeta.locator('input[type="radio"]').first().check();
+  await page
+    .locator('li.plato', { hasText: PRODUCTO })
+    .first()
+    .getByRole('link', { name: /elegir opciones/i })
+    .click();
 
-  // Se espera a que la ACCIÓN DE SERVIDOR responda, no un tiempo fijo.
-  //
-  // Con JavaScript activo la acción viaja por `fetch` y `click()` vuelve en
-  // cuanto despacha el evento: navegar a continuación adelanta al servidor y el
-  // carrito sale vacío. Sin JavaScript no pasa —es un POST con redirección y
-  // Playwright lo espera solo—, y esa asimetría es exactamente la clase de
-  // intermitencia que ADR-0018 prohíbe tapar con un `waitForTimeout`.
-  await Promise.all([
-    page.waitForResponse(
-      (r) =>
-        r.request().method() === 'POST' &&
-        r.request().isNavigationRequest() === false,
-    ),
-    tarjeta.getByRole('button', { name: /añadir al carrito/i }).click(),
-  ]);
+  await page.locator('.opcion input').first().check();
+  await page.locator('button.boton-principal').click();
+  // La confirmación es la señal de que la línea entró: esperar a que aparezca
+  // evita adelantar a la acción de servidor, que es de donde salían las
+  // intermitencias que ADR-0018 prohíbe tapar con un `waitForTimeout`.
+  await expect(page.locator('.confirmacion')).toBeVisible();
 
   await page.goto('/carrito');
   await expect(page.getByText(PRODUCTO)).toBeVisible();
@@ -111,7 +109,7 @@ test.describe('Tienda web en navegador', () => {
     // comprueba que llega formateado.
     await expect(page.getByText(/S\/\s?\d+[.,]\d{2}/).first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Continuar' }).click();
+    await page.getByRole('link', { name: /continuar con la entrega/i }).click();
     await expect(page).toHaveURL(/checkout/);
 
     await page.getByLabel('Dirección').fill('Av. Larco 456, Miraflores');
@@ -137,17 +135,133 @@ test.describe('Tienda web en navegador', () => {
       // La carta se ve entera sin JS: es un componente de servidor.
       await expect(page.getByText(PRODUCTO)).toBeVisible();
 
-      const tarjeta = page
-        .locator('article.producto', { hasText: PRODUCTO })
-        .first();
-      await tarjeta.locator('input[type="radio"]').first().check();
-      await tarjeta.getByRole('button', { name: /añadir al carrito/i }).click();
+      // Y se puede comprar: la ficha del plato es una RUTA, no una ventana
+      // que dependa de JavaScript, y el formulario postea de verdad.
+      await page
+        .locator('li.plato', { hasText: PRODUCTO })
+        .first()
+        .getByRole('link', { name: /elegir opciones/i })
+        .click();
+      await page.locator('.opcion input').first().check();
+      await page.locator('button.boton-principal').click();
 
       await page.goto('/carrito');
       await expect(page.getByText(PRODUCTO)).toBeVisible();
     } finally {
       await contexto.close();
     }
+  });
+
+  test('AÑADIR SE NOTA: confirmación, contador y barra con el total', async ({
+    page,
+  }) => {
+    // El fallo por el que se rehízo esta pantalla. Añadir devolvía `{}` en
+    // silencio y el enlace del carrito no llevaba número, así que un añadido
+    // CORRECTO se veía igual que uno fallido: la página se quedaba como estaba.
+    // De ahí salía «el carrito no funciona» cuando el carrito sí había
+    // recibido el plato.
+    await page.goto('/');
+    await expect(page.locator('.barra-carrito')).toHaveCount(0);
+
+    await page
+      .locator('li.plato', { hasText: 'Chicha morada' })
+      .first()
+      .getByRole('button', { name: /^añadir$/i })
+      .click();
+
+    await expect(page.locator('.confirmacion')).toContainText('Chicha morada');
+    await expect(page.locator('.contador')).toHaveText('1');
+    await expect(page.locator('.barra-carrito')).toContainText('S/ 10.00');
+  });
+
+  test('FALTA ELEGIR se dice en español y en la página, no en un globo', async ({
+    page,
+  }) => {
+    // Antes lo resolvía el `required` del navegador: un globo del sistema en
+    // INGLÉS —«Please select one of these options»— que se va solo a los pocos
+    // segundos. Pulsabas «Añadir», no pasaba nada visible y el carrito seguía
+    // vacío.
+    await page.goto('/');
+    await page
+      .locator('li.plato', { hasText: PRODUCTO })
+      .first()
+      .getByRole('link', { name: /elegir opciones/i })
+      .click();
+
+    await page.locator('button.boton-principal').click();
+
+    const alerta = page.locator('.alerta');
+    await expect(alerta).toBeVisible();
+    await expect(alerta).toContainText('Elige una opción');
+    await expect(alerta).toContainText('Tamaño');
+    // Y nada entró al carrito.
+    await expect(page.locator('.contador')).toHaveCount(0);
+  });
+
+  test('EL PRECIO SUBE al elegir, antes de decidir', async ({ page }) => {
+    // Ver el total antes de pulsar es lo que evita la sorpresa al abrir el
+    // carrito.
+    //
+    // Los importes se leen de la página y se comparan ENTRE SÍ, sin cifras
+    // fijas: el precio de este plato lo cambia otra prueba de esta misma
+    // suite, y una expectativa de «S/ 32.00» convierte esto en una prueba que
+    // falla según el orden en que corran. Lo que hay que demostrar es que
+    // «Grande» suma 5 y que la segunda unidad dobla, no cuánto vale el pollo.
+    await page.goto('/');
+    await page
+      .locator('li.plato', { hasText: PRODUCTO })
+      .first()
+      .getByRole('link', { name: /elegir opciones/i })
+      .click();
+
+    const boton = page.locator('button.boton-principal');
+    const soles = async (): Promise<number> => {
+      const texto = await boton.innerText();
+      return Number(/S\/\s?([\d.]+)/.exec(texto)![1]);
+    };
+
+    const base = await soles();
+    expect(base).toBeGreaterThan(0);
+
+    await page.getByText('Grande').click();
+    await expect(boton).not.toContainText(`S/ ${base.toFixed(2)}`);
+    expect(await soles()).toBeCloseTo(base + 5, 2);
+
+    await page.getByRole('button', { name: 'Añadir uno' }).click();
+    await expect(boton).toContainText('·');
+    expect(await soles()).toBeCloseTo((base + 5) * 2, 2);
+  });
+
+  test('LA CANTIDAD SE CAMBIA en el carrito, sin rehacer la línea', async ({
+    page,
+  }) => {
+    // Era la operación que faltaba: solo se podía quitar la línea entera, así
+    // que querer dos obligaba a volver a la carta y elegir otra vez todas las
+    // opciones.
+    await agregarAlCarrito(page);
+
+    const linea = page.locator('li.linea', { hasText: PRODUCTO });
+    await expect(linea.locator('.paso__valor')).toHaveText('1');
+
+    const total = async (): Promise<number> => {
+      const texto = await linea.locator('.linea__total').innerText();
+      return Number(/S\/\s?([\d.]+)/.exec(texto)![1]);
+    };
+    const uno = await total();
+
+    await linea.getByRole('button', { name: 'Añadir uno' }).click();
+    await expect(linea.locator('.paso__valor')).toHaveText('2');
+    // El doble, sin fijar la cifra: el precio de este plato lo cambia otra
+    // prueba de la suite.
+    expect(await total()).toBeCloseTo(uno * 2, 2);
+
+    // En uno, el «−» se convierte en «Quitar»: un botón apagado no dice cómo
+    // deshacerse de algo.
+    await linea.getByRole('button', { name: 'Quitar uno' }).click();
+    await expect(linea.locator('.paso__valor')).toHaveText('1');
+    await expect(
+      linea.getByRole('button', { name: 'Quitar del pedido' }),
+    ).toBeVisible();
   });
 
   test('un dominio SIN tienda no enseña la carta de otra', async ({

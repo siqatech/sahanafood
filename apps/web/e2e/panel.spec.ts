@@ -122,7 +122,7 @@ test.describe('Panel de gestión en navegador', () => {
     // es un formulario bonito.
     await page.goto('/');
     const enLaTienda = page
-      .locator('article.producto', { hasText: 'Pollo a la brasa entero' })
+      .locator('li.plato', { hasText: 'Pollo a la brasa entero' })
       .first();
     await expect(enLaTienda).toContainText('S/ 61.50');
   });

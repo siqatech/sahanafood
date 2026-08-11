@@ -83,17 +83,27 @@ export function validateAndPriceModifiers(
     }
     seenGroups.add(selection.groupId);
 
+    // Estos mensajes los LEE UN CLIENTE: llegan tal cual a la tienda web
+    // cuando falta elegir el tamaño de un plato. Por eso se escriben como se
+    // habla —«Elige una opción de "Tamaño"»— y no como se programa: el
+    // «opción(es)» que había antes es la clase de texto que hace que una tienda
+    // parezca a medio hacer. También los ve el cajero en el POS, y ahí tampoco
+    // sobra que estén bien escritos.
     const count = selection.optionIds.length;
     if (count < group.minSelections) {
       throw new ModifierError(
-        `"${group.name}" requiere al menos ${group.minSelections} opción(es).`,
+        group.minSelections === 1
+          ? `Elige una opción de "${group.name}".`
+          : `Elige al menos ${group.minSelections} opciones de "${group.name}".`,
         'MODIFIER_MIN_NOT_MET',
         group.id,
       );
     }
     if (count > group.maxSelections) {
       throw new ModifierError(
-        `"${group.name}" admite como máximo ${group.maxSelections} opción(es).`,
+        group.maxSelections === 1
+          ? `Solo puedes elegir una opción de "${group.name}".`
+          : `Puedes elegir como máximo ${group.maxSelections} opciones de "${group.name}".`,
         'MODIFIER_MAX_EXCEEDED',
         group.id,
       );

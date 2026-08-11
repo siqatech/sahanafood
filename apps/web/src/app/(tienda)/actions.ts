@@ -31,6 +31,21 @@ export interface ActionState {
   error?: string;
 }
 
+/**
+ * Añadir al carrito.
+ *
+ * Termina en `redirect`, y ese es el arreglo del fallo que hacía que la tienda
+ * pareciera rota: antes devolvía `{}` en silencio. Como el enlace del carrito no
+ * llevaba contador ni había ninguna confirmación, un añadido CORRECTO se veía
+ * exactamente igual que uno fallido — la página se quedaba como estaba. La
+ * queja «el carrito no funciona» era, la mitad de las veces, un carrito que sí
+ * había recibido el plato y no lo decía.
+ *
+ * Ahora vuelve a la carta con el nombre de lo añadido, que la carta enseña como
+ * confirmación, y con el carrito ya actualizado en la barra de abajo. El
+ * `redirect` además evita que recargar reenvíe el formulario y duplique la
+ * línea.
+ */
 export async function addToCart(
   _prev: ActionState,
   form: FormData,
@@ -44,13 +59,44 @@ export async function addToCart(
     .map(String)
     .filter(Boolean);
 
+  let nombre = '';
   try {
     const token = await ensureCartToken();
-    await shop.addLine(token, { productId, quantity, modifierOptionIds });
+    const carrito = await shop.addLine(token, {
+      productId,
+      quantity,
+      modifierOptionIds,
+    });
+    nombre = carrito.lines.at(-1)?.name ?? '';
   } catch (error) {
     return { error: mensaje(error) };
   }
   revalidatePath('/');
+  revalidatePath('/carrito');
+  // Fuera del `try`: Next implementa el redirect lanzando, y atraparlo
+  // convertiría un añadido correcto en un mensaje de error.
+  redirect(`/?anadido=${encodeURIComponent(nombre)}`);
+}
+
+/**
+ * Cambia la cantidad de una línea del carrito. `0` la quita.
+ *
+ * Sin esto, «quiero dos» obligaba a volver a la carta y añadir el plato otra
+ * vez —eligiendo de nuevo todas sus opciones— y encima salían dos líneas de uno
+ * en vez de una de dos.
+ */
+export async function setQuantity(
+  _prev: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const lineId = String(form.get('lineId') ?? '');
+  const quantity = Number(form.get('quantity') ?? 0);
+  try {
+    const token = await ensureCartToken();
+    await shop.setLineQuantity(token, lineId, quantity);
+  } catch (error) {
+    return { error: mensaje(error) };
+  }
   revalidatePath('/carrito');
   return {};
 }

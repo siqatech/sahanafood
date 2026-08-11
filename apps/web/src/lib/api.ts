@@ -162,6 +162,16 @@ export const shop = {
     }),
   removeLine: (token: string, lineId: string): Promise<Cart> =>
     call<Cart>(`/shop/carts/${token}/lines/${lineId}`, { method: 'DELETE' }),
+  /** Cambia la cantidad de una línea. `0` la quita. */
+  setLineQuantity: (
+    token: string,
+    lineId: string,
+    quantity: number,
+  ): Promise<Cart> =>
+    call<Cart>(`/shop/carts/${token}/lines/${lineId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity }),
+    }),
   setAddress: (
     token: string,
     input: { address: string; lat: number; lng: number },

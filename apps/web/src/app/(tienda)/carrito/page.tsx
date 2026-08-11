@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { shop, type Cart } from '../../../lib/api';
 import { getCartToken } from '../../../lib/cart-cookie';
 import { formatDecimal } from '../../../lib/money';
-import { CartActions } from './cart-actions';
+import { CartActions, RemoveLine } from './cart-actions';
 
 /**
  * El carrito.
@@ -28,13 +28,13 @@ export default async function CartPage() {
 
   if (!carrito || carrito.lines.length === 0) {
     return (
-      <>
-        <h1>Tu carrito</h1>
-        <p className="nota">Todavía no has añadido nada.</p>
-        <Link href="/">
-          <button type="button">Ver la carta</button>
+      <div className="vacio">
+        <h1>Tu pedido está vacío</h1>
+        <p className="pista">Elige algo de la carta y aparecerá aquí.</p>
+        <Link href="/" className="boton-principal">
+          Ver la carta
         </Link>
-      </>
+      </div>
     );
   }
 
@@ -42,45 +42,51 @@ export default async function CartPage() {
 
   return (
     <>
-      <h1>Tu carrito</h1>
+      <h1>Tu pedido</h1>
 
       {agotados.length > 0 ? (
-        <div className="aviso" role="alert">
+        <div className="alerta" role="alert">
           <strong>
             {agotados.length === 1
               ? 'Un producto ya no está disponible.'
               : 'Algunos productos ya no están disponibles.'}
           </strong>
-          <p className="nota">
+          <p className="pista">
             Quítalos para poder continuar:{' '}
             {agotados.map((l) => l.name).join(', ')}.
           </p>
         </div>
       ) : null}
 
-      {carrito.lines.map((linea) => (
-        <div
-          className={`linea${linea.unavailable ? ' linea--agotada' : ''}`}
-          key={linea.id}
-        >
-          <div>
-            <div className="linea__nombre">
-              {linea.quantity} × {linea.name}
+      <ul className="lineas">
+        {carrito.lines.map((linea) => (
+          <li
+            className={`linea${linea.unavailable ? ' linea--agotada' : ''}`}
+            key={linea.id}
+          >
+            <div className="linea__texto">
+              <p className="linea__nombre">{linea.name}</p>
+              {linea.unavailable ? (
+                <span className="linea__agotado">Ya no está disponible</span>
+              ) : (
+                <span className="pista">
+                  {formatDecimal(linea.unitPrice)} c/u
+                </span>
+              )}
             </div>
-            {linea.unavailable ? (
-              <span className="nota">Agotado</span>
-            ) : (
-              <span className="nota">{formatDecimal(linea.unitPrice)} c/u</span>
-            )}
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div>
-              {linea.unavailable ? '—' : formatDecimal(linea.lineTotal)}
+            <div className="linea__derecha">
+              <p className="linea__total">
+                {linea.unavailable ? '—' : formatDecimal(linea.lineTotal)}
+              </p>
+              {linea.unavailable ? (
+                <RemoveLine lineId={linea.id} />
+              ) : (
+                <CartActions lineId={linea.id} cantidad={linea.quantity} />
+              )}
             </div>
-            <CartActions lineId={linea.id} />
-          </div>
-        </div>
-      ))}
+          </li>
+        ))}
+      </ul>
 
       <div className="totales">
         <div className="totales__fila">
@@ -109,11 +115,19 @@ export default async function CartPage() {
 
       <CartActions coupon={carrito.coupon} />
 
-      <Link href="/checkout">
-        <button type="button" disabled={agotados.length > 0}>
-          Continuar
-        </button>
-      </Link>
+      {agotados.length > 0 ? (
+        <p className="pista">
+          Quita lo que ya no está disponible para poder continuar.
+        </p>
+      ) : (
+        <Link href="/checkout" className="boton-principal">
+          Continuar con la entrega
+        </Link>
+      )}
+
+      <p className="seguir">
+        <Link href="/">← Seguir añadiendo</Link>
+      </p>
     </>
   );
 }

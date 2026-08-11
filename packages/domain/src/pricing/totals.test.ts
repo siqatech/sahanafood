@@ -194,7 +194,7 @@ describe('Modificadores (RN-CAT-05)', () => {
           }),
         ],
       }),
-    ).toThrow(/admite como máximo/);
+    ).toThrow(/Puedes elegir como máximo 3 opciones/);
   });
 
   it('rechaza quedarse por debajo del mínimo', () => {
@@ -208,7 +208,7 @@ describe('Modificadores (RN-CAT-05)', () => {
           }),
         ],
       }),
-    ).toThrow(/requiere al menos 2/);
+    ).toThrow(/Elige al menos 2 opciones/);
   });
 
   it('rechaza una opción agotada', () => {

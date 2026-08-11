@@ -280,6 +280,61 @@ suite('Tienda web', () => {
     expect(fila.order_id).toBe(pedido.body.orderId);
   });
 
+  it('LA CANTIDAD SE CAMBIA sin rehacer la línea, y bajar a cero la quita', async () => {
+    // Es la operación más usada de un carrito y era la única que no existía.
+    // Sin ella, «quiero dos» obliga a añadir el producto otra vez —y `addLine`
+    // siempre inserta, así que salen DOS líneas de uno— o a quitarlo y volver a
+    // elegir todos los modificadores desde cero.
+    const carrito = await abrirCarrito(HOST_A);
+    const conLinea = await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({
+        productId: catA.polloId,
+        quantity: 1,
+        modifierOptionIds: [catA.optionGrandeId],
+      })
+      .expect(201);
+    const lineaId = conLinea.body.lines[0].id;
+    expect(conLinea.body.subtotal).toBe('37.0000');
+
+    const aTres = await http()
+      .patch(`/api/v1/shop/carts/${carrito}/lines/${lineaId}`)
+      .send({ quantity: 3 })
+      .expect(200);
+    // Sigue habiendo UNA línea, con tres unidades: 37 × 3.
+    expect(aTres.body.lines).toHaveLength(1);
+    expect(aTres.body.lines[0].quantity).toBe(3);
+    expect(aTres.body.subtotal).toBe('111.0000');
+
+    // El cero significa «quítalo»: así el botón «−» no necesita una segunda
+    // acción distinta al llegar a uno.
+    const aCero = await http()
+      .patch(`/api/v1/shop/carts/${carrito}/lines/${lineaId}`)
+      .send({ quantity: 0 })
+      .expect(200);
+    expect(aCero.body.lines).toHaveLength(0);
+  });
+
+  it('UNA CANTIDAD ABSURDA se rechaza: el carrito es público y sin autenticar', async () => {
+    // El tope no es una regla de negocio, es un freno. Sin él, un número
+    // cualquiera se convierte en una comanda que alguien cancela a mano y en un
+    // stock que se va a negativo.
+    const carrito = await abrirCarrito(HOST_A);
+    await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({ productId: catA.comboId, quantity: 5000 })
+      .expect(422);
+
+    const ok = await http()
+      .post(`/api/v1/shop/carts/${carrito}/lines`)
+      .send({ productId: catA.comboId, quantity: 1 })
+      .expect(201);
+    await http()
+      .patch(`/api/v1/shop/carts/${carrito}/lines/${ok.body.lines[0].id}`)
+      .send({ quantity: 5000 })
+      .expect(422);
+  });
+
   it('el catálogo público sale del host y respeta el canal web', async () => {
     const r = await http()
       .get('/api/v1/shop/catalog')

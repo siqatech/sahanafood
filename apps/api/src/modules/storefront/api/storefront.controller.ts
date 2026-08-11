@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   Param,
+  Patch,
   Post,
   Req,
 } from '@nestjs/common';
@@ -15,6 +16,7 @@ import {
 } from '../../../common/authz.js';
 import { ValidationError } from '../../../common/errors.js';
 import {
+  MAX_CANTIDAD_LINEA,
   StorefrontService,
   type CartView,
   type StorefrontContext,
@@ -40,9 +42,15 @@ const domainSchema = z.object({
 
 const addLineSchema = z.object({
   productId: z.string().uuid(),
-  quantity: z.number().int().positive().max(99),
+  quantity: z.number().int().positive().max(MAX_CANTIDAD_LINEA),
   modifierOptionIds: z.array(z.string().uuid()).optional(),
   notes: z.string().max(280).optional(),
+});
+
+const cantidadSchema = z.object({
+  // El cero se admite y significa «quítalo»: es lo que hace el botón «−» al
+  // llegar a uno, y así el carrito no necesita dos acciones para lo mismo.
+  quantity: z.number().int().min(0).max(MAX_CANTIDAD_LINEA),
 });
 
 const addressSchema = z.object({
@@ -186,6 +194,23 @@ export class ShopController {
     @Param('lineId') lineId: string,
   ): Promise<CartView> {
     return this.storefront.removeLine(token, lineId);
+  }
+
+  /**
+   * Cambia la cantidad de una línea. `0` la quita.
+   *
+   * Es `PATCH` y no `POST` porque modifica una línea que ya existe, y la
+   * cantidad viaja en el cuerpo y no en la URL para que no acabe en los logs
+   * del proxy junto al token del carrito.
+   */
+  @Patch('carts/:token/lines/:lineId')
+  async setLineQuantity(
+    @Param('token') token: string,
+    @Param('lineId') lineId: string,
+    @Body() body: unknown,
+  ): Promise<CartView> {
+    const { quantity } = parse(cantidadSchema, body);
+    return this.storefront.setLineQuantity(token, lineId, quantity);
   }
 
   @Post('carts/:token/address')

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { shop } from '../../lib/api';
+import { shop, type Cart } from '../../lib/api';
+import { getCartToken } from '../../lib/cart-cookie';
+import { formatDecimal } from '../../lib/money';
 
 /**
  * El marco de la tienda.
@@ -12,6 +14,13 @@ import { shop } from '../../lib/api';
  *
  * Va en un grupo de rutas `(tienda)` —que no aparece en la URL— para que el
  * panel NO herede esta cabecera ni esta resolución por host.
+ *
+ * Lo que se añadió después de mirar la tienda en un móvil: **el carrito tiene
+ * que estar siempre a la vista**. Antes era un enlace que ponía «Carrito», sin
+ * número y sin importe, así que no había forma de saber si lo que acababas de
+ * pulsar había entrado. La barra de abajo aparece en cuanto hay algo y dice
+ * cuánto llevas y cuánto suma; es el patrón que usa cualquier app de delivery
+ * porque es el que responde a la pregunta que uno se hace mientras pide.
  */
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,6 +37,17 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
+/** El carrito actual, o `null`. Nunca lanza: es adorno, no es la página. */
+async function carritoActual(): Promise<Cart | null> {
+  const token = await getCartToken();
+  if (!token) return null;
+  try {
+    return await shop.getCart(token);
+  } catch {
+    return null;
+  }
+}
+
 export default async function TiendaLayout({
   children,
 }: {
@@ -40,6 +60,10 @@ export default async function TiendaLayout({
     // Se deja el rótulo neutro.
   }
 
+  const carrito = await carritoActual();
+  const unidades =
+    carrito?.lines.reduce((suma, l) => suma + l.quantity, 0) ?? 0;
+
   return (
     <>
       <header className="cabecera">
@@ -48,9 +72,30 @@ export default async function TiendaLayout({
         </Link>
         <Link href="/carrito" className="enlace-carrito">
           Carrito
+          {unidades > 0 ? (
+            <span className="contador" aria-label={`${unidades} en el pedido`}>
+              {unidades}
+            </span>
+          ) : null}
         </Link>
       </header>
-      <main>{children}</main>
+
+      {/* El hueco de abajo evita que la barra fija tape el último plato: sin
+          él, el producto del final de la carta queda siempre medio oculto. */}
+      <main className={unidades > 0 ? 'con-barra' : undefined}>{children}</main>
+
+      {unidades > 0 && carrito ? (
+        <Link href="/carrito" className="barra-carrito">
+          <span className="barra-carrito__cuenta">
+            {unidades} {unidades === 1 ? 'producto' : 'productos'}
+          </span>
+          <span className="barra-carrito__ver">Ver mi pedido</span>
+          <span className="barra-carrito__total">
+            {formatDecimal(carrito.total)}
+          </span>
+        </Link>
+      ) : null}
+
       <footer className="pie">
         <p>
           Los precios incluyen IGV. Al pedir aceptas nuestros términos y la
