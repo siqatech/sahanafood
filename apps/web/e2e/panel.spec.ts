@@ -369,13 +369,20 @@ test.describe('Panel de gestión en navegador', () => {
     await page.getByRole('link', { name: 'Pedidos', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Pedidos' })).toBeVisible();
 
-    // El comprador de la prueba de la tienda dejó su teléfono en el checkout.
-    await page.getByLabel('Buscar pedidos').fill('999');
+    // Un teléfono de la semilla: es lo que la gente dice por teléfono, y es el
+    // caso que la pantalla existe para resolver.
+    await page.getByLabel('Buscar pedidos').fill('987666777');
     await page.getByRole('button', { name: 'Buscar' }).click();
 
+    // Se comprueba que el buscador FILTRA, no solo que hay una fila. Esta
+    // prueba pasaba con el buscador roto —la petición perdía el término por el
+    // camino y devolvía la lista entera— porque siempre había una primera fila
+    // que enseñar. En la pantalla que se abre cuando suena el teléfono, eso es
+    // atender a un cliente mirando el pedido de otro.
     const fila = page.locator('tbody tr').first();
     await expect(fila).toBeVisible();
     await fila.getByRole('link', { name: 'Ver' }).click();
+    await expect(page.getByText('Cliente que espera en casa')).toBeVisible();
 
     await expect(
       page.getByRole('heading', { name: /^Pedido #\d+$/ }),
@@ -660,6 +667,53 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(filas.first()).toContainText('Entró al sistema');
     await expect(
       page.locator('tbody tr').filter({ hasText: 'Cambio de precio' }),
+    ).toHaveCount(0);
+  });
+
+  test('LA MESA DE DESPACHO asigna, y dice POR QUÉ recomienda a cada uno', async ({
+    page,
+  }) => {
+    // El módulo de reparto estaba entero desde T5.15 —zonas, ranking, estados,
+    // saldos, liquidación— y sin una sola pantalla. En un SaaS para dark
+    // kitchens con delivery, eso significa que el pedido se cocina, se empaca y
+    // ahí se queda: nadie podía dar de alta a un repartidor ni asignar nada.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Reparto' }).click();
+    await expect(page.getByRole('heading', { name: 'Reparto' })).toBeVisible();
+
+    // Los dos repartidores de la semilla, y uno ya en la calle.
+    await expect(page.getByText('Luis Ramos').first()).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'En la calle' }),
+    ).toBeVisible();
+
+    // Un pedido listo sin envío: se le crea el envío y aparece por asignar.
+    const listo = page
+      .locator('.torre__columna')
+      .filter({ hasText: 'Listos, sin envío' });
+    const primero = listo.locator('article').first();
+    await expect(primero).toBeVisible();
+    await primero.getByRole('button', { name: 'Crear envío' }).click();
+
+    const porAsignar = page
+      .locator('.torre__columna')
+      .filter({ hasText: 'Por asignar' });
+    const envio = porAsignar.locator('article').first();
+    await expect(envio).toBeVisible();
+
+    // La recomendación viene CON MOTIVO: quien decide es una persona, y una
+    // recomendación sin explicación no se sigue, se ignora.
+    const opciones = envio.locator('select option');
+    await expect(opciones.first()).toContainText(/—/);
+
+    await envio.getByRole('button', { name: 'Asignar' }).click();
+
+    // Se comprueba el EFECTO: deja de estar por asignar.
+    await expect(
+      page
+        .locator('.torre__columna')
+        .filter({ hasText: 'Por asignar' })
+        .getByRole('button', { name: 'Asignar' }),
     ).toHaveCount(0);
   });
 

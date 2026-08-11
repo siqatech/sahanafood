@@ -14,6 +14,7 @@ import { CashService } from '../modules/cash/index.js';
 import { InventoryService } from '../modules/inventory/index.js';
 import { BillingService } from '../modules/billing/index.js';
 import { PaymentsService, CULQI_PROVIDER } from '../modules/payments/index.js';
+import { DeliveryService } from '../modules/delivery/index.js';
 
 /**
  * Siembra una tienda demo para levantar `apps/web` a mano (T5.08–T5.14).
@@ -316,6 +317,73 @@ async function main(): Promise<void> {
     ),
   );
 
+  // Dos repartidores y un pedido esperando salir. Sin esto la mesa de despacho
+  // solo se puede mirar vacía — y una pantalla que solo se puede mirar vacía es
+  // exactamente como el reparto acabó sin tener ninguna.
+  const reparto = app.get(DeliveryService);
+  const motorizado = await reparto.createCourier(tenant.tenantId, {
+    locationId: org.locationId,
+    fullName: 'Luis Ramos',
+    phone: '+51987222333',
+    vehicle: 'moto',
+    zoneIds: [org.zoneIds[0]],
+    actorId: tenant.ownerUserId,
+  });
+  const ciclista = await reparto.createCourier(tenant.tenantId, {
+    locationId: org.locationId,
+    fullName: 'Ana Flores',
+    phone: '+51987444555',
+    vehicle: 'bici',
+    actorId: tenant.ownerUserId,
+  });
+  // Un repartidor nace FUERA DE TURNO, y el ranking no propone a quien no está
+  // en turno. Dejar a los dos así haría que la mesa de despacho dijera «nadie
+  // disponible» nada más abrirla, que es verdad pero no sirve para verla.
+  await reparto.setCourierStatus(tenant.tenantId, ciclista.id, 'available');
+  // Un pedido LISTO y sin envío: es la primera columna de la mesa de despacho,
+  // la que existe porque hoy el envío no nace solo al aceptar (PA-08).
+  const ventaLista = await ordering.submit(tenant.tenantId, {
+    brandId,
+    locationId: org.locationId,
+    channel: 'web',
+    lines: [{ productId: catalogo.comboId, quantity: 1 }],
+    customerName: 'Cliente esperando su reparto',
+    customerPhone: '+51987888999',
+  });
+  for (const evento of [
+    'accept',
+    'start_preparing',
+    'finish_preparing',
+  ] as const) {
+    await ordering.applyTransition(tenant.tenantId, ventaLista.id, evento, {
+      actorId: tenant.ownerUserId,
+    });
+  }
+
+  // Uno de los dos ya está en la calle: la columna «en la calle» vacía no
+  // distingue «no hay nadie repartiendo» de «esto no funciona».
+  const ventaEnReparto = await ordering.submit(tenant.tenantId, {
+    brandId,
+    locationId: org.locationId,
+    channel: 'web',
+    lines: [{ productId: catalogo.comboId, quantity: 1 }],
+    customerName: 'Cliente que espera en casa',
+    customerPhone: '+51987666777',
+  });
+  const envio = await reparto.createShipment(tenant.tenantId, {
+    orderId: ventaEnReparto.id,
+    // Contra entrega: es el importe que después tiene que cuadrar con la caja
+    // al liquidar el turno (RN-DLV-02).
+    codAmountMinor: 320_000,
+    actorId: tenant.ownerUserId,
+  });
+  await reparto.assign(
+    tenant.tenantId,
+    envio.id,
+    motorizado.id,
+    tenant.ownerUserId,
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -330,6 +398,7 @@ async function main(): Promise<void> {
         caja: `http://${HOST}:3001/panel/caja`,
         inventario: `http://${HOST}:3001/panel/inventario`,
         comprobantes: `http://${HOST}:3001/panel/comprobantes`,
+        reparto: `http://${HOST}:3001/panel/reparto`,
         pedidoConCobro: `http://${HOST}:3001/panel/pedidos/${ventaPagada.id}`,
       },
       null,

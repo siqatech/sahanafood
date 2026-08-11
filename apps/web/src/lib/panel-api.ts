@@ -347,6 +347,48 @@ export interface CobroDelPanel {
     | undefined;
 }
 
+/** Un envío y a quién se le dio (spec 09). */
+export interface EnvioDelPanel {
+  id: string;
+  orderId: string;
+  status: string;
+  courierId: string | null;
+  courierName: string | null;
+  externalCourier: string | null;
+  codAmount: string | null;
+  codCollected: boolean;
+  settled: boolean;
+  promisedAt: string | null;
+  etaAt: string | null;
+  attempts: number;
+  failReason: string | null;
+}
+
+export interface RepartidorDelPanel {
+  id: string;
+  fullName: string;
+  status: string;
+  vehicle: string | null;
+  activeShipments: number;
+  zoneIds: string[];
+}
+
+/** El ranking de RN-DLV-01, con el motivo de cada uno. */
+export interface SugerenciaDeReparto {
+  courierId: string;
+  name: string;
+  activeShipments: number;
+  score: number;
+  reason: string;
+}
+
+export interface SaldoDeRepartidor {
+  courierId: string;
+  courierName: string;
+  pendingShipments: number;
+  pendingAmount: string;
+}
+
 /** Una línea del histórico (spec 17, docs/14#auditoria). */
 export interface LineaDeAuditoria {
   id: string;
@@ -570,10 +612,23 @@ export const panel = {
     filtros: {
       status?: string;
       limit?: number;
+      /**
+       * Número, referencia del canal, teléfono o nombre.
+       *
+       * Faltaba, y no fallaba: la pantalla ya lo pasaba —`search: q`— y aquí se
+       * caía al suelo sin que TypeScript dijera nada, porque llega por
+       * propagación de un objeto. El buscador de pedidos devolvía la lista
+       * entera desde que se construyó y parecía funcionar: siempre había una
+       * primera fila que enseñar. Es el peor modo de fallo posible en la
+       * pantalla que se abre cuando suena el teléfono — se atiende al cliente
+       * mirando el pedido de otro.
+       */
+      search?: string;
     } = {},
   ): Promise<PedidoDelPanel[]> => {
     const q = new URLSearchParams();
     if (filtros.status) q.set('status', filtros.status);
+    if (filtros.search) q.set('search', filtros.search);
     if (filtros.limit) q.set('limit', String(filtros.limit));
     const cadena = q.toString();
     return llamar<PedidoDelPanel[]>(`/orders${cadena ? `?${cadena}` : ''}`);
@@ -653,6 +708,66 @@ export const panel = {
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),
+
+  envios: (status?: string): Promise<EnvioDelPanel[]> =>
+    llamar<EnvioDelPanel[]>(
+      status
+        ? `/delivery/shipments?status=${encodeURIComponent(status)}`
+        : '/delivery/shipments',
+    ),
+
+  repartidores: (): Promise<RepartidorDelPanel[]> =>
+    llamar<RepartidorDelPanel[]>('/delivery/couriers'),
+
+  sugerencias: (shipmentId: string): Promise<SugerenciaDeReparto[]> =>
+    llamar<SugerenciaDeReparto[]>(
+      `/delivery/shipments/${shipmentId}/suggestions`,
+    ),
+
+  crearEnvio: (input: {
+    orderId: string;
+    codAmountMinor?: number;
+    zoneId?: string;
+  }): Promise<EnvioDelPanel> =>
+    llamar<EnvioDelPanel>('/delivery/shipments', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  asignarEnvio: (id: string, courierId: string): Promise<EnvioDelPanel> =>
+    llamar<EnvioDelPanel>(`/delivery/shipments/${id}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ courierId }),
+    }),
+
+  crearRepartidor: (input: {
+    locationId: string;
+    fullName: string;
+    phone?: string;
+    vehicle?: string;
+  }): Promise<{ id: string; firstName: string }> =>
+    llamar<{ id: string; firstName: string }>('/delivery/couriers', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  estadoRepartidor: (id: string, status: string): Promise<unknown> =>
+    llamar(`/delivery/couriers/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    }),
+
+  saldosDeReparto: (): Promise<SaldoDeRepartidor[]> =>
+    llamar<SaldoDeRepartidor[]>('/delivery/couriers/balances'),
+
+  liquidarRepartidor: (
+    id: string,
+    sessionId: string,
+  ): Promise<{ shipments: number; amount: string }> =>
+    llamar<{ shipments: number; amount: string }>(
+      `/delivery/couriers/${id}/settle`,
+      { method: 'POST', body: JSON.stringify({ sessionId }) },
+    ),
 
   usuarios: (): Promise<UsuarioDelPanel[]> =>
     llamar<UsuarioDelPanel[]>('/users'),

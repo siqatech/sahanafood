@@ -745,4 +745,43 @@ baja, y perder su línea por eso sería lo contrario de auditar. El filtro por
 acción se ofrece con **las acciones que hay**, contadas, no con una lista escrita
 a mano que se desviaría al añadir una.
 
+### El reparto no tenía pantalla, en un producto que vive del reparto
+
+El módulo de reparto está entero desde T5.15: repartidores con sus zonas, el
+ranking de asignación de RN-DLV-01 **con el motivo de cada candidato**, estados
+del envío, evidencia de entrega, saldos contra entrega y liquidación contra caja
+(RN-DLV-02). Con pruebas. Y **sin una sola pantalla**.
+
+En un SaaS para dark kitchens *con delivery* eso significa que el pedido se
+cocina, se empaca y ahí se queda: no había forma de dar de alta a un repartidor,
+ni de crear el envío, ni de asignarlo. La comida sale igual —alguien la lleva—
+pero el sistema no se entera: el cliente no tiene seguimiento, el efectivo que
+trae el repartidor no cuadra contra ninguna caja, y el histórico de tiempos de
+entrega está vacío justo en el negocio que vive de esos tiempos.
+
+`/panel/reparto` es la mesa de despacho: listos-sin-envío, por asignar, en la
+calle, fallidos, la plantilla de repartidores y el efectivo por liquidar. El
+desplegable de asignación enseña **el motivo** de cada candidato, no solo el
+orden: quien decide es una persona, y una recomendación sin explicación no se
+sigue, se ignora.
+
+**Y quedó una pregunta abierta, no una decisión inventada (PA-08):** hoy el
+envío **no nace solo** al aceptar un pedido a domicilio; solo lo crea una llamada
+explícita. La pantalla lo tapa con la columna «listos, sin envío», pero cuándo
+nace un envío es una decisión de dominio que la spec 09 no fija, así que va a
+`docs/22-risks.md` para que la resuelva el propietario.
+
+### Y el buscador de pedidos nunca buscó
+
+Al construir la mesa de despacho, una prueba de navegador aterrizó en el pedido
+equivocado y destapó esto: **`/panel/pedidos` devolvía la lista entera sea cual
+fuera el término**. La pantalla pasaba `search: q` y el cliente de API lo tiraba
+al suelo —llega por propagación de un objeto, así que TypeScript no dice nada—.
+
+Lo peor no es el fallo: es que **la prueba que lo vigilaba pasaba**. Comprobaba
+que hubiera una primera fila y que su detalle enseñara líneas, y con el buscador
+roto siempre hay una primera fila. En la pantalla que se abre cuando suena el
+teléfono, eso es atender a un cliente mirando el pedido de otro. Ahora la prueba
+comprueba **que el resultado sea el que se buscó**.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.
