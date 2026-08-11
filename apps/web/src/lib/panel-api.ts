@@ -347,6 +347,34 @@ export interface CobroDelPanel {
     | undefined;
 }
 
+/** Rentabilidad de una marca en un canal (spec 16). */
+export interface RentabilidadDelPanel {
+  brandId: string;
+  brandName: string;
+  channel: string;
+  orders: number;
+  cancelled: number;
+  grossRevenue: string;
+  discounts: string;
+  netRevenue: string;
+  commission: string;
+  foodCost: string;
+  contributionMargin: string;
+  marginBps: number;
+  averageTicket: string;
+}
+
+/** Conciliación del día entre lo que vendimos y lo que declaramos. */
+export interface ConciliacionDelPanel {
+  businessDate: string;
+  analyticsTotal: string;
+  billingTotal: string;
+  difference: string;
+  matches: boolean;
+  ordersWithoutDocument: number;
+  documentsWithoutSale: number;
+}
+
 /** Umbrales de una cocina y su nivel actual (RN-KIT-04). */
 export interface CapacidadDeCocina {
   kitchenId: string;
@@ -751,6 +779,28 @@ export const panel = {
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),
+
+  rentabilidad: (
+    rango: {
+      from?: string;
+      to?: string;
+    } = {},
+  ): Promise<RentabilidadDelPanel[]> => {
+    const q = new URLSearchParams();
+    if (rango.from) q.set('from', rango.from);
+    if (rango.to) q.set('to', rango.to);
+    const cadena = q.toString();
+    return llamar<RentabilidadDelPanel[]>(
+      `/analytics/profitability${cadena ? `?${cadena}` : ''}`,
+    );
+  },
+
+  conciliacion: (date?: string): Promise<ConciliacionDelPanel> =>
+    llamar<ConciliacionDelPanel>(
+      date
+        ? `/analytics/reconciliation?date=${encodeURIComponent(date)}`
+        : '/analytics/reconciliation',
+    ),
 
   capacidad: (kitchenId: string): Promise<CapacidadDeCocina> =>
     llamar<CapacidadDeCocina>(

@@ -64,7 +64,12 @@ test.describe('Panel de gestión en navegador', () => {
   }) => {
     await entrar(page);
     await expect(page.getByRole('heading', { name: 'Hoy' })).toBeVisible();
-    await expect(page.getByText('Ventas', { exact: true })).toBeVisible();
+    // Acotado al rótulo de la tarjeta: con datos de verdad las tablas por
+    // marca y por canal también tienen una columna «Ventas», y la prueba
+    // pasaba antes solo porque no había ventas que enseñar.
+    await expect(
+      page.locator('p.tarjeta__rotulo', { hasText: 'Ventas' }),
+    ).toBeVisible();
     await expect(page.getByText('Ticket promedio')).toBeVisible();
     await expect(page.getByText('En marcha ahora')).toBeVisible();
     // El día comparado se dice en pantalla: un número sin con qué compararlo no
@@ -809,6 +814,40 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(
       page.getByLabel('Platos a la vez antes de CERRAR canales'),
     ).toHaveValue('60');
+  });
+
+  test('LA RENTABILIDAD por marca y canal, ordenada por margen', async ({
+    page,
+  }) => {
+    // Es la pregunta que justifica una dark kitchen —cuatro marcas en la misma
+    // cocina, cuál gana dinero por cuál canal— y el endpoint existía desde
+    // T4.29 sin que nada lo pintara. Sin esta tabla, seguir o no en un
+    // marketplace se decide mirando la facturación, que es el número que más
+    // engaña: el canal que más factura suele ser el que más comisión cobra.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Rentabilidad' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Rentabilidad' }),
+    ).toBeVisible();
+
+    // Las dos ventas entregadas de la semilla, por canales distintos.
+    const filas = page.locator('tbody tr');
+    await expect(filas.first()).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'rappi' })).toBeVisible();
+
+    // Las columnas que hacen que la tabla signifique algo: sin comisión y food
+    // cost esto sería un informe de ventas más.
+    await expect(
+      page.getByRole('columnheader', { name: 'Comisión' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('columnheader', { name: 'Food cost' }),
+    ).toBeVisible();
+
+    // Y el cuadre del día, que la spec llama bug crítico si no cuadra.
+    await expect(
+      page.getByRole('heading', { name: 'Cuadre del día' }),
+    ).toBeVisible();
   });
 
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({

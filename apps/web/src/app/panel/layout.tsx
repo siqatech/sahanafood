@@ -72,6 +72,7 @@ export default async function PanelLayout({
               <Link href="/panel/excepciones">Excepciones</Link>
               <Link href="/panel/conversaciones">Conversaciones</Link>
               <Link href="/panel/negocio">Negocio</Link>
+              <Link href="/panel/reportes">Rentabilidad</Link>
               <Link href="/panel/equipo">Equipo</Link>
               <Link href="/panel/auditoria">Histórico</Link>
             </nav>

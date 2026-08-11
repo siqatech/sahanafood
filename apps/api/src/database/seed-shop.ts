@@ -15,6 +15,12 @@ import { InventoryService } from '../modules/inventory/index.js';
 import { BillingService } from '../modules/billing/index.js';
 import { PaymentsService, CULQI_PROVIDER } from '../modules/payments/index.js';
 import { DeliveryService } from '../modules/delivery/index.js';
+import {
+  AnalyticsEventHandlers,
+  ANALYTICS_CONSUMER,
+} from '../modules/analytics/index.js';
+import { consumeEvent } from '../events/consumer.js';
+import { relayOnce } from '../events/outbox.js';
 
 /**
  * Siembra una tienda demo para levantar `apps/web` a mano (T5.08–T5.14).
@@ -384,6 +390,65 @@ async function main(): Promise<void> {
     tenant.ownerUserId,
   );
 
+  // Dos ventas ENTREGADAS por canales distintos: sin ellas la pantalla de
+  // rentabilidad solo se puede mirar vacía, y es la pregunta que justifica el
+  // producto entero —qué marca gana dinero por qué canal—.
+  for (const canal of ['rappi', 'web'] as const) {
+    const venta = await ordering.submit(tenant.tenantId, {
+      brandId,
+      locationId: org.locationId,
+      channel: canal,
+      lines: [{ productId: catalogo.comboId, quantity: 2 }],
+      customerName: `Cliente de ${canal}`,
+    });
+    for (const evento of [
+      'accept',
+      'start_preparing',
+      'finish_preparing',
+      'pack',
+      'dispatch',
+      'deliver',
+    ] as const) {
+      await ordering.applyTransition(tenant.tenantId, venta.id, evento, {
+        actorId: tenant.ownerUserId,
+      });
+    }
+  }
+
+  // La analítica se alimenta por EVENTOS, no consultando pedidos: aquí se drena
+  // el outbox por el mismo camino que en producción recorre el worker. Sembrar
+  // la tabla de rollup a mano habría enseñado números que el sistema real no
+  // produce.
+  const manejadores = app.get(AnalyticsEventHandlers).handlers();
+  for (let vuelta = 0; vuelta < 8; vuelta++) {
+    const entregados: Array<Record<string, unknown>> = [];
+    await relayOnce(
+      pool,
+      async (evento) => {
+        entregados.push({
+          eventId: evento.id,
+          tenantId: evento.tenantId,
+          aggregateId: evento.aggregateId,
+          eventType: evento.eventType,
+          payload: evento.payload,
+          traceId: evento.traceId,
+        });
+      },
+      200,
+    );
+    if (entregados.length === 0) break;
+    for (const mensaje of entregados) {
+      await consumeEvent(
+        {
+          pool,
+          consumer: ANALYTICS_CONSUMER,
+          handlers: manejadores as never,
+        },
+        mensaje as never,
+      );
+    }
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -399,6 +464,7 @@ async function main(): Promise<void> {
         inventario: `http://${HOST}:3001/panel/inventario`,
         comprobantes: `http://${HOST}:3001/panel/comprobantes`,
         reparto: `http://${HOST}:3001/panel/reparto`,
+        rentabilidad: `http://${HOST}:3001/panel/reportes`,
         pedidoConCobro: `http://${HOST}:3001/panel/pedidos/${ventaPagada.id}`,
       },
       null,

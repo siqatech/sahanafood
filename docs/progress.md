@@ -861,4 +861,38 @@ navegador fallaba de una forma que no cuadraba —el guardado bueno ni siquiera
 llegaba a la API—, no porque estuviera buscándolo: sin la prueba, esto se habría
 descubierto con un cliente delante.
 
+### Las dos preguntas que justifican el producto no tenían pantalla
+
+`GET /analytics/profitability` y `GET /analytics/reconciliation` existen desde
+T4.29, con pruebas, y no los pintaba nada.
+
+· **Rentabilidad por marca y canal.** Es *la* pregunta de una dark kitchen:
+cuatro marcas en la misma cocina y saber cuál gana dinero por cuál canal. Sin
+esa tabla, seguir o no en un marketplace se decide mirando la facturación — que
+es justo el número que más engaña, porque el canal que más factura suele ser el
+que más comisión cobra.
+
+· **Cuadre con facturación.** La spec 16 lo dice sin matices: una divergencia es
+un **bug crítico**. Un panel que dice S/ 12 000 y una declaración que dice
+S/ 11 400 no es un redondeo: es que alguien va a decidir con un número que no es.
+Se comprobaba por API y no lo miraba nadie.
+
+`/panel/reportes`. La tabla va **ordenada por margen, de peor a mejor**, no por
+facturación: la pregunta es cuál gana dinero, y ordenar por ventas pondría arriba
+justo al que puede estar perdiéndolo. Un margen negativo no es una fila más — sale
+como aviso arriba, porque es dinero que se pierde en cada pedido y vender más
+empeora. El porcentaje se calcula con **aritmética entera** sobre los puntos
+básicos: es el número que decide si se cierra un canal.
+
+La pantalla dice también de dónde sale cada columna, incluida la trampa: el food
+cost viene del consumo real de inventario, así que **un plato sin receta no
+aporta coste y parece que deja más margen**. Un informe que no lo advierte
+recomienda vender justo lo que no está medido.
+
+**Y otra prueba que pasaba por la razón equivocada.** Al sembrar ventas
+entregadas de verdad, la prueba de la portada se rompió: buscaba el texto
+«Ventas» y hasta ahora solo existía en la tarjeta de KPI **porque las tablas por
+marca y por canal estaban siempre vacías**. Con datos reales aparecen tres veces.
+Acotada al rótulo de la tarjeta.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.
