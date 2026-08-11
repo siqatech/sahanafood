@@ -256,6 +256,21 @@ el negocio por archivo, emparejar tablets, poner las tiendas en su dominio. Est�
 en `docs/34-puesta-en-marcha.md` §5 a §8, y no se repite aquí para que no haya
 dos versiones que se contradigan.
 
+### Un negocio de demostración, para ver el sistema andando
+
+`infra/railway/semilla-demo.json` es un servicio desechable —mismo patrón que el
+arranque de roles— que ejecuta `seed-shop.js`: deja un negocio completo con
+carta, pedidos en marcha, comprobantes emitidos y rechazados, un cobro, reparto
+y analítica. Sirve para comprobar el despliegue de punta a punta antes de que
+haya un cliente de verdad.
+
+Necesita `SHOP_HOST` con el dominio donde se sirve la tienda. **Rehace el
+negocio desde cero en cada ejecución**, así que no se apunta a una base con
+clientes reales: un `host` es único globalmente y el guion borra el anterior
+para poder recrearlo.
+
+Al terminar, borrar el servicio.
+
 ## 8. Dominios de cliente
 
 El tenant de cada tienda sale del `Host` y de nada más. En Railway:
