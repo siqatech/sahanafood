@@ -136,6 +136,7 @@ export const PERMISSIONS = [
   // catálogo de quién: es la decisión más delicada de la tienda, y por eso no
   // va con `catalog.write`.
   'storefront.manage_domains',
+  'storefront.manage_promotions',
   // Integraciones (F4 con simulador, F7 conectores reales)
   'integrations.read',
   // Crear o pausar una conexión toca credenciales y el flujo de pedidos de un

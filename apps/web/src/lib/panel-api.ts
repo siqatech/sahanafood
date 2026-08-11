@@ -32,6 +32,23 @@ export class PanelApiError extends Error {
   }
 }
 
+export interface PromocionDelPanel {
+  id: string;
+  brandId: string | null;
+  code: string;
+  kind: string;
+  percentBps: number | null;
+  amount: string | null;
+  minOrder: string;
+  maxUses: number | null;
+  usedCount: number;
+  validUntil: string | null;
+  active: boolean;
+  isWelcome: boolean;
+  /** El mismo texto que lee un cliente en la tienda. */
+  label: string;
+}
+
 export interface Problema {
   detail?: string;
   code?: string;
@@ -921,6 +938,26 @@ export const panel = {
 
   dominios: (): Promise<DominioDelPanel[]> =>
     llamar<DominioDelPanel[]>('/storefront/domains'),
+
+  promociones: (): Promise<PromocionDelPanel[]> =>
+    llamar<PromocionDelPanel[]>('/storefront/coupons'),
+
+  guardarPromocion: (input: {
+    id?: string;
+    brandId: string;
+    code: string;
+    kind: 'percent' | 'fixed' | 'free_delivery';
+    percentBps?: number;
+    amount?: string;
+    minOrder?: string;
+    maxUses?: number;
+    active?: boolean;
+    isWelcome?: boolean;
+  }): Promise<PromocionDelPanel> =>
+    llamar<PromocionDelPanel>('/storefront/coupons', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   registrarDominio: (input: {
     brandId: string;

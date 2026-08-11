@@ -56,6 +56,32 @@ export interface StorefrontContext {
   brandId: string;
   brandName: string;
   host: string;
+  /**
+   * La oferta que se anuncia a quien entra por primera vez, ya redactada.
+   *
+   * El TEXTO se compone aquí y no en la tienda porque describe un descuento, y
+   * un porcentaje mal escrito en el escaparate es una promesa que la caja no va
+   * a cumplir. La tienda solo lo pinta.
+   */
+  welcome: { code: string; label: string; minOrder: string | null } | null;
+}
+
+/** Una promoción, como la administra el dueño. */
+export interface CouponView {
+  id: string;
+  brandId: string | null;
+  code: string;
+  kind: string;
+  percentBps: number | null;
+  amount: string | null;
+  minOrder: string;
+  maxUses: number | null;
+  usedCount: number;
+  validUntil: string | null;
+  active: boolean;
+  isWelcome: boolean;
+  /** El mismo texto que vería un cliente. */
+  label: string;
 }
 
 export interface CartLineView {
@@ -107,6 +133,36 @@ export interface CartView {
  * eso, es un pedido para hablarlo por teléfono.
  */
 export const MAX_CANTIDAD_LINEA = 50;
+
+/**
+ * Cómo se cuenta un descuento en palabras.
+ *
+ * Vive en el servidor, junto al cálculo, y no en la tienda. Duplicarlo en el
+ * navegador es cómo se llega a un escaparate que anuncia el 15 % mientras la
+ * caja aplica el 10: el cliente lo descubre en el total y la culpa es del
+ * local. Aquí lo escribe quien tiene los datos.
+ */
+function describirCupon(c: {
+  kind: string;
+  percent_bps: number | null;
+  amount: string | null;
+  min_order: string;
+}): string {
+  const minimo =
+    Number(c.min_order) > 0
+      ? ` en pedidos desde S/ ${Number(c.min_order).toFixed(2)}`
+      : '';
+  if (c.kind === 'percent') {
+    // Puntos básicos enteros → porcentaje. 1000 bps = 10 %.
+    const pct = (c.percent_bps ?? 0) / 100;
+    const texto = Number.isInteger(pct) ? String(pct) : pct.toFixed(2);
+    return `${texto} % de descuento${minimo}`;
+  }
+  if (c.kind === 'fixed') {
+    return `S/ ${Number(c.amount ?? 0).toFixed(2)} de descuento${minimo}`;
+  }
+  return `Envío gratis${minimo}`;
+}
 
 const CART_TTL_HOURS = 72;
 
@@ -365,11 +421,245 @@ export class StorefrontService {
     if (!marca)
       throw new NotFoundError('No hay ninguna tienda en este dominio.');
 
+    // La oferta de bienvenida se lee con la marca: es parte de lo que la
+    // tienda necesita para pintar la primera pantalla, y pedirla aparte
+    // costaría un viaje más justo en la carga que decide si alguien se queda.
+    const bienvenida = await withTenant(
+      this.pool,
+      fila.tenant_id,
+      async ({ client }) => {
+        const { rows } = await client.query<{
+          code: string;
+          kind: string;
+          percent_bps: number | null;
+          amount: string | null;
+          min_order: string;
+        }>(
+          `SELECT code, kind, percent_bps, amount, min_order
+             FROM sto_coupons
+            WHERE brand_id = $1
+              AND is_welcome AND active
+              AND (valid_from IS NULL OR valid_from <= now())
+              AND (valid_until IS NULL OR valid_until >= now())
+              AND (max_uses IS NULL OR used_count < max_uses)
+            LIMIT 1`,
+          [fila.brand_id],
+        );
+        return rows[0];
+      },
+    );
+
     return {
       brandId: fila.brand_id,
       brandName: marca.name,
       host: fila.host,
+      // Un cupón caducado o agotado NO se anuncia: prometer un descuento que la
+      // caja va a rechazar es peor que no ofrecer ninguno. La consulta ya los
+      // descarta, y por eso las mismas condiciones que valida `applyCoupon`
+      // están aquí arriba.
+      welcome: bienvenida
+        ? {
+            code: bienvenida.code,
+            label: describirCupon(bienvenida),
+            minOrder:
+              Number(bienvenida.min_order) > 0 ? bienvenida.min_order : null,
+          }
+        : null,
     };
+  }
+
+  // ---------------------------------------------------------- Promociones
+
+  /**
+   * Las promociones del negocio, con lo que llevan usado.
+   *
+   * `usedCount` frente a `maxUses` es el dato que decide si una campaña sigue
+   * viva, y no lo devolvía nada: un cupón limitado a cien usos se agotaba sin
+   * que nadie se enterara hasta que un cliente se quejaba de que «no le
+   * funciona el código».
+   */
+  async listCoupons(tenantId: string): Promise<CouponView[]> {
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{
+        id: string;
+        brand_id: string | null;
+        code: string;
+        kind: string;
+        percent_bps: number | null;
+        amount: string | null;
+        min_order: string;
+        max_uses: number | null;
+        used_count: number;
+        valid_until: string | null;
+        active: boolean;
+        is_welcome: boolean;
+      }>(
+        `SELECT id, brand_id, code, kind, percent_bps, amount, min_order,
+                max_uses, used_count, valid_until, active, is_welcome
+           FROM sto_coupons
+          ORDER BY is_welcome DESC, active DESC, created_at DESC`,
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        brandId: r.brand_id,
+        code: r.code,
+        kind: r.kind,
+        percentBps: r.percent_bps,
+        amount: r.amount,
+        minOrder: r.min_order,
+        maxUses: r.max_uses,
+        usedCount: r.used_count,
+        validUntil: r.valid_until,
+        active: r.active,
+        isWelcome: r.is_welcome,
+        label: describirCupon(r),
+      }));
+    });
+  }
+
+  /**
+   * Crea o actualiza una promoción.
+   *
+   * El código se normaliza a mayúsculas: quien lo teclea en el móvil escribe
+   * «bienvenido» tanto como «BIENVENIDO», y dos cupones que solo se distinguen
+   * por la caja son dos formas de que el cliente use el que no era.
+   *
+   * Marcar una como bienvenida DESMARCA la anterior de esa marca, en la misma
+   * transacción. El índice único de la migración 0032 lo impediría de todas
+   * formas, pero fallar con un error de base de datos obligaría al dueño a
+   * acordarse de apagar la vieja: lo natural al activar la promoción de este
+   * mes es que la del anterior deje de anunciarse.
+   */
+  async upsertCoupon(
+    tenantId: string,
+    input: {
+      id?: string | undefined;
+      brandId: string;
+      code: string;
+      kind: 'percent' | 'fixed' | 'free_delivery';
+      percentBps?: number | undefined;
+      amount?: string | undefined;
+      minOrder?: string | undefined;
+      maxUses?: number | undefined;
+      validUntil?: string | undefined;
+      active?: boolean | undefined;
+      isWelcome?: boolean | undefined;
+      actorId?: string | undefined;
+    },
+  ): Promise<CouponView> {
+    const code = input.code.trim().toUpperCase();
+    if (!/^[A-Z0-9-]{3,40}$/.test(code)) {
+      throw new ValidationError(
+        'El código va en letras y números, sin espacios ni acentos: se dicta por teléfono y se teclea en un móvil.',
+      );
+    }
+    if (input.kind === 'percent') {
+      const bps = input.percentBps ?? 0;
+      if (!Number.isInteger(bps) || bps <= 0 || bps > 10000) {
+        throw new ValidationError(
+          'El porcentaje va en puntos básicos enteros, entre 1 y 10000 (1000 = 10 %).',
+        );
+      }
+    }
+    if (input.kind === 'fixed' && !input.amount) {
+      throw new ValidationError('Un descuento fijo necesita su importe.');
+    }
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      // Al activar una bienvenida, la anterior de esa marca deja de serlo.
+      if (input.isWelcome) {
+        await ctx.client.query(
+          `UPDATE sto_coupons SET is_welcome = false
+            WHERE brand_id = $1 AND is_welcome AND ($2::uuid IS NULL OR id <> $2)`,
+          [input.brandId, input.id ?? null],
+        );
+      }
+
+      const { rows } = await ctx.client.query<{ id: string }>(
+        `INSERT INTO sto_coupons
+           (id, tenant_id, brand_id, code, kind, percent_bps, amount, min_order,
+            max_uses, valid_until, active, is_welcome)
+         VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7,
+                 COALESCE($8, 0), $9, $10, COALESCE($11, true), COALESCE($12, false))
+         ON CONFLICT (id) DO UPDATE SET
+           code = EXCLUDED.code,
+           kind = EXCLUDED.kind,
+           percent_bps = EXCLUDED.percent_bps,
+           amount = EXCLUDED.amount,
+           min_order = EXCLUDED.min_order,
+           max_uses = EXCLUDED.max_uses,
+           valid_until = EXCLUDED.valid_until,
+           active = EXCLUDED.active,
+           is_welcome = EXCLUDED.is_welcome
+         RETURNING id`,
+        [
+          input.id ?? null,
+          tenantId,
+          input.brandId,
+          code,
+          input.kind,
+          input.percentBps ?? null,
+          input.amount ?? null,
+          input.minOrder ?? null,
+          input.maxUses ?? null,
+          input.validUntil ?? null,
+          input.active ?? null,
+          input.isWelcome ?? null,
+        ],
+      );
+
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        action: input.id
+          ? 'storefront.coupon_updated'
+          : 'storefront.coupon_created',
+        resourceType: 'coupon',
+        resourceId: rows[0]!.id,
+        data: {
+          code,
+          kind: input.kind,
+          isWelcome: input.isWelcome ?? false,
+          active: input.active ?? true,
+        },
+      });
+
+      const { rows: leidas } = await ctx.client.query<{
+        id: string;
+        brand_id: string | null;
+        code: string;
+        kind: string;
+        percent_bps: number | null;
+        amount: string | null;
+        min_order: string;
+        max_uses: number | null;
+        used_count: number;
+        valid_until: string | null;
+        active: boolean;
+        is_welcome: boolean;
+      }>(
+        `SELECT id, brand_id, code, kind, percent_bps, amount, min_order,
+                max_uses, used_count, valid_until, active, is_welcome
+           FROM sto_coupons WHERE id = $1`,
+        [rows[0]!.id],
+      );
+      const r = leidas[0]!;
+      return {
+        id: r.id,
+        brandId: r.brand_id,
+        code: r.code,
+        kind: r.kind,
+        percentBps: r.percent_bps,
+        amount: r.amount,
+        minOrder: r.min_order,
+        maxUses: r.max_uses,
+        usedCount: r.used_count,
+        validUntil: r.valid_until,
+        active: r.active,
+        isWelcome: r.is_welcome,
+        label: describirCupon(r),
+      };
+    });
   }
 
   /**

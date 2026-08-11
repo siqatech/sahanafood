@@ -518,6 +518,90 @@ main.con-barra {
   text-align: center;
 }
 
+.bienvenida {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--espacio);
+  background: rgb(0 0 0 / 55%);
+}
+
+.bienvenida__caja {
+  position: relative;
+  width: min(420px, 100%);
+  background: var(--color-fondo);
+  border-radius: 16px;
+  padding: 28px 24px 24px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 30%);
+}
+
+.bienvenida__cerrar {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-suave);
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.bienvenida__gancho {
+  /* Sitio para la X, que si no pisa el rótulo. */
+  margin: 0 40px;
+  color: var(--color-suave);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.bienvenida__titulo {
+  margin: 6px 0 14px;
+  font-size: 1.5rem;
+  color: var(--color-marca);
+  line-height: 1.25;
+}
+
+.bienvenida__instruccion {
+  margin: 0 0 10px;
+  color: var(--color-suave);
+}
+
+/* El código, en grande y en monoespaciada: se teclea, así que la diferencia
+   entre O y 0 tiene que verse. */
+.bienvenida__codigo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px dashed var(--color-marca);
+  border-radius: 10px;
+  background: var(--color-aviso-fondo);
+  color: var(--color-marca);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.bienvenida__copiar {
+  font-family: system-ui, sans-serif;
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .cupon {
   margin-top: 20px;
   padding-top: 16px;

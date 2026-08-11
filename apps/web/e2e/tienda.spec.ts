@@ -264,6 +264,42 @@ test.describe('Tienda web en navegador', () => {
     ).toBeVisible();
   });
 
+  test('LA OFERTA DE BIENVENIDA sale una vez y no vuelve', async ({
+    browser,
+  }) => {
+    // Quien llega de un enlace no conoce ningún código: si el descuento de
+    // primera compra no se anuncia solo, no lo usa nadie.
+    //
+    // Va en contexto propio para empezar sin almacenamiento, que es lo que
+    // define «primera visita».
+    const contexto = await browser.newContext();
+    const page = await contexto.newPage();
+    try {
+      await page.goto('/');
+
+      const aviso = page.locator('.bienvenida');
+      await expect(aviso).toBeVisible({ timeout: 10000 });
+      await expect(aviso).toContainText('BIENVENIDO');
+      // El texto lo redacta el servidor a partir del cupón real: 10 % con
+      // mínimo de 50. Si la tienda lo compusiera por su cuenta, el escaparate
+      // podría prometer algo que la caja no aplica.
+      await expect(aviso).toContainText('10 %');
+      await expect(aviso).toContainText('S/ 50.00');
+
+      // Y no bloquea: se cierra y se puede pedir.
+      await page.getByRole('button', { name: /ver la carta/i }).click();
+      await expect(aviso).toHaveCount(0);
+
+      // La segunda visita ya no lo enseña. Un anuncio que reaparece en cada
+      // carga es el motivo por el que la gente aprende a cerrar sin leer.
+      await page.goto('/');
+      await page.waitForTimeout(2000);
+      await expect(page.locator('.bienvenida')).toHaveCount(0);
+    } finally {
+      await contexto.close();
+    }
+  });
+
   test('un dominio SIN tienda no enseña la carta de otra', async ({
     browser,
   }) => {

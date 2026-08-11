@@ -88,8 +88,8 @@ async function main(): Promise<void> {
   // Un cupón para poder probar el camino del descuento y el del mínimo.
   await withTenant(pool, tenant.tenantId, ({ client }) =>
     client.query(
-      `INSERT INTO sto_coupons (tenant_id, brand_id, code, kind, percent_bps, min_order)
-       VALUES ($1,$2,'BIENVENIDO','percent',1000,'50.0000')`,
+      `INSERT INTO sto_coupons (tenant_id, brand_id, code, kind, percent_bps, min_order, is_welcome)
+       VALUES ($1,$2,'BIENVENIDO','percent',1000,'50.0000',true)`,
       [tenant.tenantId, brandId],
     ),
   );

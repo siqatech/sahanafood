@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { shop, type Cart } from '../../lib/api';
 import { getCartToken } from '../../lib/cart-cookie';
 import { formatDecimal } from '../../lib/money';
+import { Bienvenida } from './bienvenida';
 
 /**
  * El marco de la tienda.
@@ -54,8 +55,13 @@ export default async function TiendaLayout({
   children: ReactNode;
 }) {
   let brandName = 'Tienda';
+  let bienvenida: Awaited<ReturnType<typeof shop.context>>['welcome'] = null;
+  let marcaId = '';
   try {
-    brandName = (await shop.context()).brandName;
+    const ctx = await shop.context();
+    brandName = ctx.brandName;
+    bienvenida = ctx.welcome;
+    marcaId = ctx.brandId;
   } catch {
     // Se deja el rótulo neutro.
   }
@@ -94,6 +100,16 @@ export default async function TiendaLayout({
             {formatDecimal(carrito.total)}
           </span>
         </Link>
+      ) : null}
+
+      {/* La oferta de bienvenida solo aparece si el dueño ha marcado una y
+          sigue vigente: no hay ningún descuento inventado por la tienda. */}
+      {bienvenida ? (
+        <Bienvenida
+          marca={marcaId}
+          codigo={bienvenida.code}
+          texto={bienvenida.label}
+        />
       ) : null}
 
       <footer className="pie">

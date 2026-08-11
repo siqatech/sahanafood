@@ -74,6 +74,7 @@ export default async function PanelLayout({
               <Link href="/panel/agente">Agente</Link>
               <Link href="/panel/mensajeria">Mensajería</Link>
               <Link href="/panel/canales">Canales</Link>
+              <Link href="/panel/promociones">Promociones</Link>
               <Link href="/panel/negocio">Negocio</Link>
               <Link href="/panel/reportes">Rentabilidad</Link>
               <Link href="/panel/equipo">Equipo</Link>

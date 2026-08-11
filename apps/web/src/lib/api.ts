@@ -35,6 +35,14 @@ export interface ShopContext {
   brandId: string;
   brandName: string;
   host: string;
+  /**
+   * La oferta de bienvenida, ya redactada por el servidor.
+   *
+   * El texto viene hecho a propósito: describe un descuento, y componerlo aquí
+   * sería duplicar en el navegador una regla de precios que vive en el
+   * servidor. `null` cuando no hay ninguna activa, o cuando caducó o se agotó.
+   */
+  welcome: { code: string; label: string; minOrder: string | null } | null;
 }
 
 export interface CatalogProduct {

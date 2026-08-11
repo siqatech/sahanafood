@@ -19,6 +19,7 @@ import {
   MAX_CANTIDAD_LINEA,
   StorefrontService,
   type CartView,
+  type CouponView,
   type StorefrontContext,
   type CheckoutResult,
 } from '../app/storefront.service.js';
@@ -45,6 +46,29 @@ const addLineSchema = z.object({
   quantity: z.number().int().positive().max(MAX_CANTIDAD_LINEA),
   modifierOptionIds: z.array(z.string().uuid()).optional(),
   notes: z.string().max(280).optional(),
+});
+
+const cuponSchema = z.object({
+  id: z.string().uuid().optional(),
+  brandId: z.string().uuid(),
+  code: z.string().min(3).max(40),
+  kind: z.enum(['percent', 'fixed', 'free_delivery']),
+  // Puntos básicos ENTEROS, como todo porcentaje del sistema: 1000 = 10 %. Un
+  // decimal aquí sería la única puerta por la que entra coma flotante a un
+  // descuento.
+  percentBps: z.number().int().min(1).max(10000).optional(),
+  amount: z
+    .string()
+    .regex(/^\d+(\.\d{1,4})?$/)
+    .optional(),
+  minOrder: z
+    .string()
+    .regex(/^\d+(\.\d{1,4})?$/)
+    .optional(),
+  maxUses: z.number().int().positive().optional(),
+  validUntil: z.string().datetime().optional(),
+  active: z.boolean().optional(),
+  isWelcome: z.boolean().optional(),
 });
 
 const cantidadSchema = z.object({
@@ -103,6 +127,34 @@ export class StorefrontAdminController {
   }> {
     const input = parse(domainSchema, body);
     return this.storefront.registerDomain(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  /** Las promociones del negocio. */
+  @Get('coupons')
+  @RequirePermission('storefront.read')
+  async listCoupons(@Req() req: AuthenticatedRequest): Promise<CouponView[]> {
+    return this.storefront.listCoupons(req.auth!.tid);
+  }
+
+  /**
+   * Crear o cambiar una promoción.
+   *
+   * Con `storefront.manage_promotions` y no con `storefront.read`: un descuento
+   * es dinero que se deja de cobrar, así que decidirlo no es lo mismo que
+   * mirarlo. Propietario y administrador lo tienen por comodín; el supervisor,
+   * no.
+   */
+  @Post('coupons')
+  @RequirePermission('storefront.manage_promotions')
+  async upsertCoupon(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<CouponView> {
+    const input = parse(cuponSchema, body);
+    return this.storefront.upsertCoupon(req.auth!.tid, {
       ...input,
       actorId: req.auth!.sub,
     });

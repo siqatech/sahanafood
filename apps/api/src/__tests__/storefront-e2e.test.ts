@@ -635,6 +635,126 @@ suite('Tienda web', () => {
     expect(agotado.body.coupon.reason).toBe('COUPON_EXHAUSTED');
   });
 
+  it('LA OFERTA DE BIENVENIDA se anuncia sola, y solo si se puede usar', async () => {
+    // Es lo que convierte la tienda en algo que capta clientes: quien llega de
+    // un enlace no conoce ningún código, así que un descuento de primera compra
+    // que hay que teclear de memoria no lo usa nadie.
+    //
+    // Y lo que se comprueba de verdad es lo contrario: que un cupón CADUCADO o
+    // AGOTADO no se anuncie. Prometer en el escaparate un descuento que la caja
+    // va a rechazar es peor que no ofrecer ninguno — el cliente llega al total,
+    // ve otra cifra y la culpa es del local.
+    const sinOferta = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    expect(sinOferta.body.welcome).toBeNull();
+
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `INSERT INTO sto_coupons
+           (tenant_id, brand_id, code, kind, percent_bps, min_order, is_welcome)
+         VALUES ($1,$2,'HOLA','percent',1500,'40.0000',true)`,
+        [tenantA, brandA],
+      ),
+    );
+
+    const conOferta = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    expect(conOferta.body.welcome.code).toBe('HOLA');
+    // El TEXTO lo redacta el servidor: componerlo en la tienda sería duplicar
+    // en el navegador una regla de precios.
+    expect(conOferta.body.welcome.label).toBe(
+      '15 % de descuento en pedidos desde S/ 40.00',
+    );
+
+    // Caducada: deja de anunciarse.
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `UPDATE sto_coupons SET valid_until = now() - interval '1 day'
+          WHERE code = 'HOLA' AND brand_id = $1`,
+        [brandA],
+      ),
+    );
+    const caducada = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    expect(caducada.body.welcome).toBeNull();
+
+    // Agotada: tampoco.
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `UPDATE sto_coupons
+            SET valid_until = NULL, max_uses = 1, used_count = 1
+          WHERE code = 'HOLA' AND brand_id = $1`,
+        [brandA],
+      ),
+    );
+    const agotada = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    expect(agotada.body.welcome).toBeNull();
+
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(`DELETE FROM sto_coupons WHERE code = 'HOLA'`),
+    );
+  });
+
+  it('SOLO UNA BIENVENIDA por marca: activar la nueva apaga la anterior', async () => {
+    // Con dos marcadas a la vez, cuál se anuncia lo decidiría el orden que
+    // devuelva la base, que cambia sin avisar. El día que el dueño crea la
+    // promoción de fiestas sin acordarse de apagar la anterior, la tienda
+    // anunciaría una y el cliente encontraría otra.
+    const primera = await storefront.upsertCoupon(tenantA, {
+      brandId: brandA,
+      code: 'primera',
+      kind: 'percent',
+      percentBps: 1000,
+      isWelcome: true,
+    });
+    // Y de paso: el código se guarda en mayúsculas, porque quien lo teclea en
+    // un móvil escribe «primera» tanto como «PRIMERA».
+    expect(primera.code).toBe('PRIMERA');
+    expect(primera.isWelcome).toBe(true);
+
+    const segunda = await storefront.upsertCoupon(tenantA, {
+      brandId: brandA,
+      code: 'SEGUNDA',
+      kind: 'percent',
+      percentBps: 2000,
+      isWelcome: true,
+    });
+    expect(segunda.isWelcome).toBe(true);
+
+    const todas = await storefront.listCoupons(tenantA);
+    const bienvenidas = todas.filter((c) => c.isWelcome && c.active);
+    expect(bienvenidas).toHaveLength(1);
+    expect(bienvenidas[0]!.code).toBe('SEGUNDA');
+
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `DELETE FROM sto_coupons WHERE code IN ('PRIMERA','SEGUNDA')`,
+      ),
+    );
+  });
+
+  it('un código con espacios o acentos se rechaza al crearlo', async () => {
+    // Se dicta por teléfono y se teclea en un móvil: «10% DESCUENTO ¡YA!» es un
+    // código que nadie va a poder usar.
+    await expect(
+      storefront.upsertCoupon(tenantA, {
+        brandId: brandA,
+        code: 'PROMOCIÓN VERANO',
+        kind: 'percent',
+        percentBps: 1000,
+      }),
+    ).rejects.toThrow(/letras y números/);
+  });
+
   it('el cupón de un tenant no vale en la tienda del otro', async () => {
     // Mismo código, otro tenant: RLS hace que ni siquiera se vea.
     const carrito = await abrirCarrito(HOST_B);
