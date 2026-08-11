@@ -847,3 +847,62 @@ main.con-barra {
   flex-direction: column;
   gap: 2px;
 }
+
+/* Seguimiento del pedido.
+
+   Los pasos van en `ol` y no en `div`s: es una secuencia ordenada, y un lector
+   de pantalla que anuncia «3 de 4» dice más que cualquier color. */
+.pasos-envio {
+  list-style: none;
+  padding: 0;
+  margin: var(--espacio) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.paso-envio {
+  position: relative;
+  padding: 8px 0 8px 28px;
+  color: var(--color-suave);
+}
+
+/* El punto de la izquierda. Relleno = hecho, hueco = pendiente: la diferencia
+   se nota sin depender del color, que es lo que hace falta para quien no
+   distingue el verde del gris. */
+.paso-envio::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 13px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--color-borde);
+  background: var(--color-fondo);
+}
+
+.paso-envio--hecho {
+  color: var(--color-texto);
+  font-weight: 600;
+}
+
+.paso-envio--hecho::before {
+  border-color: var(--color-marca);
+  background: var(--color-marca);
+}
+
+.eta {
+  font-size: 1.1rem;
+  margin: var(--espacio) 0;
+}
+
+/* El enlace de seguimiento, listo para copiar. Monoespaciado porque es una URL
+   con un token: en proporcional, distinguir un 1 de una l al leerlo en voz alta
+   por teléfono es imposible. */
+.enlace-copiable {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  margin-top: 6px;
+}

@@ -120,6 +120,36 @@ export async function asignar(
 }
 
 /**
+ * Emite el enlace de seguimiento para dárselo al cliente.
+ *
+ * El enlace se devuelve para COPIARLO, no se manda solo: hoy quien atiende
+ * decide por dónde se lo pasa —WhatsApp, una llamada, el chat del marketplace—
+ * y mandarlo automáticamente exigiría saber a qué número, que es justo el dato
+ * que un pedido de marketplace no trae.
+ *
+ * Caduca a las 48 horas y no dice de quién es el pedido: quien lo abre ve
+ * estado, hora estimada y el nombre de pila de quien lleva. Nada más.
+ */
+export async function enlaceDeSeguimiento(
+  _prev: EstadoReparto,
+  form: FormData,
+): Promise<EstadoReparto> {
+  const shipmentId = String(form.get('shipmentId') ?? '');
+  const origen = String(form.get('origen') ?? '').trim();
+  try {
+    const { token } = await panel.enlaceDeSeguimiento(shipmentId);
+    // La URL se compone con el origen del navegador de quien está en el panel,
+    // que es el dominio por el que ya entró. Componerla con una variable de
+    // entorno daría un enlace del dominio equivocado en cuanto un cliente use
+    // el suyo — y el fallo lo descubriría el comprador, no nosotros.
+    const base = origen !== '' ? origen : '';
+    return { ok: `${base}/seguimiento/${token}` };
+  } catch (error) {
+    return traducir(error);
+  }
+}
+
+/**
  * Liquida el efectivo que trae el repartidor contra una sesión de caja
  * (RN-DLV-02).
  *

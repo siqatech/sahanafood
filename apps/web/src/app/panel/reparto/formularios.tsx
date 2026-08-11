@@ -7,6 +7,7 @@ import {
   crearEnvio,
   asignar,
   liquidar,
+  enlaceDeSeguimiento,
   type EstadoReparto,
 } from './acciones';
 
@@ -177,6 +178,50 @@ export function FormularioAsignacion({
         </button>
       </form>
       <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * «Enlace para el cliente».
+ *
+ * El resultado se enseña en un campo de solo lectura y no como texto suelto:
+ * un enlace de 60 caracteres se selecciona mal con el dedo, y quien atiende el
+ * teléfono lo necesita en el portapapeles en un toque, no en tres intentos.
+ */
+export function BotonSeguimiento({ shipmentId }: { shipmentId: string }) {
+  const [estado, accion, pendiente] = useActionState<EstadoReparto, FormData>(
+    enlaceDeSeguimiento,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="shipmentId" value={shipmentId} />
+        {/* El origen sale del navegador porque el panel de cada cliente vive en
+            SU dominio: componerlo en el servidor daría un enlace del dominio de
+            otro. Sin JavaScript se queda vacío y la acción devuelve la ruta
+            relativa, que sigue sirviendo. */}
+        <input
+          type="hidden"
+          name="origen"
+          value={typeof window === 'undefined' ? '' : window.location.origin}
+        />
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Enlace para el cliente'}
+        </button>
+      </form>
+      {estado.ok ? (
+        <input
+          className="enlace-copiable"
+          type="text"
+          readOnly
+          value={estado.ok}
+          aria-label="Enlace de seguimiento"
+          onFocus={(e) => e.currentTarget.select()}
+        />
+      ) : null}
+      {estado.error ? <p className="panel__error">{estado.error}</p> : null}
     </>
   );
 }

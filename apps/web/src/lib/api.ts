@@ -228,6 +228,14 @@ export const shop = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  /**
+   * Estado del envío por su token público.
+   *
+   * No cuelga de `/shop` porque no es de la tienda: es del módulo de reparto, y
+   * el token lo resuelve él sin saber de qué dominio se abre.
+   */
+  seguimiento: (token: string): Promise<Seguimiento> =>
+    call<Seguimiento>(`/tracking/${token}`),
   applyCoupon: (token: string, code: string): Promise<Cart> =>
     call<Cart>(`/shop/carts/${token}/coupon`, {
       method: 'POST',
@@ -252,6 +260,22 @@ export const shop = {
       body: JSON.stringify({ payment }),
     }),
 };
+
+/**
+ * Lo que ve quien abre un enlace de seguimiento.
+ *
+ * Deliberadamente pobre: sin dirección, sin teléfonos, sin importe y sin el
+ * detalle del pedido. El enlace se reenvía por WhatsApp y acaba en capturas de
+ * pantalla, así que cada campo de más es un dato personal publicado.
+ */
+export interface Seguimiento {
+  status: string;
+  orderStatus: string;
+  etaAt: string | null;
+  /** Nombre de PILA. Ni apellido, ni teléfono, ni matrícula. */
+  courierFirstName: string | null;
+  brandName: string;
+}
 
 export interface CheckoutResult {
   orderId: string;

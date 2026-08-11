@@ -12,6 +12,7 @@ import {
   FormularioEnvio,
   FormularioAsignacion,
   BotonLiquidar,
+  BotonSeguimiento,
 } from './formularios';
 
 /**
@@ -217,6 +218,10 @@ export default async function RepartoPage({
             enCurso.map((e) => (
               <article key={e.id} className="ficha">
                 <Envio e={e} />
+                {/* El enlace se ofrece cuando el pedido ya va en camino, que es
+                    cuando el seguimiento dice algo. Emitirlo antes daría una
+                    página que solo pone «asignado» durante media hora. */}
+                <BotonSeguimiento shipmentId={e.id} />
               </article>
             ))
           )}

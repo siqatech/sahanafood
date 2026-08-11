@@ -725,6 +725,50 @@ test.describe('Panel de gestión en navegador', () => {
     ).toHaveCount(0);
   });
 
+  test('EL ENLACE DE SEGUIMIENTO se emite en despacho y ABRE una página', async ({
+    page,
+  }) => {
+    // `POST /delivery/shipments/:id/tracking-link` existía desde T5.16 y no lo
+    // llamaba nadie: se emitía un token que ninguna pantalla componía y que
+    // ninguna página sabía abrir. El enlace que se le mandaba al cliente era una
+    // URL rota, y eso solo se descubre abriéndola — que es lo que hace esta
+    // prueba y no puede hacer ninguna de la API.
+    await entrar(page);
+    await page.goto('/panel/reparto');
+
+    const enCalle = page
+      .locator('.torre__columna')
+      .filter({ hasText: 'En la calle' });
+    const envio = enCalle.locator('article.ficha').first();
+    await envio
+      .getByRole('button', { name: /enlace para el cliente/i })
+      .click();
+
+    const campo = envio.getByLabel('Enlace de seguimiento');
+    await expect(campo).toBeVisible();
+    const enlace = await campo.inputValue();
+    expect(enlace).toContain('/seguimiento/');
+
+    // Y ahora lo que importa: se abre y dice algo. Sin sesión, porque quien lo
+    // recibe no tiene cuenta — el token público es toda la credencial.
+    const contexto = await page.context().browser()!.newContext();
+    const cliente = await contexto.newPage();
+    try {
+      await cliente.goto(enlace);
+      await expect(cliente.getByLabel('Estado del pedido')).toBeVisible();
+      await expect(cliente.getByText('En camino')).toBeVisible();
+
+      // Y NO enseña lo que el enlace no debe llevar: se reenvía por WhatsApp y
+      // acaba en capturas. Ni dirección, ni teléfono, ni importe.
+      const texto = (await cliente.locator('body').innerText()).toLowerCase();
+      expect(texto).not.toContain('av. larco');
+      expect(texto).not.toContain('+51');
+      expect(texto).not.toContain('s/');
+    } finally {
+      await contexto.close();
+    }
+  });
+
   test('UN CANAL SE CIERRA Y SE REABRE desde la torre, con su motivo', async ({
     page,
   }) => {

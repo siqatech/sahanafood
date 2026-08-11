@@ -135,11 +135,20 @@ tao369 lo pregunta al entrar. Nosotros lo deducimos al escribir la dirección, y
 en el checkout: quien quería recoger llena una dirección para nada, y quien está
 fuera de zona se entera al final.
 
-### 4.4 Estado del pedido para el cliente
+### 4.4 Estado del pedido para el cliente — **a medias**
 
-Existe `/seguimiento/:token` pero no se enseña al terminar la compra ni llega por
-WhatsApp con un enlace. «¿Y ahora qué?» es la pregunta del minuto siguiente a
-pagar.
+Ya existe la página: `/seguimiento/:token`, con la marca del cliente, los cuatro
+pasos del envío y la hora estimada. Antes **no existía**: el panel emitía un
+token desde T5.16 que ninguna pantalla componía y ninguna página sabía abrir —
+el enlace que se le mandaba al cliente era una URL rota, y eso no lo detecta
+ninguna prueba de API porque la API contestaba perfectamente.
+
+El enlace se emite desde la mesa de despacho, en los envíos que ya van en
+camino, y se copia. Sigue faltando que **salga solo por WhatsApp** al recoger el
+pedido: la plantilla `seguimiento` existe en conversaciones y hoy hay que
+pegarla a mano. Y falta el enlace en `/gracias`, que no se puede dar todavía
+porque el envío aún no existe cuando el comprador termina de pagar (PA-08: la
+spec 09 no fija cuándo nace el envío).
 
 ### 4.5 Guía del panel
 

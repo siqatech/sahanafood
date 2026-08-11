@@ -1218,6 +1218,20 @@ export const panel = {
       body: JSON.stringify({ courierId }),
     }),
 
+  /**
+   * Emite el enlace de seguimiento de un envío.
+   *
+   * La API existe desde T5.16 y **no la llamaba nadie**: se emitía un token que
+   * ninguna pantalla componía en una URL y que ninguna página sabía abrir. El
+   * seguimiento del pedido —lo que responde a «¿dónde está mi comida?», la
+   * pregunta del minuto siguiente a pagar— estaba entero y era inalcanzable
+   * para cualquier persona.
+   */
+  enlaceDeSeguimiento: (id: string): Promise<{ token: string }> =>
+    llamar<{ token: string }>(`/delivery/shipments/${id}/tracking-link`, {
+      method: 'POST',
+    }),
+
   crearRepartidor: (input: {
     locationId: string;
     fullName: string;
