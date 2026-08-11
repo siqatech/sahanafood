@@ -13,17 +13,13 @@ COPY apps/print-agent/package.json apps/print-agent/
 COPY packages/domain/package.json packages/domain/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/ai-prompts/package.json packages/ai-prompts/
-# Certificado de una CA corporativa, OPCIONAL.
+# Certificado de una CA corporativa, OPCIONAL. Ver la explicación completa en
+# `Dockerfile.api`: va como ARG y no como secreto de BuildKit porque el
+# constructor de Railway solo admite `--mount=type=cache`.
 #
-# Muchas redes de empresa terminan el TLS en un proxy con su propia CA, y sin
-# ella `pnpm install` falla con `SELF_SIGNED_CERT_IN_CHAIN`. Va como SECRETO de
-# BuildKit y no como `COPY`: así no queda en ninguna capa de la imagen ni en el
-# historial. Si no se pasa, el archivo llega vacío y no se toca nada — nunca se
-# desactiva la verificación.
-#
-#   docker build --secret id=ca_bundle,src=/ruta/ca.crt ...
-RUN --mount=type=secret,id=ca_bundle,target=/tmp/ca-bundle.crt \
-  sh -c 'if [ -s /tmp/ca-bundle.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/ca-bundle.crt; fi; pnpm install --frozen-lockfile --ignore-scripts'
+#   docker build --build-arg CA_BUNDLE_B64="$(base64 -w0 /ruta/ca.crt)" ...
+ARG CA_BUNDLE_B64=""
+RUN sh -c 'if [ -n "$CA_BUNDLE_B64" ]; then echo "$CA_BUNDLE_B64" | base64 -d > /tmp/ca-bundle.crt; export NODE_EXTRA_CA_CERTS=/tmp/ca-bundle.crt; fi; pnpm install --frozen-lockfile --ignore-scripts'
 
 FROM deps AS build
 WORKDIR /app
