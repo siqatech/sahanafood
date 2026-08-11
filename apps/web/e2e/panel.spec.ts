@@ -359,7 +359,10 @@ test.describe('Panel de gestión en navegador', () => {
 
     await expect(page.getByText(/no sale al cliente/i).first()).toBeVisible();
     await page.reload();
-    await expect(page.locator('.burbuja--nota')).toContainText(
+    // `.first()` porque la prueba DEJA la nota puesta: en una segunda pasada
+    // sobre la misma semilla hay dos y el modo estricto de Playwright falla —
+    // un fallo que no dice nada del panel y que solo aparece la segunda vez.
+    await expect(page.locator('.burbuja--nota').first()).toContainText(
       'Cliente habitual',
     );
   });

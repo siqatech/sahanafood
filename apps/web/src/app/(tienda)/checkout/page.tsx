@@ -37,6 +37,19 @@ export default async function CheckoutPage() {
     );
   }
 
+  // Los medios los declara el negocio y los resuelve el servidor. Un fallo aquí
+  // no puede tumbar el checkout: sin respuesta se cobra a la entrega, que es lo
+  // que siempre funciona.
+  let medios: string[] = [];
+  let contraEntrega = true;
+  try {
+    const ctx = await shop.context();
+    medios = ctx.payment.methods;
+    contraEntrega = ctx.payment.onDelivery;
+  } catch {
+    // Se queda en contra entrega.
+  }
+
   const esRecojo = carrito.fulfillment === 'pickup';
   // Se pregunta al SERVIDOR si falta la dirección, en vez de deducirlo de que
   // haya líneas. La versión anterior daba `true` a cualquier carrito con
@@ -62,6 +75,8 @@ export default async function CheckoutPage() {
       <CheckoutForm
         conDireccion={tieneDireccion}
         total={formatDecimal(carrito.total)}
+        medios={medios}
+        contraEntrega={contraEntrega}
       />
 
       <div className="totales">

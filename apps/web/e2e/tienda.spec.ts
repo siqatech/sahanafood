@@ -300,6 +300,67 @@ test.describe('Tienda web en navegador', () => {
     }
   });
 
+  test('LOS MEDIOS DE PAGO son los del negocio, y las carteras las filtra el navegador', async ({
+    page,
+  }) => {
+    // La semilla conecta Culqi con tarjeta, Yape y las dos carteras. Sin este
+    // paso el checkout enseñaba SIEMPRE lo mismo —contra entrega y nada más—
+    // aunque el negocio tuviera pasarela: la tienda nunca leía `payment` del
+    // contexto ni mandaba el medio elegido.
+    await agregarAlCarrito(page);
+    await page.goto('/checkout');
+
+    const medios = page.locator('.medios');
+    await expect(medios).toContainText('Tarjeta');
+    await expect(medios).toContainText('Yape');
+
+    // Y aquí está lo que solo se puede comprobar en un navegador de verdad:
+    // Chromium de escritorio NO tiene `ApplePaySession`, así que Apple Pay no
+    // se anuncia. Es el caso que ocurriría siempre en Android, y el motivo de
+    // que este filtro exista.
+    await expect(medios).not.toContainText('Apple Pay');
+    // Google Pay sí: Chromium trae `PaymentRequest`.
+    await expect(medios).toContainText('Google Pay');
+
+    // Contra entrega sigue siendo lo marcado por defecto. Cambiar el medio por
+    // el que menos usa la gente en Perú sería una decisión de producto tomada
+    // de refilón por el orden de dos radios.
+    await expect(page.locator('input[value="on_delivery"]')).toBeChecked();
+  });
+
+  test('PAGAR AHORA lleva a la pasarela, no a la página de gracias', async ({
+    page,
+  }) => {
+    await agregarAlCarrito(page);
+    await page.goto('/checkout');
+
+    await page.getByLabel('Dirección').fill('Av. Larco 456, Miraflores');
+    await page.getByRole('button', { name: /usar esta dirección/i }).click();
+    await page.getByLabel('Nombre').fill('Rosa Quispe');
+    await page.getByLabel('Teléfono').fill('+51987650002');
+
+    // La pasarela de la semilla es un simulador y su URL no resuelve. Se
+    // intercepta para poder afirmar ADÓNDE se manda al comprador sin depender
+    // de que exista un servidor de Culqi: lo que se prueba es nuestra
+    // redirección, no la página de ellos.
+    await page.route('**/sandbox.culqi.test/**', (ruta) =>
+      ruta.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<h1>Checkout de la pasarela</h1>',
+      }),
+    );
+
+    await page.locator('input[value="online"]').check();
+    await page.getByRole('button', { name: /confirmar pedido/i }).click();
+
+    await expect(page).toHaveURL(/sandbox\.culqi\.test\/checkout\//);
+    // Y NO a /gracias: un pedido en línea que acaba en «¡gracias!» sin haber
+    // pasado por la pasarela es un pedido que nadie ha pagado y que el negocio
+    // va a preparar creyendo que sí.
+    await expect(page).not.toHaveURL(/gracias/);
+  });
+
   test('un dominio SIN tienda no enseña la carta de otra', async ({
     browser,
   }) => {

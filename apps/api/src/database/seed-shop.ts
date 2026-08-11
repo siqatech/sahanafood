@@ -299,6 +299,11 @@ async function main(): Promise<void> {
   await pagos.createConnection(tenant.tenantId, {
     provider: CULQI_PROVIDER,
     webhookSecret: 'secreto-de-demo-para-la-firma',
+    // Los medios que Culqi cobra en su checkout alojado. Sin declararlos la
+    // conexión se queda en `['card']` por defecto y el checkout de la tienda
+    // enseña solo «Tarjeta»: la demo no llegaría a mostrar ni Yape ni las
+    // carteras, que es justo lo que hay que poder ver funcionando.
+    methods: ['card', 'yape', 'apple_pay', 'google_pay'],
   });
   const ventaPagada = await ordering.submit(tenant.tenantId, {
     brandId,

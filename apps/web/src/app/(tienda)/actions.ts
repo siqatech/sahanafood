@@ -173,7 +173,13 @@ export async function confirmOrder(
   if (phone.length < 6)
     return { error: 'Necesitamos un teléfono de contacto.' };
 
+  // Solo dos valores, y el que no reconozcamos cae en contra entrega. Un valor
+  // raro aquí no puede acabar en «pagado»: lo peor que puede pasar es que el
+  // repartidor cobre.
+  const pago = form.get('payment') === 'online' ? 'online' : 'on_delivery';
+
   let orderId: string;
+  let irAPasarela: string | null = null;
   try {
     const token = await ensureCartToken();
     await shop.setCustomer(token, {
@@ -185,8 +191,9 @@ export async function confirmOrder(
         ? { marketingConsentText: TEXTO_CONSENTIMIENTO }
         : {}),
     });
-    const pedido = await shop.checkout(token);
+    const pedido = await shop.checkout(token, pago);
     orderId = pedido.orderId;
+    irAPasarela = pedido.payment?.checkoutUrl ?? null;
     // El carrito ya es un pedido: la cookie apunta a algo que no se puede
     // seguir editando, así que se suelta. Si no, volver a la tienda enseñaría
     // un carrito muerto.
@@ -196,5 +203,16 @@ export async function confirmOrder(
   }
   // El redirect va FUERA del try: Next lo implementa lanzando, y atraparlo
   // convertiría una compra correcta en un mensaje de error.
+  //
+  // Con pago en línea se va a la PÁGINA DE LA PASARELA, y ahí es donde salen
+  // las carteras: Apple Pay y Google Pay no son medios que cobremos nosotros
+  // —son un token de red que la pasarela desencripta—, así que quien los pinta
+  // es su checkout, no el nuestro. Es además lo que evita que un solo dato de
+  // tarjeta pase por nuestro servidor.
+  //
+  // Si la pasarela no devuelve página, el pedido está hecho igual y el cobro se
+  // resuelve por el enlace de pago: llevar al comprador a una URL vacía sería
+  // peor que enseñarle su confirmación.
+  if (irAPasarela) redirect(irAPasarela);
   redirect(`/gracias?pedido=${orderId}`);
 }

@@ -797,3 +797,53 @@ main.con-barra {
   font-size: 0.85rem;
   margin: 0;
 }
+
+/* Medios de pago.
+
+   `fieldset` sin borde ni relleno del navegador: se necesita el elemento por lo
+   que hace —agrupa los radios y le da nombre al grupo para un lector de
+   pantalla—, no por cómo lo pinta Chrome por defecto. */
+.medios {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--espacio);
+}
+
+.medios legend {
+  padding: 0;
+}
+
+.medios h2 {
+  margin: 0 0 8px;
+}
+
+.medio {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radio);
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+/* El recuadro entero se marca cuando el radio está seleccionado: en un móvil,
+   un punto de 20 px es poca señal de cuál de las dos opciones está elegida. */
+.medio:has(input:checked) {
+  border-color: var(--color-marca);
+  box-shadow: inset 0 0 0 1px var(--color-marca);
+}
+
+.medio input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.medio__texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

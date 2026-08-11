@@ -3,6 +3,7 @@
 import { useActionState } from 'react';
 import { setAddress, confirmOrder, type ActionState } from '../actions';
 import { TEXTO_CONSENTIMIENTO } from '../../../lib/consent';
+import { MediosDePago } from './medios-de-pago';
 
 /**
  * Dirección y datos del cliente.
@@ -16,9 +17,14 @@ import { TEXTO_CONSENTIMIENTO } from '../../../lib/consent';
 export function CheckoutForm({
   conDireccion,
   total,
+  medios,
+  contraEntrega,
 }: {
   conDireccion: boolean;
   total: string;
+  /** Medios en línea que acepta este negocio. Vacío = solo contra entrega. */
+  medios: string[];
+  contraEntrega: boolean;
 }) {
   const [estadoDir, accionDir, dirPendiente] = useActionState<
     ActionState,
@@ -102,6 +108,12 @@ export function CheckoutForm({
           />
           <label htmlFor="marketingConsent">{TEXTO_CONSENTIMIENTO}</label>
         </div>
+
+        {/* Va DENTRO de este formulario: el medio se envía con el pedido, en
+            el mismo POST. En uno aparte habría que guardarlo en algún sitio y
+            volver a leerlo, con un estado más que puede quedar desincronizado
+            de lo que el comprador acaba de marcar. */}
+        <MediosDePago metodos={medios} contraEntrega={contraEntrega} />
 
         {estado.error ? (
           <p className="aviso" role="alert">

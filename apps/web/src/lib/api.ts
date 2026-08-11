@@ -53,6 +53,19 @@ export interface ShopContext {
     colorHover: string | null;
     colorTexto: string | null;
   };
+  /**
+   * Cómo se puede pagar en esta tienda, según lo que el negocio tenga conectado.
+   *
+   * La tienda **no decide** esto ni lo deduce: enseñar «pagar ahora» en un
+   * negocio sin pasarela manda al comprador a un error, y enseñar Apple Pay
+   * donde la pasarela no lo soporta es un botón que no cobra.
+   */
+  payment: {
+    online: boolean;
+    /** `card`, `yape`, `plin`, `apple_pay`, `google_pay`. */
+    methods: string[];
+    onDelivery: boolean;
+  };
 }
 
 export interface CatalogProduct {
@@ -220,8 +233,33 @@ export const shop = {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
-  checkout: (token: string): Promise<{ orderId: string; total: string }> =>
-    call<{ orderId: string; total: string }>(`/shop/carts/${token}/checkout`, {
+  /**
+   * Cierra el pedido.
+   *
+   * `payment` viaja porque la API lo acepta desde que existe el módulo de
+   * pagos y la tienda **nunca se lo mandaba**: todo pedido salía como contra
+   * entrega, incluso en un negocio con pasarela conectada. Con pago en línea la
+   * respuesta trae `payment.checkoutUrl`, que es adonde hay que llevar al
+   * comprador; sin él, el pedido queda cobrado a la entrega y no hay nada más
+   * que hacer.
+   */
+  checkout: (
+    token: string,
+    payment: 'online' | 'on_delivery' = 'on_delivery',
+  ): Promise<CheckoutResult> =>
+    call<CheckoutResult>(`/shop/carts/${token}/checkout`, {
       method: 'POST',
+      body: JSON.stringify({ payment }),
     }),
 };
+
+export interface CheckoutResult {
+  orderId: string;
+  total: string;
+  /** Solo con pago en línea. */
+  payment?: {
+    reference: string;
+    checkoutUrl: string | null;
+    expiresAt: string;
+  };
+}

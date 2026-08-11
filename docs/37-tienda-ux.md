@@ -94,6 +94,34 @@ de panel. Sin la pantalla sería otro dato que nadie puede cambiar.
 
 Pregunta abierta **PA-12**.
 
+### 4.1c Cómo se paga — **HECHO**
+
+El comprador elige entre **pagar ahora** y **pagar al recibir**, y lo que puede
+elegir sale de la pasarela que el dueño conectó en `/panel/pagos`. Sin conexión
+activa no hay elección: se dice «pagas al recibir» y punto, en vez de callarlo —
+saber cómo se paga antes de dar el teléfono es parte de decidir si se pide.
+
+Contra entrega sigue siendo lo marcado por defecto. Es como paga la mayoría en
+Perú y no es una decisión que deba tomarse de refilón por el orden de dos
+`radio`.
+
+**Las carteras las filtra el navegador.** Apple Pay solo se anuncia si
+`ApplePaySession.canMakePayments()` dice que sí, y Google Pay si existe
+`PaymentRequest`. Es una comprobación necesaria y no suficiente —la palabra
+final la tiene la pasarela—, pero elimina el caso que ocurriría siempre:
+anunciar Apple Pay en el Chrome de un Android. Por eso ese trozo es el único
+componente de cliente del checkout: en el servidor no hay navegador al que
+preguntar.
+
+Quien elige pagar ahora **sale a la página de la pasarela**. No es un atajo: una
+cartera no es un medio que cobremos nosotros —es un token de red que la pasarela
+desencripta—, así que quien pinta esos botones es su checkout. De paso, ni un
+dato de tarjeta pasa por nuestro servidor.
+
+Falta el camino de vuelta: hoy la confirmación de cobro llega por el webhook y
+el comprador que abandona la pasarela se queda con un pedido sin pagar y sin
+enlace para retomarlo. Eso es §4.4.
+
 ### 4.2 Horarios y locales en la tienda
 
 `org_locations` y `org_schedules` existen y **la API pública no los expone**, así
