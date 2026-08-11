@@ -246,6 +246,27 @@ suite('Pagos online', () => {
 
   // ------------------------------------------------- El gate de la tarea
 
+  it('LA CONEXIÓN SE PUEDE VOLVER A VER, con su URL de aviso', async () => {
+    // `createConnection` devuelve el token del webhook UNA sola vez. Quien
+    // cerrara esa pantalla sin copiarlo perdía la dirección que hay que
+    // configurar en el panel de la pasarela — y sin ella no llegan las
+    // confirmaciones: los pedidos se quedan «pendiente de pago» para siempre,
+    // sin ninguna pista de por qué.
+    const lista = await payments.listConnections(tenantA);
+    const culqi = lista.find((c) => c.provider === CULQI_PROVIDER)!;
+
+    // La ruta que hay que pegar en el panel de la pasarela, reconstruida a
+    // partir del token que ya no se devuelve por ningún otro sitio.
+    expect(culqi.callbackPath).toContain(tokenCulqi);
+    expect(culqi.callbackPath).toContain('/payments/callbacks/');
+    // Por defecto, solo tarjeta: una cartera no se enciende sola.
+    expect(culqi.methods).toEqual(['card']);
+
+    // Las credenciales NO salen: se guardan cifradas y no hay ningún motivo
+    // para volver a leerlas. Si se pierden, se rota la clave en la pasarela.
+    expect(JSON.stringify(lista)).not.toContain(SECRETO_CULQI);
+  });
+
   it('EL WEBHOOK VERIFICADO ES LA ÚNICA VÍA DE CONFIRMACIÓN (RN-PAY-01)', async () => {
     const { orderId, reference, amount } = await crearIntencion();
     expect(await estadoPedido(orderId)).not.toBe('accepted');

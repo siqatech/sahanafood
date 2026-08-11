@@ -32,6 +32,17 @@ export class PanelApiError extends Error {
   }
 }
 
+export interface PasarelaDelPanel {
+  id: string;
+  provider: string;
+  brandId: string | null;
+  methods: string[];
+  status: string;
+  /** Ruta que hay que configurar en el panel de la pasarela. */
+  callbackPath: string;
+  createdAt: string;
+}
+
 export interface AspectoDeTienda {
   displayName: string | null;
   tagline: string | null;
@@ -958,6 +969,21 @@ export const panel = {
 
   dominios: (): Promise<DominioDelPanel[]> =>
     llamar<DominioDelPanel[]>('/storefront/domains'),
+
+  pasarelas: (): Promise<PasarelaDelPanel[]> =>
+    llamar<PasarelaDelPanel[]>('/payments/connections'),
+
+  conectarPasarela: (input: {
+    provider: string;
+    brandId?: string;
+    webhookSecret: string;
+    apiKey?: string;
+    methods?: string[];
+  }): Promise<{ id: string; webhookToken: string; callbackPath: string }> =>
+    llamar<{ id: string; webhookToken: string; callbackPath: string }>(
+      '/payments/connections',
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
 
   aspecto: (brandId: string): Promise<AspectoDeTienda> =>
     llamar<AspectoDeTienda>(`/storefront/branding/${brandId}`),

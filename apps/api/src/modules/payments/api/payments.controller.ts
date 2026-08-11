@@ -44,6 +44,12 @@ const connectionSchema = z.object({
   brandId: z.string().uuid().optional(),
   webhookSecret: z.string().min(16),
   apiKey: z.string().min(1).optional(),
+  // Los medios que acepta esta conexión. Las carteras solo funcionan si la
+  // pasarela las soporta y el negocio tiene las cuentas: aquí solo se declara
+  // qué se le ofrece al cliente.
+  methods: z
+    .array(z.enum(['card', 'yape', 'plin', 'apple_pay', 'google_pay']))
+    .optional(),
 });
 
 const intentSchema = z.object({
@@ -80,6 +86,19 @@ const refundSchema = z.object({
 @Controller({ path: 'payments', version: '1' })
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
+
+  /**
+   * Las pasarelas conectadas, con la URL que hay que configurar en su panel.
+   *
+   * Con `payments.read` y no con `payments.manage`: quien atiende necesita
+   * poder comprobar que los avisos están bien apuntados sin poder cambiar las
+   * credenciales.
+   */
+  @Get('connections')
+  @RequirePermission('payments.read')
+  async listConnections(@Req() req: AuthenticatedRequest): Promise<unknown> {
+    return this.payments.listConnections(req.auth!.tid);
+  }
 
   @Post('connections')
   @RequirePermission('payments.manage')

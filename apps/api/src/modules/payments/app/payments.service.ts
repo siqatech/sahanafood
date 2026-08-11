@@ -202,6 +202,55 @@ export class PaymentsService {
 
   // ------------------------------------------------------------- Conexiones
 
+  /**
+   * Las pasarelas conectadas, con su URL de aviso.
+   *
+   * Faltaba, y sin ella la conexión era de un solo uso: `createConnection`
+   * devuelve el token del webhook UNA vez, y quien cerrara esa pantalla sin
+   * copiarlo perdía la URL que hay que configurar en el panel de la pasarela.
+   * Sin esa URL no llegan las confirmaciones de pago, y eso se manifiesta como
+   * «los pedidos se quedan en pendiente» sin ninguna pista.
+   *
+   * Las CREDENCIALES no salen: se guardan cifradas y no hay ningún motivo para
+   * volver a leerlas: si se pierden, se rota la clave en la pasarela y se
+   * vuelve a conectar.
+   */
+  async listConnections(tenantId: string): Promise<
+    Array<{
+      id: string;
+      provider: string;
+      brandId: string | null;
+      methods: string[];
+      status: string;
+      callbackPath: string;
+      createdAt: string;
+    }>
+  > {
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{
+        id: string;
+        provider: string;
+        brand_id: string | null;
+        methods: string[];
+        status: string;
+        webhook_token: string;
+        created_at: string;
+      }>(
+        `SELECT id, provider, brand_id, methods, status, webhook_token, created_at
+           FROM pay_connections ORDER BY created_at DESC`,
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        brandId: r.brand_id,
+        methods: r.methods,
+        status: r.status,
+        callbackPath: `/api/v1/payments/callbacks/${r.provider}/${r.webhook_token}`,
+        createdAt: r.created_at,
+      }));
+    });
+  }
+
   async createConnection(
     tenantId: string,
     input: {
@@ -209,6 +258,8 @@ export class PaymentsService {
       brandId?: string | undefined;
       webhookSecret: string;
       apiKey?: string | undefined;
+      /** Medios que acepta esta conexión. Vacío = solo tarjeta. */
+      methods?: string[] | undefined;
       actorId?: string | undefined;
     },
   ): Promise<{ id: string; webhookToken: string; callbackPath: string }> {
@@ -236,14 +287,16 @@ export class PaymentsService {
     return withTenant(this.pool, tenantId, async (ctx) => {
       const { rows } = await ctx.client.query<{ id: string }>(
         `INSERT INTO pay_connections
-           (tenant_id, provider, brand_id, webhook_token, credentials)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+           (tenant_id, provider, brand_id, webhook_token, credentials, methods)
+         VALUES ($1, $2, $3, $4, $5, COALESCE($6, ARRAY['card']::text[]))
+         RETURNING id`,
         [
           tenantId,
           input.provider,
           input.brandId ?? null,
           webhookToken,
           this.cipher.encryptAll(tenantId, credenciales),
+          input.methods?.length ? input.methods : null,
         ],
       );
 
