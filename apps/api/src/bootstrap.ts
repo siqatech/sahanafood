@@ -1,6 +1,7 @@
 import { VersioningType, type INestApplication } from '@nestjs/common';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { json, raw, urlencoded } from 'express';
+import { StorefrontService } from './modules/storefront/index.js';
 import { ProblemDetailsFilter } from './common/problem-details.filter.js';
 
 /**
@@ -80,8 +81,52 @@ function configureBodyParsing(app: INestApplication): void {
   app.use(urlencoded({ extended: true, limit: '1mb' }));
 }
 
+/**
+ * CORS para las tiendas de terceros (ADR-0020).
+ *
+ * Un cliente puede montar su web en WordPress o en React y pedir contra nuestra
+ * API. Sin esto, el navegador se lo bloquea antes de salir y la integración es
+ * imposible desde el navegador — que es donde vive el código de una web.
+ *
+ * La lista de orígenes sale de los DOMINIOS REGISTRADOS Y VERIFICADOS de los
+ * clientes (`sto_domains`), y se consulta en cada comprobación. Nunca `*`: un
+ * comodín convertiría el catálogo y los precios de cada cliente en algo que
+ * cualquier web puede montar en su página.
+ *
+ * Se permite también sin origen (`undefined`), que es lo que mandan las
+ * llamadas de servidor a servidor y las herramientas de línea de comandos. No
+ * es un agujero: CORS protege al NAVEGADOR de que una página lea respuestas de
+ * otro sitio, y una petición sin origen no viene de una página.
+ */
+function configureCors(app: INestApplication): void {
+  const storefront = app.get(StorefrontService, { strict: false });
+
+  app.enableCors({
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, permitido?: boolean) => void,
+    ) => {
+      if (!origin) return callback(null, true);
+      storefront
+        .allowedOrigins()
+        .then((permitidos) => callback(null, permitidos.includes(origin)))
+        // Un fallo al consultar no puede convertirse en «permitido a todos».
+        .catch(() => callback(null, false));
+    },
+    // `x-sahana-key` es la clave publicable; `idempotency-key` la que evita que
+    // un reintento del cliente duplique un pedido.
+    allowedHeaders: ['content-type', 'x-sahana-key', 'idempotency-key'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    // Sin cookies: la tienda de un tercero se identifica con su clave y con el
+    // token de su carrito, no con una sesión nuestra.
+    credentials: false,
+    maxAge: 600,
+  });
+}
+
 export function configureApp(app: INestApplication): void {
   configureBodyParsing(app);
+  configureCors(app);
   app.setGlobalPrefix('api', { exclude: ROUTES_WITHOUT_PREFIX });
   app.enableVersioning({
     type: VersioningType.URI,

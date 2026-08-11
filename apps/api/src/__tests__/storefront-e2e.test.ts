@@ -755,6 +755,109 @@ suite('Tienda web', () => {
     ).rejects.toThrow(/letras y números/);
   });
 
+  it('UNA CLAVE PUBLICABLE sirve la tienda desde una web de tercero', async () => {
+    // ADR-0020: el cliente puede montar su web en WordPress o en React y pedir
+    // contra nuestra API. La cabecera `Host` no le vale desde un navegador —el
+    // host de la petición es el nuestro—, así que la marca se dice con la
+    // clave.
+    const emitida = await storefront.issuePublishableKey(tenantA, {
+      brandId: brandA,
+      label: 'WordPress del cliente',
+    });
+    expect(emitida.key).toMatch(/^pk_[0-9a-f]{32}$/);
+
+    // Sin Host de tienda, solo con la clave: el catálogo sale igual.
+    const carta = await http()
+      .get('/api/v1/shop/catalog')
+      .set('host', 'api.sahana.food')
+      .set('x-sahana-key', emitida.key)
+      .expect(200);
+    expect(carta.body.brandId).toBe(brandA);
+    expect(carta.body.products.length).toBeGreaterThan(0);
+
+    // Y se puede pedir de punta a punta.
+    const carrito = await http()
+      .post('/api/v1/shop/carts')
+      .set('host', 'api.sahana.food')
+      .set('x-sahana-key', emitida.key)
+      .expect(201);
+    expect(carrito.body.token).toBeTruthy();
+
+    await http()
+      .post(`/api/v1/shop/carts/${carrito.body.token}/lines`)
+      .send({ productId: catA.comboId, quantity: 1 })
+      .expect(201);
+  });
+
+  it('LA CLAVE DE UN TENANT no sirve el catálogo del otro', async () => {
+    // La comprobación de aislamiento de esta vía: una clave identifica UNA
+    // marca, y no hay forma de pedirle el catálogo de otra.
+    const deA = await storefront.issuePublishableKey(tenantA, {
+      brandId: brandA,
+    });
+    const carta = await http()
+      .get('/api/v1/shop/catalog')
+      // El host es el de la tienda de B: si el host mandara sobre la clave,
+      // aquí saldría el catálogo de B.
+      .set('host', HOST_B)
+      .set('x-sahana-key', deA.key)
+      .expect(200);
+    expect(carta.body.brandId).toBe(brandA);
+    expect(carta.body.brandId).not.toBe(brandB);
+  });
+
+  it('UNA CLAVE REVOCADA deja de abrir nada, y no dice que existió', async () => {
+    const clave = await storefront.issuePublishableKey(tenantA, {
+      brandId: brandA,
+    });
+    await storefront.revokePublishableKey(tenantA, clave.id);
+
+    const r = await http()
+      .get('/api/v1/shop/catalog')
+      .set('host', 'api.sahana.food')
+      .set('x-sahana-key', clave.key)
+      .expect(404);
+    // El mismo mensaje que una clave inventada: decir «fue revocada» le
+    // confirmaría a quien la encontró que acertó de dónde salía.
+    expect(r.body.detail).toMatch(/no es válida/);
+
+    const inventada = await http()
+      .get('/api/v1/shop/catalog')
+      .set('host', 'api.sahana.food')
+      .set('x-sahana-key', 'pk_0000000000000000000000000000cafe')
+      .expect(404);
+    expect(inventada.body.detail).toBe(r.body.detail);
+  });
+
+  it('BLOQUEANTE: el CORS solo abre a los dominios registrados', async () => {
+    // Es el control que de verdad protege esta API, porque la clave es pública
+    // por diseño. Un `*` aquí convertiría el catálogo y los precios de cada
+    // cliente en algo que cualquier web puede montar en su página.
+    const permitidos = await storefront.allowedOrigins();
+    expect(permitidos).toContain(`https://${HOST_A}`);
+    expect(permitidos).toContain(`https://${HOST_B}`);
+    expect(permitidos).not.toContain('*');
+
+    // Un origen cualquiera NO recibe la cabecera que autoriza al navegador a
+    // leer la respuesta.
+    const ajeno = await http()
+      .get('/api/v1/shop/catalog')
+      .set('host', HOST_A)
+      .set('origin', 'https://competencia.example')
+      .expect(200);
+    expect(ajeno.headers['access-control-allow-origin']).toBeUndefined();
+
+    // El dominio del propio cliente sí.
+    const propio = await http()
+      .get('/api/v1/shop/catalog')
+      .set('host', HOST_A)
+      .set('origin', `https://${HOST_A}`)
+      .expect(200);
+    expect(propio.headers['access-control-allow-origin']).toBe(
+      `https://${HOST_A}`,
+    );
+  });
+
   it('el cupón de un tenant no vale en la tienda del otro', async () => {
     // Mismo código, otro tenant: RLS hace que ni siquiera se vea.
     const carrito = await abrirCarrito(HOST_B);

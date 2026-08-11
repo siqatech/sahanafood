@@ -160,6 +160,51 @@ export class StorefrontAdminController {
     });
   }
 
+  /**
+   * Las claves publicables de la marca, para montar una tienda propia.
+   *
+   * Se devuelven ENTERAS: son públicas por diseño y este es el único sitio
+   * donde el dueño puede volver a verlas para pegarlas en su web.
+   */
+  @Get('keys')
+  @RequirePermission('storefront.manage_domains')
+  async listKeys(@Req() req: AuthenticatedRequest): Promise<unknown> {
+    return this.storefront.listPublishableKeys(req.auth!.tid);
+  }
+
+  @Post('keys')
+  @RequirePermission('storefront.manage_domains')
+  async issueKey(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parse(
+      z.object({
+        brandId: z.string().uuid(),
+        label: z.string().min(1).max(80).optional(),
+      }),
+      body,
+    );
+    return this.storefront.issuePublishableKey(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  @Delete('keys/:id')
+  @RequirePermission('storefront.manage_domains')
+  async revokeKey(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<{ ok: true }> {
+    await this.storefront.revokePublishableKey(
+      req.auth!.tid,
+      id,
+      req.auth!.sub,
+    );
+    return { ok: true };
+  }
+
   @Post('domains/:id/verify')
   @RequirePermission('storefront.manage_domains')
   async verifyDomain(
@@ -205,26 +250,38 @@ export class ShopController {
 
   @Get('context')
   async context(
+    @Headers('x-sahana-key') clave: string,
     @Headers('x-forwarded-host') forwarded: string,
     @Headers('host') host: string,
   ): Promise<StorefrontContext> {
-    return this.storefront.resolveHost(hostDelVisitante(forwarded, host));
+    return this.storefront.resolveStorefront({
+      key: clave,
+      host: hostDelVisitante(forwarded, host),
+    });
   }
 
   @Get('catalog')
   async catalog(
+    @Headers('x-sahana-key') clave: string,
     @Headers('x-forwarded-host') forwarded: string,
     @Headers('host') host: string,
   ): Promise<unknown> {
-    return this.storefront.getPublicCatalog(hostDelVisitante(forwarded, host));
+    return this.storefront.getPublicCatalogFor({
+      key: clave,
+      host: hostDelVisitante(forwarded, host),
+    });
   }
 
   @Post('carts')
   async createCart(
+    @Headers('x-sahana-key') clave: string,
     @Headers('x-forwarded-host') forwarded: string,
     @Headers('host') host: string,
   ): Promise<{ token: string }> {
-    return this.storefront.createCart(hostDelVisitante(forwarded, host));
+    return this.storefront.createCartFor({
+      key: clave,
+      host: hostDelVisitante(forwarded, host),
+    });
   }
 
   @Get('carts/:token')

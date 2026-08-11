@@ -32,6 +32,16 @@ export class PanelApiError extends Error {
   }
 }
 
+export interface ClaveDeTienda {
+  id: string;
+  brandId: string;
+  /** Pública por diseño: va en el HTML de la web del cliente (ADR-0020). */
+  key: string;
+  label: string;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
 export interface PromocionDelPanel {
   id: string;
   brandId: string | null;
@@ -938,6 +948,21 @@ export const panel = {
 
   dominios: (): Promise<DominioDelPanel[]> =>
     llamar<DominioDelPanel[]>('/storefront/domains'),
+
+  clavesDeTienda: (): Promise<ClaveDeTienda[]> =>
+    llamar<ClaveDeTienda[]>('/storefront/keys'),
+
+  emitirClave: (input: {
+    brandId: string;
+    label?: string;
+  }): Promise<ClaveDeTienda & { key: string }> =>
+    llamar<ClaveDeTienda & { key: string }>('/storefront/keys', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  revocarClave: (id: string): Promise<{ ok: true }> =>
+    llamar<{ ok: true }>(`/storefront/keys/${id}`, { method: 'DELETE' }),
 
   promociones: (): Promise<PromocionDelPanel[]> =>
     llamar<PromocionDelPanel[]>('/storefront/coupons'),

@@ -407,17 +407,28 @@ export class StorefrontService {
     if (!fila)
       throw new NotFoundError('No hay ninguna tienda en este dominio.');
 
-    const marca = await withTenant(
-      this.pool,
-      fila.tenant_id,
-      async ({ client }) => {
-        const { rows } = await client.query<{ name: string }>(
-          'SELECT name FROM org_brands WHERE id = $1',
-          [fila.brand_id],
-        );
-        return rows[0];
-      },
-    );
+    return this.contextoDeMarca(fila.tenant_id, fila.brand_id, fila.host);
+  }
+
+  /**
+   * Lo que ve una tienda de una marca, venga por dominio o por clave.
+   *
+   * Está extraído para que las DOS vías devuelvan exactamente lo mismo. Con el
+   * cuerpo duplicado, el día que se añada un campo se añade en una y no en la
+   * otra, y la tienda de un cliente se queda sin él sin que nadie lo note.
+   */
+  private async contextoDeMarca(
+    tenantId: string,
+    brandId: string,
+    host: string,
+  ): Promise<StorefrontContext> {
+    const marca = await withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ name: string }>(
+        'SELECT name FROM org_brands WHERE id = $1',
+        [brandId],
+      );
+      return rows[0];
+    });
     if (!marca)
       throw new NotFoundError('No hay ninguna tienda en este dominio.');
 
@@ -426,7 +437,7 @@ export class StorefrontService {
     // costaría un viaje más justo en la carga que decide si alguien se queda.
     const bienvenida = await withTenant(
       this.pool,
-      fila.tenant_id,
+      tenantId,
       async ({ client }) => {
         const { rows } = await client.query<{
           code: string;
@@ -443,16 +454,16 @@ export class StorefrontService {
               AND (valid_until IS NULL OR valid_until >= now())
               AND (max_uses IS NULL OR used_count < max_uses)
             LIMIT 1`,
-          [fila.brand_id],
+          [brandId],
         );
         return rows[0];
       },
     );
 
     return {
-      brandId: fila.brand_id,
+      brandId,
       brandName: marca.name,
-      host: fila.host,
+      host,
       // Un cupón caducado o agotado NO se anuncia: prometer un descuento que la
       // caja va a rechazar es peor que no ofrecer ninguno. La consulta ya los
       // descarta, y por eso las mismas condiciones que valida `applyCoupon`
@@ -466,6 +477,135 @@ export class StorefrontService {
           }
         : null,
     };
+  }
+
+  // ------------------------------------------------- Claves de integración
+
+  /**
+   * Emite una clave publicable para que un tercero monte su propia tienda.
+   *
+   * Se devuelve entera y se guarda en claro: **es pública por diseño** (ADR-0020),
+   * va en el HTML de la web del cliente. Hashearla impediría enseñársela otra
+   * vez en el panel —que es su único uso— sin proteger nada que no esté ya
+   * publicado.
+   */
+  async issuePublishableKey(
+    tenantId: string,
+    input: {
+      brandId: string;
+      label?: string | undefined;
+      actorId?: string | undefined;
+    },
+  ): Promise<{ id: string; key: string; label: string; brandId: string }> {
+    const key = `pk_${randomBytes(16).toString('hex')}`;
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{ id: string; label: string }>(
+        `INSERT INTO sto_publishable_keys (tenant_id, brand_id, key, label)
+         VALUES ($1,$2,$3,COALESCE($4,'Web del cliente'))
+         RETURNING id, label`,
+        [tenantId, input.brandId, key, input.label ?? null],
+      );
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        action: 'storefront.key_issued',
+        resourceType: 'publishable_key',
+        resourceId: rows[0]!.id,
+        data: { brandId: input.brandId, label: rows[0]!.label },
+      });
+      return {
+        id: rows[0]!.id,
+        key,
+        label: rows[0]!.label,
+        brandId: input.brandId,
+      };
+    });
+  }
+
+  /**
+   * Revoca una clave. No la borra.
+   *
+   * Una clave borrada deja de explicar por qué la web de un cliente dejó de
+   * funcionar de golpe; una revocada, con su fecha, lo cuenta solo.
+   */
+  async revokePublishableKey(
+    tenantId: string,
+    id: string,
+    actorId?: string,
+  ): Promise<void> {
+    await withTenant(this.pool, tenantId, async (ctx) => {
+      const { rowCount } = await ctx.client.query(
+        `UPDATE sto_publishable_keys SET revoked_at = now()
+          WHERE id = $1 AND revoked_at IS NULL`,
+        [id],
+      );
+      if (rowCount === 0) throw new NotFoundError('Esa clave no existe.');
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(actorId !== undefined ? { actorId } : {}),
+        action: 'storefront.key_revoked',
+        resourceType: 'publishable_key',
+        resourceId: id,
+        data: {},
+      });
+    });
+  }
+
+  async listPublishableKeys(tenantId: string): Promise<
+    Array<{
+      id: string;
+      brandId: string;
+      key: string;
+      label: string;
+      createdAt: string;
+      revokedAt: string | null;
+    }>
+  > {
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{
+        id: string;
+        brand_id: string;
+        key: string;
+        label: string;
+        created_at: string;
+        revoked_at: string | null;
+      }>(
+        `SELECT id, brand_id, key, label, created_at, revoked_at
+           FROM sto_publishable_keys
+          ORDER BY revoked_at IS NOT NULL, created_at DESC`,
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        brandId: r.brand_id,
+        key: r.key,
+        label: r.label,
+        createdAt: r.created_at,
+        revokedAt: r.revoked_at,
+      }));
+    });
+  }
+
+  /**
+   * Los orígenes a los que se permite llamar desde un navegador.
+   *
+   * Salen de los dominios que los clientes registraron y verificaron como
+   * suyos: es la misma lista que decide qué host sirve qué marca, así que no
+   * hay un segundo sitio que mantener. **Nunca `*`** — un comodín convierte el
+   * catálogo y los precios de cada cliente en algo que cualquier web puede
+   * montar en su página.
+   *
+   * Se incluyen `https://` y `http://` del mismo host porque un cliente prueba
+   * en local antes de publicar, y no poder probar es la razón por la que la
+   * gente acaba desactivando el CORS entero.
+   */
+  async allowedOrigins(): Promise<string[]> {
+    const hosts = await withPublicToken(this.pool, async ({ client }) => {
+      const { rows } = await client.query<{ host: string }>(
+        `SELECT host FROM sto_domains WHERE status = 'active'`,
+      );
+      return rows.map((r) => r.host);
+    });
+    return hosts.flatMap((h) => [`https://${h}`, `http://${h}`]);
   }
 
   // ---------------------------------------------------------- Promociones
@@ -672,6 +812,72 @@ export class StorefrontService {
   async getPublicCatalog(host: string): Promise<ResolvedCatalog> {
     const { tenantId, brandId } = await this.tenantOfHost(host);
     return this.catalogoDeMarca(tenantId, brandId);
+  }
+
+  /**
+   * De quién es esta petición pública: por CLAVE si la trae, si no por HOST.
+   *
+   * Vive aquí y no en el controlador porque es la regla que decide **qué marca
+   * se sirve**, que es la más delicada de este módulo. Repartida entre la capa
+   * HTTP y el servicio acabaría teniendo dos versiones, y una de ellas sería la
+   * que un día resuelva mal.
+   */
+  private async resolverPeticion(input: {
+    key?: string | undefined;
+    host: string;
+  }): Promise<{ tenantId: string; brandId: string }> {
+    const clave = input.key?.trim();
+    if (!clave) return this.tenantOfHost(input.host);
+
+    const fila = await withPublicToken(this.pool, async ({ client }) => {
+      const { rows } = await client.query<{
+        tenant_id: string;
+        brand_id: string;
+      }>(
+        `SELECT tenant_id, brand_id FROM sto_publishable_keys
+          WHERE key = $1 AND revoked_at IS NULL LIMIT 1`,
+        [clave],
+      );
+      return rows[0];
+    });
+    if (!fila) throw new NotFoundError('Esa clave de tienda no es válida.');
+    return { tenantId: fila.tenant_id, brandId: fila.brand_id };
+  }
+
+  /** El contexto de la tienda, por clave o por host (ADR-0020). */
+  async resolveStorefront(input: {
+    key?: string | undefined;
+    host: string;
+  }): Promise<StorefrontContext> {
+    const { tenantId, brandId } = await this.resolverPeticion(input);
+    const host = await withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ host: string }>(
+        `SELECT host FROM sto_domains
+          WHERE brand_id = $1 AND status = 'active'
+          ORDER BY is_subdomain ASC LIMIT 1`,
+        [brandId],
+      );
+      return rows[0]?.host ?? '';
+    });
+    return this.contextoDeMarca(tenantId, brandId, host);
+  }
+
+  /** El catálogo público, por clave o por host. */
+  async getPublicCatalogFor(input: {
+    key?: string | undefined;
+    host: string;
+  }): Promise<ResolvedCatalog> {
+    const { tenantId, brandId } = await this.resolverPeticion(input);
+    return this.catalogoDeMarca(tenantId, brandId);
+  }
+
+  /** Abre un carrito, por clave o por host. */
+  async createCartFor(input: {
+    key?: string | undefined;
+    host: string;
+  }): Promise<{ token: string; url: string | null }> {
+    const { tenantId, brandId } = await this.resolverPeticion(input);
+    return this.createCartForBrand(tenantId, brandId);
   }
 
   /** El tenant del host, para uso interno del propio módulo. */
