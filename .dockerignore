@@ -20,6 +20,12 @@ node_modules
 .env.*
 !.env.example
 docs
+# …salvo el manual de la API, que la web SIRVE. `apps/web` lo copia a `public/`
+# en el paso de build, así que si no entra en el contexto la construcción de la
+# imagen falla — y falla solo ahí: en local el archivo está y todo pasa. La
+# alternativa, que el script se lo saltara cuando no lo encuentra, daría una
+# imagen verde con un 404 en producción, que es peor.
+!docs/38-api-de-pedidos.md
 specs
 tests/load/results
 *.log
