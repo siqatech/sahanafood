@@ -59,6 +59,25 @@ del archivo. Van versionados a propósito: la ruta del `Dockerfile`, el comando
 de arranque y la sonda de salud son parte del código, no ajustes que alguien
 recuerde haber tocado en una pantalla hace tres meses.
 
+### Qué hace que un servicio se vuelva a desplegar
+
+Cada archivo trae `build.watchPatterns`, y esa lista es más delicada de lo que
+parece. Railway la usa para decidir si un `push` reconstruye el servicio o lo
+salta con «No changes to watched files», y un patrón que se queda corto no da
+error: **el despliegue se marca como saltado y producción se queda con el código
+viejo**, en verde.
+
+Es lo que pasó con la web, que vigilaba solo `/apps/web/**`. Con eso, un cambio
+en `@sahana/domain` —donde vive el cálculo de totales— no la redesplegaba: la
+API pasaba a calcular con la versión nueva y la tienda seguía sirviendo la
+anterior. Por eso ahora los cinco vigilan además `/packages/**`, el `Dockerfile`,
+el `.dockerignore` y el candado de dependencias: todo lo que puede cambiar la
+imagen resultante sin tocar la carpeta de la aplicación.
+
+Las listas viven en los archivos de `infra/railway/` y no en la pantalla de
+Railway justamente porque este fallo es invisible: revisable en un diff, se ve;
+en un formulario que alguien tocó una vez, no.
+
 `api` y `worker` **comparten `Dockerfile`** y se diferencian solo en el comando.
 No es ahorro de disco: es lo que garantiza que los dos calculen totales con
 exactamente el mismo `@sahana/domain`. Con dos imágenes, un despliegue a medias
