@@ -969,4 +969,44 @@ poca venta».
 ofrecerlos aquí sería prometer una integración que no existe; el simulador habla
 el mismo protocolo, así que lo que se pruebe vale.
 
+### A quién se le puede escribir, y con qué permiso
+
+`wa_consents` guarda **el texto exacto que aceptó la persona** —la migración lo
+dice: «el requisito que no se puede reconstruir después»— y `opted_out` decide
+en cada envío si se manda. Las dos cosas funcionaban perfectamente y **ninguna
+ruta las devolvía**: la baja se respetaba y nadie podía comprobarla.
+
+Eso importa el día que alguien dice «pedí que no me escribieran». La respuesta
+era mirar la base de datos a mano. Ahora `/panel/mensajeria` enseña quién está de
+baja, desde cuándo, por qué vía y **con qué palabras**.
+
+Tres decisiones:
+
+· **El histórico se pide por contacto, nunca en bloque.** Una lista completa de
+textos de consentimiento es justo el volcado de datos personales que no debe
+existir como pantalla.
+
+· **Dar de baja a mano se puede siempre.** Si alguien lo dice por teléfono,
+exigirle que escriba «BAJA» por WhatsApp sería usar la herramienta como excusa.
+
+· **No se llama «Clientes».** Esto no es un CRM —eso es F6— sino la lista de con
+quién se puede hablar y con qué permiso. Llamarlo Clientes prometería algo que no
+está.
+
+### Y un rango de fechas que se iba a la víspera
+
+La pantalla de rentabilidad pasaba `?from=2026-08-11&to=2026-08-11` y la tabla
+salía **vacía**. El endpoint convertía esas fechas con `new Date`, que las
+interpreta como medianoche **UTC** — las 19:00 del día anterior en Lima. El
+informe respondía por la víspera mientras enseñaba las fechas pedidas: un margen
+que no cuadra con las ventas del día y **ningún error a la vista**.
+
+La conciliación ya trataba `?date=` como un DÍA por este mismo motivo, con el
+razonamiento escrito al lado; a rentabilidad le faltaba. Ahora acepta fechas de
+negocio `AAAA-MM-DD` tal cual, con su prueba de regresión.
+
+Van tres fallos en dos sesiones que **solo aparecen cuando hay datos de verdad**
+(el buscador de pedidos, el «Ventas» de la portada, y este). Sembrar datos
+realistas y comprobar el resultado —no la mera presencia— es lo que los saca.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

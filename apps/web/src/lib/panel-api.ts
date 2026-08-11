@@ -347,6 +347,24 @@ export interface CobroDelPanel {
     | undefined;
 }
 
+/** Un contacto de WhatsApp y si está de baja (RN-T10, RN-WA-04). */
+export interface ContactoDelPanel {
+  id: string;
+  phone: string;
+  displayName: string | null;
+  optedOut: boolean;
+  optedOutAt: string | null;
+  lastInboundAt: string | null;
+}
+
+/** Una línea del histórico de consentimiento, con el texto exacto. */
+export interface ConsentimientoDelPanel {
+  action: string;
+  source: string;
+  consentText: string;
+  at: string;
+}
+
 /** Un dominio de tienda y lo que falta para que sirva (RN-STO-01). */
 export interface DominioDelPanel {
   id: string;
@@ -868,6 +886,38 @@ export const panel = {
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),
+
+  contactos: (phone?: string): Promise<ContactoDelPanel[]> =>
+    llamar<ContactoDelPanel[]>(
+      phone
+        ? `/messaging/contacts?phone=${encodeURIComponent(phone)}`
+        : '/messaging/contacts',
+    ),
+
+  consentimientos: (contactId: string): Promise<ConsentimientoDelPanel[]> =>
+    llamar<ConsentimientoDelPanel[]>(
+      `/messaging/contacts/${contactId}/consents`,
+    ),
+
+  registrarConsentimiento: (input: {
+    phone: string;
+    action: 'granted' | 'revoked';
+    source: string;
+    consentText: string;
+  }): Promise<{ contactId: string; optedOut: boolean }> =>
+    llamar('/messaging/consents', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  kpiDeMensajeria: (): Promise<{
+    orders: number;
+    messages: number;
+    average: number;
+  }> =>
+    llamar<{ orders: number; messages: number; average: number }>(
+      '/messaging/kpi',
+    ),
 
   dominios: (): Promise<DominioDelPanel[]> =>
     llamar<DominioDelPanel[]>('/storefront/domains'),

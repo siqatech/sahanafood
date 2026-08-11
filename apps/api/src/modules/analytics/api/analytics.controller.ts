@@ -50,6 +50,27 @@ export class AnalyticsController {
     @Query('to') to?: string,
     @Query('brand') brand?: string,
   ): Promise<BrandChannelProfitability[]> {
+    // `?from=2026-08-01` es un DÍA, no un instante. Convertirlo con `new Date`
+    // lo interpreta como medianoche UTC —las 19:00 del día anterior en Lima— y
+    // el informe acabaría respondiendo por la víspera mientras enseña las
+    // fechas pedidas: un margen que no cuadra con las ventas del día, sin
+    // ningún error a la vista. Es el mismo razonamiento que en la conciliación,
+    // y aquí faltaba.
+    const esDia = (v: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+    if (from !== undefined && to !== undefined && esDia(from) && esDia(to)) {
+      if (from > to) {
+        throw new ValidationError(
+          'El inicio del periodo debe ser anterior al fin.',
+        );
+      }
+      return this.analytics.profitability(req.auth!.tid, {
+        fromBusinessDate: from,
+        toBusinessDate: to,
+        ...(brand ? { brandId: brand } : {}),
+      });
+    }
+
     const hasta = to ? new Date(to) : new Date();
     const desde = from
       ? new Date(from)

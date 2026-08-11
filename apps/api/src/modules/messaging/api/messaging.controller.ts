@@ -49,6 +49,36 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T {
 export class MessagingController {
   constructor(private readonly messaging: MessagingService) {}
 
+  /**
+   * Los contactos y su estado de baja (RN-T10, RN-WA-04).
+   *
+   * Con `messaging.read`: comprobar si alguien está de baja es lo que hay que
+   * poder hacer ANTES de escribirle, y quien atiende no tiene por qué poder
+   * cambiar consentimientos para consultarlo.
+   */
+  @Get('contacts')
+  @RequirePermission('messaging.read')
+  contacts(
+    @Req() req: AuthenticatedRequest,
+    @Query('phone') phone?: string,
+    @Query('limit') limit?: string,
+  ): Promise<unknown> {
+    return this.messaging.listContacts(req.auth!.tid, {
+      ...(phone ? { phone } : {}),
+      ...(limit ? { limit: Number(limit) || 100 } : {}),
+    });
+  }
+
+  /** El histórico de consentimiento de UN contacto, con el texto exacto. */
+  @Get('contacts/:id/consents')
+  @RequirePermission('messaging.read')
+  consents(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<unknown> {
+    return this.messaging.consentHistory(req.auth!.tid, id);
+  }
+
   @Post('consents')
   @RequirePermission('messaging.manage')
   consent(

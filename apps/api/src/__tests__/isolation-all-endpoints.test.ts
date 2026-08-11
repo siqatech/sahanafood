@@ -940,6 +940,17 @@ suite('Aislamiento — todos los endpoints', () => {
     });
   });
 
+  it('GET /messaging/contacts no enseña los teléfonos de B', async () => {
+    // Son datos personales de los clientes de otro negocio: la lista entera de
+    // a quién le vende y por qué número.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /messaging/contacts', (r) =>
+        r.get('/api/v1/messaging/contacts'),
+      ),
+    );
+  });
+
   it('GET /storefront/domains no enseña los de B', async () => {
     // El host de otro negocio dice dónde vive su tienda y con qué marca: es lo
     // que haría falta para intentar suplantarla.

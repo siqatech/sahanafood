@@ -176,6 +176,29 @@ suite('Analítica — rentabilidad y conciliación', () => {
 
   // -------------------------------------------------------------------------
 
+  it('UN RANGO EN DÍAS no se desplaza a la víspera', async () => {
+    // `?from=2026-08-01` es un DÍA, no un instante. Convertirlo con `new Date`
+    // lo interpreta como medianoche UTC —las 19:00 del día anterior en Lima— y
+    // el informe respondía por la víspera mientras enseñaba las fechas pedidas:
+    // un margen que no cuadra con las ventas del día, y ningún error a la
+    // vista. Lo destapó la pantalla de rentabilidad, que pasa dos fechas.
+    await vender();
+    await drenar();
+
+    // `en-CA` da AAAA-MM-DD, que es el formato que entiende el endpoint.
+    const hoy = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'America/Lima',
+    });
+    const r = await auth(
+      http().get(`/api/v1/analytics/profitability?from=${hoy}&to=${hoy}`),
+    ).expect(200);
+
+    expect(
+      r.body.length,
+      'un rango de un solo día no devolvió las ventas de ese día',
+    ).toBeGreaterThan(0);
+  });
+
   it('la proyección se alimenta por EVENTOS, no consultando pedidos', async () => {
     // Un `GROUP BY` sobre `ord_orders` a las 20:30 de un viernes compite por
     // las mismas filas que están cerrando pedidos.

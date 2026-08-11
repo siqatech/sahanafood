@@ -275,9 +275,32 @@ export class AnalyticsService {
    */
   async profitability(
     tenantId: string,
-    filtros: { from: Date; to: Date; brandId?: string },
+    filtros: {
+      from?: Date;
+      to?: Date;
+      /**
+       * Fechas de NEGOCIO ya resueltas (AAAA-MM-DD).
+       *
+       * Cuando quien llama piensa en días —una pantalla con dos selectores de
+       * fecha— pasarlas así evita el viaje de ida y vuelta por instantes UTC,
+       * que en Lima desplaza el rango un día entero.
+       */
+      fromBusinessDate?: string;
+      toBusinessDate?: string;
+      brandId?: string;
+    },
   ): Promise<BrandChannelProfitability[]> {
-    if (filtros.from >= filtros.to) {
+    const desde =
+      filtros.fromBusinessDate ??
+      (filtros.from ? this.aFechaNegocio(filtros.from) : undefined);
+    const hasta =
+      filtros.toBusinessDate ??
+      (filtros.to ? this.aFechaNegocio(filtros.to) : undefined);
+
+    if (desde === undefined || hasta === undefined) {
+      throw new ValidationError('Indica el periodo.');
+    }
+    if (desde > hasta) {
       throw new ValidationError(
         'El inicio del periodo debe ser anterior al fin.',
       );
@@ -312,11 +335,7 @@ export class AnalyticsService {
             AND ($3::uuid IS NULL OR s.brand_id = $3)
           GROUP BY s.brand_id, b.name, s.channel
           ORDER BY sum(s.gross_revenue) DESC`,
-        [
-          this.aFechaNegocio(filtros.from),
-          this.aFechaNegocio(filtros.to),
-          filtros.brandId ?? null,
-        ],
+        [desde, hasta, filtros.brandId ?? null],
       );
 
       return rows.map((r) => this.aVista(r));

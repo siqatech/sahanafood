@@ -89,6 +89,99 @@ export class MessagingService {
    * política y alguien pregunta qué aceptó un cliente en 2026, la respuesta
    * tiene que ser el texto de 2026 — y eso no se reconstruye después.
    */
+  /**
+   * Los contactos y si están de baja.
+   *
+   * Faltaba, y lo que faltaba era la mitad LEGIBLE de RN-T10. El consentimiento
+   * se guarda con el texto exacto que aceptó la persona —un booleano no
+   * demuestra qué aceptó nadie— y hasta ahora ninguna ruta lo devolvía: la
+   * baja se respetaba en cada envío, pero nadie podía **comprobarla** ni
+   * enseñarla. Cuando alguien dice «pedí que no me escribieran», la respuesta
+   * era mirar la base de datos a mano.
+   */
+  async listContacts(
+    tenantId: string,
+    filtros: { phone?: string | undefined; limit?: number | undefined } = {},
+  ): Promise<
+    Array<{
+      id: string;
+      phone: string;
+      displayName: string | null;
+      optedOut: boolean;
+      optedOutAt: string | null;
+      lastInboundAt: string | null;
+    }>
+  > {
+    const limite = Math.min(Math.max(filtros.limit ?? 100, 1), 500);
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{
+        id: string;
+        phone: string;
+        display_name: string | null;
+        opted_out: boolean;
+        opted_out_at: Date | null;
+        last_inbound_at: Date | null;
+      }>(
+        `SELECT id, phone, display_name, opted_out, opted_out_at,
+                last_inbound_at
+           FROM wa_contacts
+          WHERE ($1::text IS NULL OR phone LIKE '%' || $1 || '%')
+          ORDER BY opted_out DESC, last_inbound_at DESC NULLS LAST
+          LIMIT $2`,
+        [filtros.phone ?? null, limite],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        phone: r.phone,
+        displayName: r.display_name,
+        optedOut: r.opted_out,
+        optedOutAt: r.opted_out_at?.toISOString() ?? null,
+        lastInboundAt: r.last_inbound_at?.toISOString() ?? null,
+      }));
+    });
+  }
+
+  /**
+   * El histórico de consentimiento de un contacto, con el texto exacto.
+   *
+   * Es lo que se enseña cuando alguien reclama. Va por contacto y no en bloque
+   * a propósito: una lista completa de textos de consentimiento es justo el
+   * volcado de datos personales que no debe existir como pantalla.
+   */
+  async consentHistory(
+    tenantId: string,
+    contactId: string,
+  ): Promise<
+    Array<{
+      action: string;
+      source: string;
+      consentText: string;
+      at: string;
+    }>
+  > {
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{
+        action: string;
+        source: string;
+        consent_text: string;
+        occurred_at: Date;
+      }>(
+        // `occurred_at`, no `created_at`: la fila registra CUÁNDO lo dijo la
+        // persona, que en una importación no es cuándo se escribió aquí.
+        `SELECT action, source, consent_text, occurred_at
+           FROM wa_consents WHERE contact_id = $1
+          ORDER BY occurred_at DESC LIMIT 50`,
+        [contactId],
+      );
+      return rows.map((r) => ({
+        action: r.action,
+        source: r.source,
+        consentText: r.consent_text,
+        at: r.occurred_at.toISOString(),
+      }));
+    });
+  }
+
   async recordConsent(
     tenantId: string,
     datos: {

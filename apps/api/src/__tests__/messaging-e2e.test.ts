@@ -204,6 +204,42 @@ suite('WhatsApp — notificaciones de estado', () => {
     expect(wa.sent).toHaveLength(0);
   });
 
+  it('LA BAJA SE PUEDE COMPROBAR: contacto, estado y el texto exacto', async () => {
+    // Es la mitad LEGIBLE de RN-T10. El consentimiento se guarda con el texto
+    // exacto que aceptó la persona —un booleano no demuestra qué aceptó nadie—
+    // y hasta ahora ninguna ruta lo devolvía: la baja se respetaba en cada
+    // envío y nadie podía comprobarla ni enseñarla.
+    const telefono = '+51955500123';
+    await auth(
+      http().post('/api/v1/messaging/consents').send({
+        phone: telefono,
+        action: 'revoked',
+        source: 'mostrador',
+        consentText: 'Dijo en el mostrador que no quiere más mensajes.',
+      }),
+    ).expect(201);
+
+    const contactos = await auth(
+      http().get(
+        `/api/v1/messaging/contacts?phone=${encodeURIComponent(telefono)}`,
+      ),
+    ).expect(200);
+    const suyo = contactos.body.find(
+      (c: { phone: string }) => c.phone === telefono,
+    );
+    expect(suyo, 'el contacto no aparece en la lista').toBeTruthy();
+    expect(suyo.optedOut).toBe(true);
+    expect(suyo.optedOutAt).toBeTruthy();
+
+    const historial = await auth(
+      http().get(`/api/v1/messaging/contacts/${suyo.id}/consents`),
+    ).expect(200);
+    expect(historial.body[0].action).toBe('revoked');
+    expect(historial.body[0].consentText).toMatch(/no quiere más mensajes/);
+    // La fecha es la de CUÁNDO lo dijo la persona, no la del apunte.
+    expect(historial.body[0].at).toBeTruthy();
+  });
+
   it('responder «BAJA» por WhatsApp da de baja EN EL ACTO', async () => {
     // No se pone en una cola ni se manda a un panel: la persona ya dijo que no.
     await messaging.receiveInbound(tenantA, {

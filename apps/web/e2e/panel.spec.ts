@@ -925,6 +925,51 @@ test.describe('Panel de gestión en navegador', () => {
     ).toContainText('Sirviendo');
   });
 
+  test('LA BAJA de un cliente se registra CON SU TEXTO y se puede comprobar', async ({
+    page,
+  }) => {
+    // `wa_consents` guarda el texto exacto que aceptó la persona y
+    // `opted_out` decide en cada envío. Las dos cosas funcionaban y ninguna
+    // ruta las devolvía: la baja se respetaba y nadie podía comprobarla. El
+    // día que alguien dice «pedí que no me escribieran», la respuesta era
+    // mirar la base de datos a mano.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Mensajería' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Mensajería' }),
+    ).toBeVisible();
+
+    const telefono = `+5198${String(Date.now()).slice(-7)}`;
+
+    // Sin el texto exacto no se registra: un «sí» no demuestra qué aceptó.
+    await page.getByLabel('Teléfono').fill(telefono);
+    await page.getByLabel('De dónde salió').fill('mostrador');
+    await page.getByRole('button', { name: 'Registrar' }).click();
+    await expect(page.getByText(/texto exacto que aceptó/i)).toBeVisible();
+
+    await page.getByLabel('Qué se registra').selectOption('revoked');
+    await page
+      .getByLabel('Texto exacto')
+      .fill('Dijo por teléfono que no quiere más mensajes.');
+    // Se espera a que la acción llegue antes de navegar: irse mientras va en
+    // camino la aborta, y el fallo parecería del registro y no de la prueba.
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.request().method() === 'POST' &&
+          r.request().isNavigationRequest() === false,
+      ),
+      page.getByRole('button', { name: 'Registrar' }).click(),
+    ]);
+
+    // Se comprueba el EFECTO: aparece de baja y su permiso se puede leer.
+    await page.goto(`/panel/mensajeria?tel=${encodeURIComponent(telefono)}`);
+    const fila = page.locator('tbody tr').filter({ hasText: telefono });
+    await expect(fila).toContainText('De baja');
+    await fila.getByRole('link', { name: 'Ver permiso' }).click();
+    await expect(page.getByText(/no quiere más mensajes/)).toBeVisible();
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {
