@@ -14,7 +14,7 @@ import {
   RequirePermission,
   type AuthenticatedRequest,
 } from '../../../common/authz.js';
-import { ValidationError } from '../../../common/errors.js';
+import { NotFoundError, ValidationError } from '../../../common/errors.js';
 import {
   MAX_CANTIDAD_LINEA,
   StorefrontService,
@@ -242,6 +242,24 @@ export class StorefrontAdminController {
     return { ok: true };
   }
 
+  /** Carga el archivo que Apple emite para un dominio del cliente. */
+  @Post('domains/:id/apple-pay')
+  @RequirePermission('storefront.manage_domains')
+  async setApplePay(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<{ ok: true }> {
+    const input = parse(z.object({ content: z.string().max(20000) }), body);
+    await this.storefront.setApplePayVerification(
+      req.auth!.tid,
+      id,
+      input.content,
+      req.auth!.sub,
+    );
+    return { ok: true };
+  }
+
   @Post('domains/:id/verify')
   @RequirePermission('storefront.manage_domains')
   async verifyDomain(
@@ -284,6 +302,34 @@ function hostDelVisitante(forwarded?: string, host?: string): string {
 @Controller({ path: 'shop', version: '1' })
 export class ShopController {
   constructor(private readonly storefront: StorefrontService) {}
+
+  /**
+   * El contenido del archivo de verificación de Apple Pay de este dominio.
+   *
+   * Apple exige que el archivo se sirva en
+   * `/.well-known/apple-developer-merchantid-domain-association` **del dominio
+   * de la tienda**, y ese dominio lo sirve Next, no la API. Así que aquí solo
+   * se devuelve el contenido y la tienda lo publica en la ruta exacta; el
+   * camino lo fija Apple y es de las poquísimas rutas del sistema que no
+   * elegimos nosotros.
+   *
+   * 404 si ese dominio no tiene archivo cargado. Devolver uno vacío le diría a
+   * Apple que el dominio existe y está mal configurado, que es más difícil de
+   * depurar que «no está».
+   */
+  @Get('apple-pay-verification')
+  async applePayVerification(
+    @Headers('x-forwarded-host') forwarded: string,
+    @Headers('host') host: string,
+  ): Promise<{ content: string }> {
+    const contenido = await this.storefront.applePayVerification(
+      hostDelVisitante(forwarded, host),
+    );
+    if (contenido === null) {
+      throw new NotFoundError('Este dominio no tiene Apple Pay configurado.');
+    }
+    return { content: contenido };
+  }
 
   @Get('context')
   async context(

@@ -163,6 +163,9 @@ async function call<T>(
 export const shop = {
   context: (): Promise<ShopContext> => call<ShopContext>('/shop/context'),
   catalog: (): Promise<Catalog> => call<Catalog>('/shop/catalog'),
+  /** Contenido del archivo de verificación de Apple Pay de este dominio. */
+  applePayVerification: (): Promise<{ content: string }> =>
+    call<{ content: string }>('/shop/apple-pay-verification'),
   createCart: (): Promise<{ token: string }> =>
     call<{ token: string }>('/shop/carts', { method: 'POST' }),
   getCart: (token: string): Promise<Cart> => call<Cart>(`/shop/carts/${token}`),

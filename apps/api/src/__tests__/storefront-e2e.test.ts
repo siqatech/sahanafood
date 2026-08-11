@@ -930,6 +930,88 @@ suite('Tienda web', () => {
     ).rejects.toThrow(/https/);
   });
 
+  it('LOS MEDIOS DE PAGO los declara el servidor, no los adivina la tienda', async () => {
+    // Enseñar un botón de Apple Pay que no cobra —porque el negocio no tiene la
+    // cuenta o su pasarela no lo soporta— es peor que no enseñarlo: el cliente
+    // lo pulsa y abandona. Por eso la lista sale de la conexión del negocio.
+    const sinPasarela = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    // Contra entrega siempre: es como paga la mayoría en Perú.
+    expect(sinPasarela.body.payment.onDelivery).toBe(true);
+
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `INSERT INTO pay_connections
+           (tenant_id, provider, webhook_token, methods, status)
+         VALUES ($1,'culqi_sandbox','tok-medios',
+                 ARRAY['card','yape','apple_pay']::text[],'active')`,
+        [tenantA],
+      ),
+    );
+
+    const conPasarela = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    expect(conPasarela.body.payment.online).toBe(true);
+    expect(conPasarela.body.payment.methods).toEqual([
+      'card',
+      'yape',
+      'apple_pay',
+    ]);
+
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `DELETE FROM pay_connections WHERE webhook_token = 'tok-medios'`,
+      ),
+    );
+  });
+
+  it('UN MEDIO DESCONOCIDO no entra: la tienda lo pintaría sin poder cobrarlo', async () => {
+    await expect(
+      withTenant(pool, tenantA, ({ client }) =>
+        client.query(
+          `INSERT INTO pay_connections
+             (tenant_id, provider, webhook_token, methods, status)
+           VALUES ($1,'culqi_sandbox','tok-malo',
+                   ARRAY['bitcoin']::text[],'active')`,
+          [tenantA],
+        ),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('EL ARCHIVO DE APPLE se sirve por dominio, y 404 si no está cargado', async () => {
+    // Apple comprueba cada dominio por su cuenta antes de dejar que aparezca su
+    // botón. En un SaaS multimarca no es UN archivo: es uno por cliente, y cuál
+    // toca depende del host. Si falta, el botón no aparece y no hay ningún
+    // error que lo explique.
+    await http()
+      .get('/api/v1/shop/apple-pay-verification')
+      .set('host', HOST_A)
+      .expect(404);
+
+    const dominios = await storefront.listDomains(tenantA);
+    const suyo = dominios.find((d) => d.host === HOST_A)!;
+    const contenido = '7B2270736' + 'x'.repeat(60);
+    await storefront.setApplePayVerification(tenantA, suyo.id, contenido);
+
+    const servido = await http()
+      .get('/api/v1/shop/apple-pay-verification')
+      .set('host', HOST_A)
+      .expect(200);
+    expect(servido.body.content).toBe(contenido);
+
+    // Y el dominio del OTRO cliente sigue sin tenerlo: son archivos distintos
+    // que emite Apple para cada dominio.
+    await http()
+      .get('/api/v1/shop/apple-pay-verification')
+      .set('host', HOST_B)
+      .expect(404);
+  });
+
   it('el cupón de un tenant no vale en la tienda del otro', async () => {
     // Mismo código, otro tenant: RLS hace que ni siquiera se vea.
     const carrito = await abrirCarrito(HOST_B);

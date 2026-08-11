@@ -73,6 +73,22 @@ export interface StorefrontContext {
    * que es peor que no personalizarla.
    */
   branding: Branding;
+  /**
+   * Cómo puede pagar el cliente en esta tienda.
+   *
+   * Lo decide el NEGOCIO y lo dice el servidor. La tienda no adivina: enseñar
+   * un botón de Apple Pay que no cobra —porque el negocio no tiene la cuenta o
+   * su pasarela no lo soporta— es peor que no enseñarlo, porque el cliente lo
+   * pulsa y abandona.
+   */
+  payment: {
+    /** `true` si hay pasarela conectada y activa. */
+    online: boolean;
+    /** Medios en línea disponibles: card, yape, plin, apple_pay, google_pay. */
+    methods: string[];
+    /** Pagar al recibir sigue siendo lo más usado en Perú. */
+    onDelivery: boolean;
+  };
 }
 
 /** Aspecto de una tienda. Los nulos significan «usa lo de Sahana». */
@@ -545,6 +561,20 @@ export class StorefrontService {
       },
     );
 
+    // Medios de pago: salen de la conexión de pasarela del negocio. Sin
+    // conexión activa, la tienda solo puede ofrecer pago contra entrega — y
+    // decirlo es mejor que enseñar un botón de tarjeta que no lleva a ninguna
+    // parte.
+    const medios = await withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ methods: string[] }>(
+        `SELECT methods FROM pay_connections
+          WHERE status = 'active' AND (brand_id IS NULL OR brand_id = $1)
+          ORDER BY brand_id NULLS LAST LIMIT 1`,
+        [brandId],
+      );
+      return rows[0]?.methods ?? [];
+    });
+
     return {
       brandId,
       // El nombre que se anuncia manda sobre el interno: «Pollería El Buen
@@ -564,6 +594,13 @@ export class StorefrontService {
       // caja va a rechazar es peor que no ofrecer ninguno. La consulta ya los
       // descarta, y por eso las mismas condiciones que valida `applyCoupon`
       // están aquí arriba.
+      payment: {
+        online: medios.length > 0,
+        methods: medios,
+        // Contra entrega siempre: es como paga la mayoría en Perú, y apagarlo
+        // es una decisión del negocio que hoy no existe como ajuste.
+        onDelivery: true,
+      },
       welcome: bienvenida
         ? {
             code: bienvenida.code,
@@ -573,6 +610,69 @@ export class StorefrontService {
           }
         : null,
     };
+  }
+
+  /**
+   * El archivo de verificación de Apple Pay para un host.
+   *
+   * Apple exige que **cada dominio** que enseñe su botón sirva un archivo suyo
+   * en `/.well-known/apple-developer-merchantid-domain-association`. En una web
+   * de un solo restaurante eso es subir un archivo; en un SaaS multimarca son
+   * N archivos distintos servidos por el mismo proceso, y cuál toca depende del
+   * host de quien pregunta — exactamente el mismo problema que resuelve el resto
+   * de este módulo.
+   *
+   * Sin esto el botón de Apple Pay **no aparece y no hay ningún error**: Apple
+   * comprueba el dominio por su cuenta, falla en silencio y el cliente
+   * simplemente no ve la opción. Es la clase de fallo que cuesta una tarde de
+   * mirar el código del checkout, que está bien.
+   *
+   * Devuelve `null` si ese dominio no tiene el archivo cargado, que es lo que
+   * debe traducirse en un 404 y no en un archivo vacío: un archivo vacío le dice
+   * a Apple que el dominio existe y está mal configurado.
+   */
+  async applePayVerification(host: string): Promise<string | null> {
+    const normalizado = host.trim().toLowerCase().split(':')[0] ?? '';
+    return withPublicToken(this.pool, async ({ client }) => {
+      const { rows } = await client.query<{
+        apple_pay_verification: string | null;
+      }>(
+        `SELECT apple_pay_verification FROM sto_domains
+          WHERE lower(host) = $1 AND status = 'active' LIMIT 1`,
+        [normalizado],
+      );
+      return rows[0]?.apple_pay_verification ?? null;
+    });
+  }
+
+  /** Carga el archivo que Apple emite para un dominio del cliente. */
+  async setApplePayVerification(
+    tenantId: string,
+    domainId: string,
+    contenido: string,
+    actorId?: string,
+  ): Promise<void> {
+    const limpio = contenido.trim();
+    if (limpio.length > 0 && limpio.length < 32) {
+      throw new ValidationError(
+        'Ese no parece el archivo de Apple: pega su contenido completo, tal como lo descargaste.',
+      );
+    }
+    await withTenant(this.pool, tenantId, async (ctx) => {
+      const { rowCount } = await ctx.client.query(
+        `UPDATE sto_domains SET apple_pay_verification = $2 WHERE id = $1`,
+        [domainId, limpio || null],
+      );
+      if (rowCount === 0) throw new NotFoundError('Ese dominio no existe.');
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(actorId !== undefined ? { actorId } : {}),
+        action: 'storefront.apple_pay_configured',
+        resourceType: 'storefront_domain',
+        resourceId: domainId,
+        data: { cargado: limpio.length > 0 },
+      });
+    });
   }
 
   // -------------------------------------------------------------- Aspecto
