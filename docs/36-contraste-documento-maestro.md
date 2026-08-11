@@ -89,6 +89,14 @@ El documento lo lista como P1 (capacidad 114) y tiene razón en el orden de
 magnitud: es lo que separa «dar de alta a diez clientes» de «dar de alta a uno».
 No es deuda técnica —lo que hay funciona— es coste comercial por cliente.
 
+**Hecho** (`import-csv.js`, runbook §5). Es una transformación de archivos y no
+un alta contra la base: produce el mismo `negocio.json` que ya aplica
+`setup-business.js`, así que no hay un segundo camino de escritura al catálogo
+donde los precios puedan salir distintos, y el resultado se puede revisar antes
+de publicarlo. Las hojas de ejemplo reproducen exactamente
+`negocio.ejemplo.json`, con lo que el camino del CSV hereda la verificación de
+punta a punta que ya tenía el JSON.
+
 ### 2.5 Propinas: existen a medias
 
 `ord_orders` acepta `tipMinor` y `cash_movements` tiene el tipo `tip`, así que la
@@ -142,5 +150,4 @@ Tres preguntas al propietario, por orden de coste de equivocarse tarde:
 2. **PA-09** — ¿pagos mixtos? Es la que hoy hace que un cajero tenga que mentir.
 3. **PA-11** — ¿stock reservado? Es la más barata de las tres si se hace ahora.
 
-Y una que no necesita decisión de producto, solo hueco en el plan: el importador
-de CSV, que se paga solo al tercer cliente.
+El importador de CSV, que era el cuarto punto, ya está hecho.

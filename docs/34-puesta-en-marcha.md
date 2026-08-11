@@ -130,6 +130,46 @@ aceptarlo el kardex descuenta lo que dice la receta** —1200 g de pollo más un
 5 % de merma, con la subreceta de crema estallada en mayonesa y ketchup—. Un
 ejemplo que nadie ha ejecutado se descubre roto con el cliente delante.
 
+### La carta desde un Excel
+
+Escribir 180 productos en JSON es una tarde por cliente. El importador los lee
+de una hoja de cálculo y produce el mismo `negocio.json` de arriba:
+
+```bash
+node dist/database/import-csv.js \
+  --negocio negocio.json --productos carta.csv \
+  --insumos insumos.csv --recetas recetas.csv \
+  --salida negocio-final.json
+```
+
+Hay hojas de ejemplo en `infra/ejemplos/carta.ejemplo.csv`, `insumos.ejemplo.csv`
+y `recetas.ejemplo.csv`. **Reproducen exactamente el `negocio.ejemplo.json`**, y
+una prueba lo comprueba: así el camino del CSV hereda la verificación de punta a
+punta del JSON en vez de tener una propia y más floja.
+
+Es una transformación de archivos, no un alta: **no toca la base**. Se hace así
+para que se pueda revisar el resultado antes de aplicarlo —importar la carta de
+otra persona y publicarla sin mirarla es cómo se vende un pollo con un cero de
+menos— y para que no haya un segundo camino de escritura al catálogo donde los
+precios puedan salir distintos.
+
+Detalles que importan porque el archivo sale de un Excel peruano:
+
+- **Excel en español exporta con `;` y coma decimal.** `45,90` son cuarenta y
+  cinco con noventa, y se lee bien. El separador se deduce de la cabecera.
+- **Una columna por canal**: `precio_base` es el que sirve a cualquier canal sin
+  uno propio; `precio_web`, `precio_pos`, `precio_rappi`… mandan sobre él.
+  Añadir un canal es añadir una columna.
+- **Los errores dicen fila y columna.** Un SKU repetido es un error, no gana el
+  último: en una hoja de 180 líneas eso hace desaparecer un producto sin que
+  nadie lo note.
+- **Los grupos de modificadores no se importan**, se referencian por nombre. Son
+  estructura (mínimo, máximo, si repite) y no caben en una celda sin inventar
+  una sintaxis. Van en el JSON; si la hoja nombra uno que no existe, falla antes
+  de aplicar en vez de publicar el plato sin sus extras.
+- **Las recetas van en formato largo**: una fila por ingrediente, con la merma
+  en puntos básicos enteros (5 % = 500).
+
 ## 6. El panel
 
 ```

@@ -1078,3 +1078,61 @@ Postgres **con pgvector**, correr `bootstrap:roles`, configurar las variables de
 §4 y desplegar `api` antes que `worker`. Detrás vienen las tres cosas que
 esperaban a DT-02 y ahora sí tienen dónde correr: medición de carga real
 (DT-05), pentest (T5.36) y los pilotos.
+
+---
+
+## La carta desde un Excel
+
+De los seis hallazgos del contraste con el documento maestro (docs/36), este era
+el único que no dependía de una decisión de producto: dar de alta un cliente
+pasaba por escribir su carta en JSON, y un dueño con 180 productos los tiene en
+una hoja de cálculo. Escribirlos a mano es una tarde por cliente.
+
+`import-csv.js` los lee de un CSV. La decisión de diseño que lo gobierna es que
+**no toca la base de datos**: produce el mismo `negocio.json` que ya aplica
+`setup-business.js`. Tres motivos, en orden de peso:
+
+- No duplica ninguna regla. Un segundo camino de escritura al catálogo sería un
+  segundo sitio donde los precios pueden salir distintos.
+- Se puede revisar antes de aplicar. Importar la carta que hizo otra persona y
+  publicarla sin mirarla es cómo se vende un pollo con un cero de menos.
+- Se prueba entero sin base de datos, así que las pruebas son baratas y de
+  verdad.
+
+Las hojas de `infra/ejemplos/` **reproducen exactamente `negocio.ejemplo.json`**,
+y una prueba lo comprueba. Eso es lo que hace fuerte el conjunto: ese JSON ya se
+aplica en CI de punta a punta —monta el negocio, pide un pedido, comprueba que
+cobra el precio del archivo y que el kardex descuenta lo que dice la receta— así
+que el camino del CSV hereda esa verificación entera en vez de tener una propia
+y más floja. Además hay un caso e2e nuevo que aplica la carta importada contra
+Postgres real y comprueba que cobra los 59,00 de la columna `precio_web`.
+
+### Lo que se comprueba no es «lee un CSV»
+
+Es leerlo **mal sin dar error**, que es lo único que puede pasar aquí de forma
+cara:
+
+- **Excel en español exporta con `;` y coma decimal.** Es el caso normal, no el
+  raro. Con el separador equivocado el archivo entero se lee como una columna.
+- **Un SKU repetido es un error**, no gana el último: en una hoja de 180 líneas,
+  quedarse con el último hace desaparecer un producto sin que nadie lo note.
+- **Los importes distinguen miles de decimales por cuál va al final**, así
+  `1.500,00` y `1,500.00` dan lo mismo sin preguntar el idioma. Y nunca pasan
+  por coma flotante: entran y salen como cadena.
+- **Un combo sin componentes se rechaza**; la cantidad es explícita (`x1`),
+  porque dar por hecho «uno» convierte un combo de dos pollos en uno de uno.
+- **Un grupo de modificadores mal escrito falla antes de aplicar**, en vez de
+  publicar el plato sin sus extras.
+
+Las dos comprobaciones que más importan se verificaron **mutando el código** para
+confirmar que fallan por lo que dicen cubrir. Y de paso apareció una prueba que
+pasaba por el motivo equivocado: la del BOM. Resulta que `trim()` ya elimina
+U+FEFF —está en el conjunto de espacios en blanco de JavaScript—, así que los dos
+`replace` del BOM que había escrito eran código muerto. Se quitaron y se explicó
+el mecanismo real donde toca.
+
+**Próxima acción de Claude Code:** de los seis hallazgos quedan tres que son
+decisión del propietario (**PA-09** pagos mixtos, **PA-10** salón y QR, **PA-11**
+stock reservado) y dos que dependen de F6 (liquidación de propinas, P&L con
+gastos). Sin esas decisiones, lo que queda con más valor es desplegar en Railway
+en cuanto haya credenciales.

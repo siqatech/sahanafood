@@ -1,0 +1,6 @@
+sku;nombre;unidad;costo_unitario;minimo
+POLLO-CRUDO;Pollo crudo;g;0,0120;20000
+PAPA;Papa;g;0,0030;10000
+GASEOSA-BOT;Gaseosa 1.5 L (botella);unit;4,5000;24
+MAYONESA;Mayonesa;ml;0,0080;
+KETCHUP;Ketchup;ml;0,0060;

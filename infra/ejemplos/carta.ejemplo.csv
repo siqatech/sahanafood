@@ -1,0 +1,5 @@
+sku;nombre;categoria;descripcion;precio_base;precio_web;precio_rappi;modificadores;minutos_preparacion;es_combo;componentes
+POLLO-ENT;Pollo a la brasa entero;Pollos a la brasa;Con papas y ensalada;55,00;59,00;69,00;Guarnición|Cremas extra;25;;
+POLLO-MED;Medio pollo a la brasa;Pollos a la brasa;;32,00;34,00;;Guarnición;20;;
+GASEOSA-15;Gaseosa 1.5 L;Bebidas;;9,00;10,00;;;1;;
+COMBO-FAM;Combo familiar;Combos;Pollo entero + gaseosa de 1.5 L;62,00;65,00;;;25;sí;POLLO-ENT x1 | GASEOSA-15 x1

@@ -22,7 +22,8 @@
     "bootstrap:roles": "node --import @swc-node/register/esm-register src/database/bootstrap-roles.ts",
     "sync:roles": "node --import @swc-node/register/esm-register src/database/sync-roles.ts",
     "provision": "node --import @swc-node/register/esm-register src/database/provision.ts",
-    "setup:business": "node --import @swc-node/register/esm-register src/database/setup-business.ts"
+    "setup:business": "node --import @swc-node/register/esm-register src/database/setup-business.ts",
+    "import:csv": "node --import @swc-node/register/esm-register src/database/import-csv.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

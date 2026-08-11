@@ -24,6 +24,7 @@ import {
   aUnidadesMenores,
   type DescripcionNegocio,
 } from '../database/business-setup.js';
+import { importar } from '../database/import-csv.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 
@@ -40,9 +41,15 @@ import { INTEGRATION_DB, deleteTenants } from './helpers.js';
  */
 const suite = INTEGRATION_DB ? describe : describe.skip;
 
-const EJEMPLO = fileURLToPath(
-  new URL('../../../../infra/ejemplos/negocio.ejemplo.json', import.meta.url),
-);
+const ejemplo = (nombre: string): string =>
+  fileURLToPath(
+    new URL(`../../../../infra/ejemplos/${nombre}`, import.meta.url),
+  );
+
+const EJEMPLO = ejemplo('negocio.ejemplo.json');
+const HOJA_CARTA = ejemplo('carta.ejemplo.csv');
+const HOJA_INSUMOS = ejemplo('insumos.ejemplo.csv');
+const HOJA_RECETAS = ejemplo('recetas.ejemplo.csv');
 
 suite('Configuración del negocio desde archivo', () => {
   let app: INestApplication;
@@ -243,5 +250,66 @@ suite('Configuración del negocio desde archivo', () => {
     await expect(
       aplicarNegocio(servicios(), tenantId, negocio),
     ).rejects.toThrow(/"Marca Fantasma" no está en la lista de marcas/);
+  });
+
+  it('LA CARTA IMPORTADA DESDE CSV se aplica igual, y cobra lo mismo', async () => {
+    // El camino del Excel termina aquí: hoja → `import-csv` → este mismo
+    // `aplicarNegocio`. Se comprueba contra Postgres de verdad y no solo con
+    // una comparación de objetos porque lo que hay que demostrar es que **se
+    // puede vender** con lo que salió de la hoja: que el precio que cobra es el
+    // de la columna y que el kardex descuenta lo que dice la receta.
+    //
+    // Es también lo que mantiene vivas las hojas de `infra/ejemplos/`: un
+    // ejemplo que nadie ha ejecutado se descubre roto con el cliente delante.
+    const base = leerEjemplo();
+    const importado = importar({
+      // Se parte del negocio SIN carta ni inventario, que es la situación real
+      // de quien los tiene en una hoja de cálculo.
+      negocio: {
+        ...base,
+        carta: [
+          {
+            marca: base.marcas[0]!.nombre,
+            gruposModificadores: base.carta![0]!.gruposModificadores!,
+            productos: [],
+          },
+        ],
+        ...(base.inventario ? { inventario: undefined } : {}),
+      } as DescripcionNegocio,
+      productosCsv: readFileSync(HOJA_CARTA, 'utf8'),
+      insumosCsv: readFileSync(HOJA_INSUMOS, 'utf8'),
+      recetasCsv: readFileSync(HOJA_RECETAS, 'utf8'),
+    });
+
+    const resumen = await aplicarNegocio(
+      servicios(),
+      tenantId,
+      importado.negocio,
+    );
+    expect(resumen.productCount).toBe(4);
+    expect(resumen.itemCount).toBe(5);
+    expect(resumen.recipeCount).toBe(4);
+
+    // El precio que cobra es el de la columna `precio_web` —escrita «59,00»,
+    // con coma decimal, como la exporta un Excel en español—.
+    const tienda = app.get(StorefrontService);
+    const contexto = await tienda.resolveHost('buensabor.sahana.food');
+    const carta = await app.get(CatalogService).getResolvedCatalog(tenantId, {
+      brandId: contexto.brandId,
+      channel: 'web',
+    });
+    const pollo = carta.products.find((p) => p.name.includes('entero'));
+    expect(pollo).toBeDefined();
+    expect(pollo!.price.minorUnits).toBe(
+      aUnidadesMenores('59.00', 'precio_web del CSV'),
+    );
+    // Y el combo llegó como combo: la celda «POLLO-ENT x1 | GASEOSA-15 x1» es
+    // la única forma que tiene una hoja de cálculo de decir esto, y leerla mal
+    // publicaría un combo vacío que se puede pedir.
+    const productos = await app
+      .get(CatalogAdminService)
+      .listProducts(tenantId, { brandId: contexto.brandId });
+    const combo = productos.find((p) => p.name === 'Combo familiar');
+    expect(combo?.isCombo).toBe(true);
   });
 });

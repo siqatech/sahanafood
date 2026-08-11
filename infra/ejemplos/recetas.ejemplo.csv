@@ -1,0 +1,9 @@
+receta;producto;rendimiento;unidad_rendimiento;insumo;subreceta;cantidad;merma_bps
+Crema de la casa;;100;ml;MAYONESA;;60;
+Crema de la casa;;100;ml;KETCHUP;;40;
+Pollo entero a la brasa;POLLO-ENT;;;POLLO-CRUDO;;1200;500
+Pollo entero a la brasa;POLLO-ENT;;;PAPA;;300;
+Pollo entero a la brasa;POLLO-ENT;;;;Crema de la casa;30;
+Medio pollo a la brasa;POLLO-MED;;;POLLO-CRUDO;;600;500
+Medio pollo a la brasa;POLLO-MED;;;PAPA;;200;
+Gaseosa 1.5 L;GASEOSA-15;;;GASEOSA-BOT;;1;
