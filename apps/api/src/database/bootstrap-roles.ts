@@ -62,6 +62,16 @@ function literal(valor: string): string {
   return `'${valor.replaceAll("'", "''")}'`;
 }
 
+/** ¿La cadena de conexión pide TLS? `sslmode=disable` y la ausencia dicen que no. */
+export function pideTls(url: string): boolean {
+  try {
+    const modo = new URL(url).searchParams.get('sslmode');
+    return modo !== null && modo !== 'disable';
+  } catch {
+    return false;
+  }
+}
+
 function conUsuario(url: string, usuario: string, clave: string): string {
   const u = new URL(url);
   u.username = usuario;
@@ -88,12 +98,20 @@ export async function bootstrapRoles(input: {
 
   const cliente = new Client({
     connectionString: input.adminUrl,
-    // Los proveedores gestionados exigen TLS con su propia cadena de
-    // certificados; verificarla contra el almacén del sistema falla en la
-    // mayoría. En local no hay TLS.
-    ssl: /localhost|127\.0\.0\.1/.test(input.adminUrl)
-      ? false
-      : { rejectUnauthorized: false },
+    // TLS **solo si la propia URL lo pide** (`sslmode=` distinto de `disable`),
+    // igual que hace `createPool` para la aplicación. Es importante que las dos
+    // decidan igual: si no, el arranque valida una conexión que la API luego no
+    // puede abrir, o al revés.
+    //
+    // Forzarlo por «no es localhost» era lo que había, y se rompe en cuanto la
+    // base vive en una red privada: Railway sirve Postgres por
+    // `*.railway.internal` sin TLS —la red ya está aislada— y el arranque moría
+    // con «The server does not support SSL connections» sin llegar a tocar nada.
+    //
+    // Cuando sí se pide, se pide SIN verificar la cadena: los proveedores
+    // gestionados usan su propia CA y verificarla contra el almacén del sistema
+    // falla en casi todos.
+    ssl: pideTls(input.adminUrl) ? { rejectUnauthorized: false } : false,
   });
   await cliente.connect();
 

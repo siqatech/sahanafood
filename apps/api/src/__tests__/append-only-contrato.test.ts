@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { TABLAS_APPEND_ONLY } from '../database/append-only.js';
+import { pideTls } from '../database/bootstrap-roles.js';
 
 /**
  * La lista de tablas append-only tiene que decir la verdad.
@@ -46,5 +47,26 @@ describe('Contrato append-only', () => {
     expect(enMigraciones.length).toBeGreaterThan(5);
 
     expect([...TABLAS_APPEND_ONLY].sort()).toEqual(enMigraciones);
+  });
+});
+
+describe('TLS del arranque de roles', () => {
+  /**
+   * La decisión de TLS la manda la URL, no el nombre del host.
+   *
+   * Antes se forzaba TLS por «no es localhost», y eso rompe en cuanto la base
+   * vive en una red privada: Railway sirve Postgres por `*.railway.internal`
+   * sin TLS y el arranque moría con «The server does not support SSL
+   * connections» sin llegar a crear ningún rol. Medido en el despliegue.
+   */
+  it('SOLO pide TLS si lo pide la cadena de conexión', () => {
+    expect(
+      pideTls('postgres://u:p@postgres.railway.internal:5432/railway'),
+    ).toBe(false);
+    expect(pideTls('postgres://u:p@localhost:5432/sahana')).toBe(false);
+    expect(pideTls('postgres://u:p@host.neon.tech/db?sslmode=require')).toBe(
+      true,
+    );
+    expect(pideTls('postgres://u:p@host/db?sslmode=disable')).toBe(false);
   });
 });
