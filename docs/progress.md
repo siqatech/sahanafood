@@ -932,4 +932,41 @@ vivo. El aviso está junto al campo, que es donde sirve.
 semanas no está protegiendo nada — o no coincide nunca, o llega tarde por
 prioridad.
 
+### Por dónde entran los pedidos
+
+Dos cosas que un negocio necesita el primer día y que solo se podían hacer por
+API:
+
+· **Conectar un marketplace.** `POST /integrations/connections` existía sin que
+lo llamara nada, así que dar de alta un canal exigía un `curl` con el secreto de
+firma dentro. Y la torre de control enseñaba los conectores degradados **sin
+ninguna forma de reactivarlos**: se veía el problema y no se podía tocar.
+
+· **El dominio de la tienda.** Se podía registrar y verificar por API, y **no
+existía forma de listarlos**: el dato más importante de la tienda —en qué
+dirección vive— no lo devolvía ninguna ruta. Quien registrara un dominio y
+cerrara la pestaña perdía el token de verificación, y con él la única manera de
+activarlo.
+
+`GET /storefront/domains` (con `storefront.read`, no con `manage_domains`: mirar
+dónde vive la tienda es una consulta, y quien atiende pedidos tiene que poder
+responder «entra en tal dirección» sin permiso para cambiarla) y la pantalla
+`/panel/canales`.
+
+Tres detalles que no son de formulario:
+
+· **El token de verificación se enseña las veces que haga falta.** No es un
+secreto: es un valor que hay que publicar en un registro TXT para demostrar que
+el dominio es tuyo. Ocultarlo haría imposible el paso que existe para
+verificarlo. El secreto de firma del canal, en cambio, no se vuelve a enseñar
+nunca — ni al dueño: la API lo devuelve redactado.
+
+· **El cortacircuitos se enseña con palabras.** Un conector con el circuito
+abierto no recibe pedidos ni cambios de carta, y por fuera se parece a «hoy hay
+poca venta».
+
+· **Solo se ofrece el simulador** como conector. Los reales llegan en F7 y
+ofrecerlos aquí sería prometer una integración que no existe; el simulador habla
+el mismo protocolo, así que lo que se pruebe vale.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

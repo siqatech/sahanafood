@@ -347,6 +347,17 @@ export interface CobroDelPanel {
     | undefined;
 }
 
+/** Un dominio de tienda y lo que falta para que sirva (RN-STO-01). */
+export interface DominioDelPanel {
+  id: string;
+  brandId: string;
+  host: string;
+  status: string;
+  isSubdomain: boolean;
+  verificationToken: string | null;
+  verifiedAt: string | null;
+}
+
 /** La configuración del agente de una marca (spec 19). */
 export interface ConfigDelAgente {
   id: string;
@@ -610,7 +621,17 @@ export interface ConexionDelPanel {
   provider: string;
   channel: string;
   brandId: string;
+  locationId: string;
   status: string;
+  /**
+   * El cortacircuitos. `open` = el canal falló tantas veces seguidas que se
+   * dejó de intentar, y eso hay que verlo: un conector con el circuito abierto
+   * no recibe pedidos ni cambios de carta, y por fuera se parece a «hoy hay
+   * poca venta».
+   */
+  circuit: string;
+  consecutiveFailures: number;
+  lastSuccessAt: string | null;
 }
 
 // ------------------------------------------------------------ Llamadas
@@ -847,6 +868,46 @@ export const panel = {
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),
+
+  dominios: (): Promise<DominioDelPanel[]> =>
+    llamar<DominioDelPanel[]>('/storefront/domains'),
+
+  registrarDominio: (input: {
+    brandId: string;
+    host: string;
+  }): Promise<{
+    id: string;
+    host: string;
+    status: string;
+    verificationToken: string | null;
+  }> =>
+    llamar('/storefront/domains', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  verificarDominio: (id: string): Promise<{ ok: true }> =>
+    llamar<{ ok: true }>(`/storefront/domains/${id}/verify`, {
+      method: 'POST',
+    }),
+
+  crearConexion: (input: {
+    provider: string;
+    channel: string;
+    brandId: string;
+    locationId: string;
+    signingSecret: string;
+  }): Promise<ConexionDelPanel> =>
+    llamar<ConexionDelPanel>('/integrations/connections', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  estadoDeConexion: (id: string, status: string): Promise<ConexionDelPanel> =>
+    llamar<ConexionDelPanel>(`/integrations/connections/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    }),
 
   configDelAgente: (brandId: string): Promise<ConfigDelAgente> =>
     llamar<ConfigDelAgente>(`/ai/config?brand=${encodeURIComponent(brandId)}`),

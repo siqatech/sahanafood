@@ -69,6 +69,19 @@ const customerSchema = z.object({
 export class StorefrontAdminController {
   constructor(private readonly storefront: StorefrontService) {}
 
+  /**
+   * Los dominios del negocio.
+   *
+   * Con `storefront.read`, no con `manage_domains`: mirar dónde vive la tienda
+   * es una consulta, y quien atiende pedidos necesita poder responder «entra en
+   * tal dirección» sin permiso para cambiarla.
+   */
+  @Get('domains')
+  @RequirePermission('storefront.read')
+  async listDomains(@Req() req: AuthenticatedRequest): Promise<unknown> {
+    return this.storefront.listDomains(req.auth!.tid);
+  }
+
   @Post('domains')
   @RequirePermission('storefront.manage_domains')
   async registerDomain(

@@ -940,6 +940,17 @@ suite('Aislamiento — todos los endpoints', () => {
     });
   });
 
+  it('GET /storefront/domains no enseña los de B', async () => {
+    // El host de otro negocio dice dónde vive su tienda y con qué marca: es lo
+    // que haría falta para intentar suplantarla.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /storefront/domains', (r) =>
+        r.get('/api/v1/storefront/domains'),
+      ),
+    );
+  });
+
   it('GET /documents', async () => {
     // Los comprobantes de B llevan su RUC, sus importes y sus correlativos:
     // es lo más sensible que guarda el sistema.

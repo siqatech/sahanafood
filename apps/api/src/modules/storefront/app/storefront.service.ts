@@ -178,6 +178,56 @@ export class StorefrontService {
   }
 
   /**
+   * Los dominios del negocio, con su estado y lo que falta para activarlos.
+   *
+   * Faltaba, y la consecuencia es que el dato más importante de la tienda —**en
+   * qué dirección vive**— no lo devolvía ninguna ruta. Se podía registrar un
+   * dominio y verificarlo, y no había forma de saber cuál había quedado
+   * registrado, ni si estaba activo, ni cuál era el token que hay que poner en
+   * el DNS. Quien registrara uno y cerrara la pestaña perdía el token.
+   *
+   * El token se devuelve entero: **no es un secreto**, es un valor que hay que
+   * publicar en un registro TXT para demostrar que el dominio es tuyo. Ocultarlo
+   * haría imposible el paso que existe para verificarlo.
+   */
+  async listDomains(tenantId: string): Promise<
+    Array<{
+      id: string;
+      brandId: string;
+      host: string;
+      status: string;
+      isSubdomain: boolean;
+      verificationToken: string | null;
+      verifiedAt: string | null;
+    }>
+  > {
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{
+        id: string;
+        brand_id: string;
+        host: string;
+        status: string;
+        is_subdomain: boolean;
+        verification_token: string | null;
+        verified_at: Date | null;
+      }>(
+        `SELECT id, brand_id, host, status, is_subdomain,
+                verification_token, verified_at
+           FROM sto_domains ORDER BY host`,
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        brandId: r.brand_id,
+        host: r.host,
+        status: r.status,
+        isSubdomain: r.is_subdomain,
+        verificationToken: r.verification_token,
+        verifiedAt: r.verified_at?.toISOString() ?? null,
+      }));
+    });
+  }
+
+  /**
    * Da por verificado un dominio propio.
    *
    * La comprobación DNS real es de infraestructura y llega con T3.16; aquí se

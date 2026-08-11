@@ -892,6 +892,39 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.getByLabel('Cómo se llama')).toHaveValue('Sahi');
   });
 
+  test('LOS CANALES: reactivar un conector y ver dónde vive la tienda', async ({
+    page,
+  }) => {
+    // Dos cosas que solo se podían hacer por API: conectar un marketplace —con
+    // el secreto de firma dentro de un `curl`— y saber en qué dominio vive la
+    // tienda, que no lo devolvía ninguna ruta. Quien registraba un dominio y
+    // cerraba la pestaña perdía el token de verificación.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Canales' }).click();
+    await expect(page.getByRole('heading', { name: 'Canales' })).toBeVisible();
+
+    // El dominio de la semilla, sirviendo.
+    const dominio = page.locator('tbody tr').filter({ hasText: 'demo.local' });
+    await expect(dominio).toContainText('Sirviendo');
+
+    // Y un dominio nuevo: se registra pendiente y con su token a la vista,
+    // porque hasta que el DNS no se compruebe la tienda NO se sirve ahí.
+    const host = `tienda-${Date.now()}.mipolleria.pe`;
+    await page.getByLabel('Dominio', { exact: true }).fill(host);
+    await page.getByRole('button', { name: 'Registrar' }).click();
+    await expect(page.getByText(/Añade este TXT/).first()).toBeVisible();
+
+    await page.reload();
+    const nuevo = page.locator('tbody tr').filter({ hasText: host });
+    await expect(nuevo).toContainText('Sin verificar');
+    await nuevo.getByRole('button', { name: 'Verificar' }).click();
+
+    // Se comprueba el EFECTO: pasa a servir.
+    await expect(
+      page.locator('tbody tr').filter({ hasText: host }),
+    ).toContainText('Sirviendo');
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {
