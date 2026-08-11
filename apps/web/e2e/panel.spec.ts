@@ -753,6 +753,64 @@ test.describe('Panel de gestión en navegador', () => {
     ).toContainText('abierto');
   });
 
+  test('LOS UMBRALES DE COCINA se tocan desde el panel, y en el orden correcto', async ({
+    page,
+  }) => {
+    // Los umbrales deciden cuántas ventas se dejan de aceptar en hora punta y
+    // solo se podían fijar por API: el dueño veía su negocio dejar de vender a
+    // las ocho y media sin ningún sitio donde decir «aguanta hasta cuarenta».
+    await entrar(page);
+    await page.getByRole('link', { name: 'Cocina' }).click();
+    // `exact`: la cocina del negocio se llama «Cocina Central» y su h2 casaría
+    // con el mismo texto.
+    await expect(
+      page.getByRole('heading', { name: 'Cocina', exact: true }),
+    ).toBeVisible();
+
+    const max = page.getByLabel('Platos a la vez antes de alargar la promesa');
+    const pausa = page.getByLabel('Platos a la vez antes de CERRAR canales');
+
+    // Sin orden no se guarda: un umbral que cierra canales sin decir CUÁLES
+    // deja que el sistema elija por su cuenta de qué canal deja de entrar
+    // dinero.
+    await page.getByLabel('Orden en que se cierran').fill('');
+    await max.fill('40');
+    await pausa.fill('60');
+    await page.getByRole('button', { name: 'Guardar umbrales' }).click();
+    await expect(page.getByText(/di en qué orden/i)).toBeVisible();
+
+    // Al revés tampoco: cerrar canales antes de haber alargado la promesa
+    // apaga ventas sin haber probado lo que no cuesta nada.
+    await page.getByLabel('Orden en que se cierran').fill('rappi, web');
+    await max.fill('40');
+    await pausa.fill('20');
+    await page.getByRole('button', { name: 'Guardar umbrales' }).click();
+    await expect(page.getByText(/tiene que ser MAYOR/)).toBeVisible();
+
+    await pausa.fill('60');
+    // Se espera a que la acción VIAJE antes de recargar. Recargar mientras va
+    // en camino la aborta, y esperar al mensaje tampoco vale: `revalidatePath`
+    // remonta el formulario y se lo lleva por delante. La prueba fallaría por
+    // carrera, no por el fallo que vigila.
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.request().method() === 'POST' &&
+          r.request().isNavigationRequest() === false,
+      ),
+      page.getByRole('button', { name: 'Guardar umbrales' }).click(),
+    ]);
+
+    // Se comprueba el EFECTO: el valor guardado es el que se escribió.
+    await page.reload();
+    await expect(
+      page.getByLabel('Platos a la vez antes de alargar la promesa'),
+    ).toHaveValue('40');
+    await expect(
+      page.getByLabel('Platos a la vez antes de CERRAR canales'),
+    ).toHaveValue('60');
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

@@ -63,6 +63,7 @@ export default async function PanelLayout({
               <Link href="/panel">Hoy</Link>
               <Link href="/panel/operaciones">Operaciones</Link>
               <Link href="/panel/pedidos">Pedidos</Link>
+              <Link href="/panel/cocina">Cocina</Link>
               <Link href="/panel/reparto">Reparto</Link>
               <Link href="/panel/caja">Caja</Link>
               <Link href="/panel/comprobantes">Comprobantes</Link>

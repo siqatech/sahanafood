@@ -826,4 +826,39 @@ De paso, un id de local ajeno chocaba contra la clave foránea y salía un **500
 con SQL dentro**: RLS impedía el daño, pero el error no decía nada y parecía una
 avería nuestra. Ahora se comprueba el local y responde 404.
 
+### Los umbrales que deciden cuándo dejar de vender
+
+Cierra el par con la pantalla anterior. Ver y deshacer las pausas estaba hecho;
+lo que las **causa** —los umbrales de RN-KIT-04— seguía siendo solo API: el dueño
+veía su negocio dejar de aceptar pedidos a las ocho y media sin ningún sitio
+donde decir «aguanta hasta cuarenta platos». Y el histórico de niveles se
+guardaba desde T5.18 con el comentario «para discutir el umbral **con datos, no a
+ojo**» sin que ninguna pantalla lo devolviera, así que la discusión seguía siendo
+a ojo.
+
+`/panel/cocina`: carga actual por estación —el cuello de botella casi nunca es la
+cocina entera, es una estación, y subir el umbral general es la respuesta
+equivocada a un horno lento—, los dos umbrales con lo que hace cada uno escrito
+al lado, el orden de cierre con la sugerencia por comisión, y el histórico.
+
+**Los dos umbrales se validan uno contra otro** antes de salir: el de pausa tiene
+que ser mayor que el de extensión, porque primero se alarga la promesa —se sigue
+vendiendo— y solo después se cierran canales. Al revés, el dueño apaga sus
+ventas creyendo que las protege.
+
+### Y un defecto de formulario que llevaba en todo el panel
+
+Al probarlo apareció algo que no era de esta pantalla: **una acción de servidor
+que falla vuelve a renderizar la página, y con ella el formulario — los campos
+vuelven a su valor por defecto y se pierde todo lo tecleado.** En un formulario
+de un campo se nota poco. En este, que tiene cinco, equivocarse en uno significa
+volver a escribir los otros cuatro; y a la segunda vez la gente deja de corregir
+y guarda cualquier cosa.
+
+La acción devuelve ahora **lo que la persona escribió** junto con el error, y el
+formulario lo prefiere sobre lo guardado. Lo encontré porque la prueba de
+navegador fallaba de una forma que no cuadraba —el guardado bueno ni siquiera
+llegaba a la API—, no porque estuviera buscándolo: sin la prueba, esto se habría
+descubierto con un cliente delante.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

@@ -347,6 +347,42 @@ export interface CobroDelPanel {
     | undefined;
 }
 
+/** Umbrales de una cocina y su nivel actual (RN-KIT-04). */
+export interface CapacidadDeCocina {
+  kitchenId: string;
+  maxConcurrentItems: number;
+  extendMinutes: number;
+  pauseThresholdItems: number | null;
+  channelPauseOrder: string[];
+  level: string;
+  levelSince: string | null;
+  enabled: boolean;
+}
+
+export interface CargaDeCocina {
+  kitchenId: string;
+  activeTickets: number;
+  activeItems: number;
+  lateTickets: number;
+  byStation: Array<{
+    stationId: string;
+    stationName: string;
+    tickets: number;
+    items: number;
+    oldestWaitingMinutes: number;
+  }>;
+}
+
+export interface CambioDeNivel {
+  fromLevel: string;
+  toLevel: string;
+  activeItems: number;
+  channelsPaused: string[];
+  ordersExtended: number;
+  reason: string;
+  at: string;
+}
+
 /** Un canal cerrado ahora mismo, y por quién (RN-KIT-04). */
 export interface PausaDeCanal {
   channel: string;
@@ -715,6 +751,37 @@ export const panel = {
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),
+
+  capacidad: (kitchenId: string): Promise<CapacidadDeCocina> =>
+    llamar<CapacidadDeCocina>(
+      `/kitchen/capacity?kitchen=${encodeURIComponent(kitchenId)}`,
+    ),
+
+  cargaDeCocina: (kitchenId: string): Promise<CargaDeCocina> =>
+    llamar<CargaDeCocina>(
+      `/kitchen/load?kitchen=${encodeURIComponent(kitchenId)}`,
+    ),
+
+  historialDeSaturacion: (kitchenId: string): Promise<CambioDeNivel[]> =>
+    llamar<CambioDeNivel[]>(`/kitchen/capacity/${kitchenId}/history`),
+
+  ordenSugerido: (): Promise<string[]> =>
+    llamar<string[]>('/kitchen/capacity/suggested-order'),
+
+  ponerCapacidad: (
+    kitchenId: string,
+    input: {
+      maxConcurrentItems: number;
+      extendMinutes: number;
+      pauseThresholdItems?: number | null;
+      channelPauseOrder?: string[];
+      enabled?: boolean;
+    },
+  ): Promise<CapacidadDeCocina> =>
+    llamar<CapacidadDeCocina>(`/kitchen/capacity/${kitchenId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
 
   pausas: (locationId: string): Promise<PausaDeCanal[]> =>
     llamar<PausaDeCanal[]>(
