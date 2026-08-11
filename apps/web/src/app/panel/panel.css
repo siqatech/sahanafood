@@ -366,6 +366,13 @@ tr:last-child td {
 /* El formulario de corrección va DENTRO de la ficha del rechazo: el motivo que
    devolvió el OSE tiene que quedar a la vista mientras se escribe el dato
    nuevo, o se corrige de memoria. */
+.canales {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
 .correccion {
   display: flex;
   flex-wrap: wrap;

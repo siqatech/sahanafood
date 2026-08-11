@@ -61,6 +61,9 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'orders.modify',
       'orders.review_exceptions',
       'orders.discount',
+      // Pausar y reabrir un canal en caliente. El dueño fija los umbrales; el
+      // encargado de turno es quien está mirando la cocina a las nueve.
+      'orders.pause_channels',
       'cash.open',
       'cash.close',
       'cash.read',

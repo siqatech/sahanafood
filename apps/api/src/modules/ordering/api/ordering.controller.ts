@@ -118,6 +118,24 @@ const syncBatchSchema = z.object({
   orders: z.array(offlineOrderSchema).min(1).max(100),
 });
 
+const pausaSchema = z.object({
+  locationId: z.string().uuid(),
+  channel: z.string().min(1).max(40),
+  paused: z.boolean(),
+  reason: z.string().max(200).optional(),
+  /**
+   * Cuántos minutos dura la pausa. Sin esto, una pausa puesta a las nueve de la
+   * noche sigue puesta a la mañana siguiente y nadie sabe por qué no entran
+   * pedidos: el turno que la puso ya se fue a casa.
+   */
+  untilMinutes: z
+    .number()
+    .int()
+    .positive()
+    .max(24 * 60)
+    .optional(),
+});
+
 const resolveMappingSchema = z.object({
   lines: z
     .array(lineSchema)
@@ -297,6 +315,64 @@ export class OrderingController {
   }
 
   /** Bandeja de excepciones (RN-ORD-10): pedidos que esperan intervención. */
+  /**
+   * Qué canales están cerrados ahora mismo, y por qué (RN-KIT-04).
+   *
+   * La saturación de cocina pausa canales sola, y hasta ahora eso ocurría **sin
+   * que nadie pudiera verlo ni deshacerlo**: `pausedChannels` existía con el
+   * comentario «para el panel y el KDS» y ninguna ruta la exponía. En un local
+   * eso se vive como que las ventas se paran de golpe sin explicación, y a las
+   * nueve de la noche no hay ningún sitio donde volver a abrir.
+   */
+  @Get('channel-pauses')
+  @RequirePermission('orders.read')
+  channelPauses(
+    @Req() req: AuthenticatedRequest,
+    @Query('locationId') locationId: string,
+  ): Promise<
+    Array<{ channel: string; pausedBy: string; reason: string | null }>
+  > {
+    return this.ordering.pausedChannels(req.auth!.tid, locationId);
+  }
+
+  /**
+   * Cierra o reabre un canal a mano.
+   *
+   * Permiso propio, `orders.pause_channels`: es la decisión de dejar de vender
+   * por ese canal. No va con `orders.transition` —eso es operar los pedidos que
+   * ya entraron— ni queda solo en el dueño, porque quien está mirando la cocina
+   * a las nueve es el encargado de turno.
+   *
+   * Una pausa MANUAL gana sobre la automática (lo garantiza el servicio): si la
+   * puso una persona, la cocina no puede levantarla sola cuando baje la carga.
+   */
+  @Post('channel-pauses')
+  @RequirePermission('orders.pause_channels')
+  async setChannelPause(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<{ ok: true }> {
+    const dto = parse(pausaSchema, body);
+    if (dto.paused && !dto.reason?.trim()) {
+      // Sin motivo, el que llega después no sabe si puede reabrir. Es la misma
+      // razón por la que rechazar un pedido lo exige.
+      throw new ValidationError(
+        'Di por qué se cierra el canal: quien llegue después tiene que saber si puede reabrirlo.',
+      );
+    }
+    await this.ordering.setChannelPause(req.auth!.tid, {
+      locationId: dto.locationId,
+      channel: dto.channel,
+      paused: dto.paused,
+      pausedBy: 'manual',
+      ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
+      ...(dto.untilMinutes !== undefined
+        ? { until: new Date(Date.now() + dto.untilMinutes * 60_000) }
+        : {}),
+    });
+    return { ok: true };
+  }
+
   @Get('exceptions')
   @RequirePermission('orders.read')
   exceptions(@Req() req: AuthenticatedRequest): Promise<OrderSummary[]> {

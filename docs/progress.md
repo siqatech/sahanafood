@@ -784,4 +784,46 @@ roto siempre hay una primera fila. En la pantalla que se abre cuando suena el
 teléfono, eso es atender a un cliente mirando el pedido de otro. Ahora la prueba
 comprueba **que el resultado sea el que se buscó**.
 
+### El sistema dejaba de vender y nadie podía verlo ni deshacerlo
+
+La saturación de cocina (T5.18, RN-KIT-04) **pausa canales sola** cuando el
+segundo umbral se supera: deja de aceptar pedidos por el canal de menor margen
+para salvar los que ya están dentro. Es correcto. Lo que no lo era: no había
+ninguna ruta que dijera **qué canales están cerrados**, ni ninguna forma de
+abrirlos a mano.
+
+`pausedChannels` existía desde F5 con el comentario «**para el panel y el KDS**»
+—otra vez el mismo patrón— y no la exponía nadie. Lo que se vive en el local es
+que las ventas se paran de golpe sin explicación, y a las nueve de la noche, con
+la cocina ya despejada, no hay ningún sitio donde volver a abrir. Y al revés: el
+encargado que se queda sin pollo no puede cerrar Rappi sin llamar por teléfono a
+quien tenga acceso al servidor.
+
+`GET/POST /orders/channel-pauses` y la sección **Canales** de la torre de
+control, arriba del todo a propósito: si un canal está cerrado, la columna «por
+aceptar» estará vacía por un motivo que no es que no haya clientes. Sin eso, la
+pantalla dice «todo tranquilo» mientras el negocio no vende.
+
+Cuatro decisiones:
+
+· **Permiso propio, `orders.pause_channels`,** que lleva el supervisor. No va con
+`orders.transition` —eso es operar los pedidos que ya entraron— ni se queda solo
+en el dueño: quien está mirando la cocina a las nueve es el encargado de turno.
+Es el primer permiso nuevo desde que existe `pnpm sync:roles`, así que llega a
+los clientes actuales por el camino que se construyó para eso.
+
+· **Cerrar exige motivo**, por lo mismo que rechazar un pedido: el turno
+siguiente tiene que saber si puede reabrir.
+
+· **La pausa puede caducar.** Una puesta a las nueve de la noche sin caducidad
+sigue puesta a las ocho de la mañana, y quien la puso ya se fue a casa.
+
+· **La pantalla dice QUIÉN cerró.** Una pausa automática se levanta sola al bajar
+la carga; una manual, no. Sin distinguirlo, la gente espera a que se abra sola
+un canal que no va a abrirse.
+
+De paso, un id de local ajeno chocaba contra la clave foránea y salía un **500
+con SQL dentro**: RLS impedía el daño, pero el error no decía nada y parecía una
+avería nuestra. Ahora se comprueba el local y responde 404.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

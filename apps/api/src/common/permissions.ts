@@ -52,6 +52,12 @@ export const PERMISSIONS = [
   // una lectura, es una decisión de negocio (RN-ORD-10).
   'orders.review_exceptions',
   'orders.discount',
+  // Cerrar y volver a abrir un canal a mano. Es la decisión de dejar de vender
+  // por ese canal, así que no va con `orders.transition` —que es operar los
+  // pedidos que ya entraron— ni con el permiso del dueño que fija los umbrales:
+  // el encargado de turno tiene que poder reabrir a las nueve de la noche sin
+  // llamar a nadie.
+  'orders.pause_channels',
   // Caja (F4)
   'cash.open',
   'cash.close',

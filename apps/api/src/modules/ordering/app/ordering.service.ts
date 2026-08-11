@@ -1825,6 +1825,15 @@ export class OrderingService {
     },
   ): Promise<void> {
     await withTenant(this.pool, tenantId, async ({ client }) => {
+      // El local tiene que ser de este tenant. Sin esta comprobación, un id
+      // ajeno choca contra la clave foránea y sale un 500 con SQL dentro: RLS
+      // impide el daño, pero el error no dice nada y parece una avería nuestra.
+      const { rows: local } = await client.query(
+        'SELECT 1 FROM org_locations WHERE id = $1',
+        [input.locationId],
+      );
+      if (local.length === 0) throw new NotFoundError('Local no encontrado.');
+
       if (input.paused) {
         await client.query(
           `INSERT INTO ord_channel_pauses

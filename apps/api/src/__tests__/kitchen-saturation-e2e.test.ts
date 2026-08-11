@@ -292,6 +292,102 @@ suite('Saturación de cocina', () => {
     });
   });
 
+  it('POR API se ve QUÉ canales están cerrados y se pueden reabrir', async () => {
+    // Era el agujero: la cocina pausaba canales sola y no había ninguna ruta
+    // que lo enseñara ni que lo deshiciera. `pausedChannels` llevaba desde F5
+    // el comentario «para el panel y el KDS» y no la exponía nadie. En un local
+    // eso se vive como que las ventas se paran de golpe sin explicación.
+    await auth(
+      http().post('/api/v1/orders/channel-pauses').send({
+        locationId: org.locationId,
+        channel: 'web',
+        paused: true,
+        reason: 'Se rompió el horno',
+      }),
+    ).expect(201);
+
+    const abiertas = await auth(
+      http().get(`/api/v1/orders/channel-pauses?locationId=${org.locationId}`),
+    ).expect(200);
+    const web = abiertas.body.find(
+      (p: { channel: string }) => p.channel === 'web',
+    );
+    expect(web).toBeTruthy();
+    expect(web.pausedBy).toBe('manual');
+    expect(web.reason).toBe('Se rompió el horno');
+
+    // Y con el canal cerrado NO entra un pedido por ahí.
+    await expect(
+      ordering.submit(tenantA, {
+        brandId: org.brandIds[0]!,
+        locationId: org.locationId,
+        channel: 'web',
+        lines: [
+          {
+            productId: cat.polloId,
+            quantity: 1,
+            modifierOptionIds: [cat.optionGrandeId],
+          },
+        ],
+      }),
+    ).rejects.toThrow(/horno/i);
+
+    await auth(
+      http().post('/api/v1/orders/channel-pauses').send({
+        locationId: org.locationId,
+        channel: 'web',
+        paused: false,
+      }),
+    ).expect(201);
+
+    const despues = await auth(
+      http().get(`/api/v1/orders/channel-pauses?locationId=${org.locationId}`),
+    ).expect(200);
+    expect(
+      despues.body.map((p: { channel: string }) => p.channel),
+    ).not.toContain('web');
+  });
+
+  it('CERRAR SIN MOTIVO se rechaza: el turno siguiente no adivina', async () => {
+    const r = await auth(
+      http().post('/api/v1/orders/channel-pauses').send({
+        locationId: org.locationId,
+        channel: 'pos',
+        paused: true,
+      }),
+    ).expect(422);
+    expect(r.body.detail).toMatch(/por qué se cierra/i);
+  });
+
+  it('LA PAUSA CADUCA: una de diez minutos no sigue puesta mañana', async () => {
+    // Sin caducidad, la pausa de las nueve de la noche sigue puesta a las ocho
+    // de la mañana y el turno que la puso ya se fue a casa.
+    await auth(
+      http().post('/api/v1/orders/channel-pauses').send({
+        locationId: org.locationId,
+        channel: 'pedidosya',
+        paused: true,
+        reason: 'Cola de veinte pedidos',
+        untilMinutes: 10,
+      }),
+    ).expect(201);
+
+    const vigente = await ordering.pausedChannels(tenantA, org.locationId);
+    expect(vigente.map((p) => p.channel)).toContain('pedidosya');
+
+    // Se adelanta el reloj de la fila en vez de esperar diez minutos.
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(
+        `UPDATE ord_channel_pauses SET until = now() - interval '1 minute'
+          WHERE location_id = $1 AND channel = 'pedidosya'`,
+        [org.locationId],
+      ),
+    );
+
+    const caducada = await ordering.pausedChannels(tenantA, org.locationId);
+    expect(caducada.map((p) => p.channel)).not.toContain('pedidosya');
+  });
+
   it('el histórico registra cada cambio de nivel', async () => {
     const r = await auth(
       http().get(`/api/v1/kitchen/capacity/${org.kitchenId}/history`),

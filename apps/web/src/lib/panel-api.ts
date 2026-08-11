@@ -347,6 +347,13 @@ export interface CobroDelPanel {
     | undefined;
 }
 
+/** Un canal cerrado ahora mismo, y por quién (RN-KIT-04). */
+export interface PausaDeCanal {
+  channel: string;
+  pausedBy: string;
+  reason: string | null;
+}
+
 /** Un envío y a quién se le dio (spec 09). */
 export interface EnvioDelPanel {
   id: string;
@@ -708,6 +715,23 @@ export const panel = {
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),
+
+  pausas: (locationId: string): Promise<PausaDeCanal[]> =>
+    llamar<PausaDeCanal[]>(
+      `/orders/channel-pauses?locationId=${encodeURIComponent(locationId)}`,
+    ),
+
+  ponerPausa: (input: {
+    locationId: string;
+    channel: string;
+    paused: boolean;
+    reason?: string;
+    untilMinutes?: number;
+  }): Promise<{ ok: true }> =>
+    llamar<{ ok: true }>('/orders/channel-pauses', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   envios: (status?: string): Promise<EnvioDelPanel[]> =>
     llamar<EnvioDelPanel[]>(

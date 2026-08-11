@@ -89,6 +89,8 @@ suite('Aislamiento — todos los endpoints', () => {
   /** Dominio de tienda de B: A no debe poder verlo ni darlo por verificado. */
   let dominioDeB = '';
   /** Repartidor y envío de B: sus nombres y su deuda de efectivo son suyos. */
+  let localDeB = '';
+  let tenantIdB = '';
   let repartidorDeB = '';
   let envioDeB = '';
   /** Enlace de seguimiento de B: quien lo tenga sabe dónde va un pedido ajeno. */
@@ -315,6 +317,9 @@ suite('Aislamiento — todos los endpoints', () => {
         customerPhone: '+51911100022',
       });
     excepcionDeA = apartado.id;
+
+    localDeB = demoB.locationId;
+    tenantIdB = b.tenantId;
 
     const pedidoB = await app.get(OrderingService).submit(b.tenantId, {
       brandId: demoB.brandIds[0],
@@ -893,6 +898,46 @@ suite('Aislamiento — todos los endpoints', () => {
         { expectedStatusForA: [404] },
       ),
     );
+  });
+
+  it('GET /orders/channel-pauses del local de B', async () => {
+    // Saber qué canales tiene cerrados otro negocio es inteligencia
+    // competitiva: dice cuándo no da abasto.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /orders/channel-pauses', (r) =>
+        r.get(`/api/v1/orders/channel-pauses?locationId=${localDeB}`),
+      ),
+    );
+  });
+
+  it('POST /orders/channel-pauses sobre el local de B', async () => {
+    // Cerrarle un canal a otro negocio es apagarle las ventas.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'POST /orders/channel-pauses',
+        (r) =>
+          r.post('/api/v1/orders/channel-pauses').send({
+            locationId: localDeB,
+            channel: 'web',
+            paused: true,
+            reason: 'Intento cruzado',
+          }),
+        { expectedStatusForA: [404] },
+      ),
+    );
+
+    // El arnés llama al endpoint también COMO B —así comprueba que la ruta
+    // funciona para su dueño— así que aquí B se ha cerrado su propio canal.
+    // Se deshace: dejarlo cerrado apagaría las ventas de B para las pruebas
+    // que vienen después, y el fallo aparecería a diez pruebas de distancia.
+    await app.get(OrderingService).setChannelPause(tenantIdB, {
+      locationId: localDeB,
+      channel: 'web',
+      paused: false,
+      pausedBy: 'manual',
+    });
   });
 
   it('GET /documents', async () => {

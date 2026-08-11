@@ -79,3 +79,48 @@ export async function reintentar(
   revalidatePath('/panel/operaciones');
   return { ok: 'Reencolado. Si vuelve a fallar, aparecerá otra vez aquí.' };
 }
+
+/**
+ * Cierra o reabre un canal a mano (RN-KIT-04).
+ *
+ * La saturación de cocina ya los pausa sola. Lo que faltaba era el lado humano:
+ * ver cuáles están cerrados y poder abrirlos. Sin eso, el local vive que las
+ * ventas se paran de golpe sin explicación y no hay ningún sitio donde
+ * deshacerlo — a las nueve de la noche, con la cocina ya despejada.
+ */
+export async function cambiarPausa(
+  _prev: EstadoOperaciones,
+  form: FormData,
+): Promise<EstadoOperaciones> {
+  const locationId = String(form.get('locationId') ?? '');
+  const channel = String(form.get('channel') ?? '');
+  const paused = form.get('paused') === 'true';
+  const reason = String(form.get('reason') ?? '').trim();
+  const minutos = String(form.get('untilMinutes') ?? '').trim();
+
+  if (paused && reason.length < 3) {
+    return {
+      error: 'Di por qué se cierra: quien llegue después tiene que saberlo.',
+    };
+  }
+
+  try {
+    await panel.ponerPausa({
+      locationId,
+      channel,
+      paused,
+      ...(reason !== '' ? { reason } : {}),
+      ...(minutos !== '' && /^\d+$/.test(minutos)
+        ? { untilMinutes: Number(minutos) }
+        : {}),
+    });
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/operaciones');
+  return {
+    ok: paused
+      ? 'Canal cerrado. Deja de entrar pedidos por ahí.'
+      : 'Canal abierto otra vez.',
+  };
+}

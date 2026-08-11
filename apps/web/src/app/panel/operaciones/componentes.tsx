@@ -5,6 +5,7 @@ import {
   aceptar,
   rechazar,
   reintentar,
+  cambiarPausa,
   type EstadoOperaciones,
 } from './acciones';
 
@@ -118,6 +119,75 @@ export function BotonReintentar({ id }: { id: string }) {
  * hace ocho minutos no aparecería hasta que a alguien se le ocurriera pulsar
  * F5, que es justo lo que esta pantalla existe para evitar.
  */
+/**
+ * Cerrar o reabrir un canal.
+ *
+ * Cerrar pide motivo y ofrece una duración: una pausa puesta a las nueve de la
+ * noche sin caducidad sigue puesta a la mañana siguiente, y el turno que la
+ * puso ya se fue a casa.
+ */
+export function ControlDeCanal({
+  locationId,
+  channel,
+  pausado,
+  pausadoPor,
+}: {
+  locationId: string;
+  channel: string;
+  pausado: boolean;
+  pausadoPor?: string | undefined;
+}) {
+  const [estado, accion, pendiente] = useActionState<
+    EstadoOperaciones,
+    FormData
+  >(cambiarPausa, {});
+
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="locationId" value={locationId} />
+        <input type="hidden" name="channel" value={channel} />
+        <input type="hidden" name="paused" value={pausado ? 'false' : 'true'} />
+        {pausado ? null : (
+          <>
+            <input
+              name="reason"
+              placeholder="Motivo"
+              aria-label={`Motivo para cerrar ${channel}`}
+            />
+            <input
+              name="untilMinutes"
+              className="corto"
+              inputMode="numeric"
+              placeholder="min"
+              aria-label={`Minutos de cierre de ${channel}`}
+            />
+          </>
+        )}
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente
+            ? '…'
+            : pausado
+              ? `Reabrir ${channel}`
+              : `Cerrar ${channel}`}
+        </button>
+      </form>
+      {/* Quién lo cerró importa: una pausa automática se levanta sola cuando
+          baja la carga, una manual NO — la puso una persona por un motivo que
+          el sistema no conoce. */}
+      {pausado && pausadoPor ? (
+        <span className="tarjeta__pie">
+          {pausadoPor === 'kitchen'
+            ? 'Lo cerró la cocina por saturación; se reabre solo al bajar la carga.'
+            : 'Lo cerró una persona; solo se reabre a mano.'}
+        </span>
+      ) : null}
+      {estado.error ? <p className="panel__error">{estado.error}</p> : null}
+      {estado.ok ? <p className="tarjeta__pie">{estado.ok}</p> : null}
+    </>
+  );
+}
+
 export function Refresco({ segundos }: { segundos: number }) {
   useEffect(() => {
     const id = setInterval(() => {

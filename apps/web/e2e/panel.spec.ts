@@ -717,6 +717,42 @@ test.describe('Panel de gestión en navegador', () => {
     ).toHaveCount(0);
   });
 
+  test('UN CANAL SE CIERRA Y SE REABRE desde la torre, con su motivo', async ({
+    page,
+  }) => {
+    // La saturación de cocina pausa canales sola desde T5.18, y eso ocurría
+    // sin que nadie pudiera verlo ni deshacerlo: `pausedChannels` llevaba el
+    // comentario «para el panel y el KDS» y no la exponía ninguna ruta. En el
+    // local se vive como que las ventas se paran de golpe sin explicación.
+    await entrar(page);
+    await page.goto('/panel/operaciones');
+    await expect(page.getByRole('heading', { name: 'Canales' })).toBeVisible();
+
+    const rappi = page.locator('.canales article').filter({ hasText: 'rappi' });
+    await expect(rappi).toContainText('abierto');
+
+    // Sin motivo no se cierra: el turno siguiente no puede adivinar si reabre.
+    await rappi.getByRole('button', { name: 'Cerrar rappi' }).click();
+    await expect(rappi.getByText(/Di por qué se cierra/)).toBeVisible();
+
+    await rappi.getByLabel('Motivo para cerrar rappi').fill('Sin pollo');
+    await rappi.getByRole('button', { name: 'Cerrar rappi' }).click();
+
+    // Se comprueba el EFECTO: queda cerrado, con el motivo y diciendo que lo
+    // cerró una persona —lo que significa que no se reabre solo—.
+    const cerrado = page
+      .locator('.canales article')
+      .filter({ hasText: 'rappi' });
+    await expect(cerrado).toContainText('cerrado');
+    await expect(cerrado).toContainText('Sin pollo');
+    await expect(cerrado).toContainText(/solo se reabre a mano/i);
+
+    await cerrado.getByRole('button', { name: 'Reabrir rappi' }).click();
+    await expect(
+      page.locator('.canales article').filter({ hasText: 'rappi' }),
+    ).toContainText('abierto');
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {

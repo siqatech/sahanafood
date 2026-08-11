@@ -5,15 +5,27 @@ import {
   type CartaMuerta,
   type DocumentoDelPanel,
   type CobroDelPanel,
+  type PausaDeCanal,
   type ConexionDelPanel,
 } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { politicaPara, limiteDeRechazo } from './plazos';
+
+/**
+ * Los canales que se pueden cerrar a mano.
+ *
+ * Es una lista fija a propósito y no «los canales que han tenido pedidos»: hay
+ * que poder cerrar un canal ANTES de que entre nada por él —es justo lo que se
+ * hace cuando la cocina está desbordada— y una lista deducida de la actividad
+ * no ofrecería el que aún no ha vendido hoy.
+ */
+const CANALES = ['web', 'pos', 'whatsapp', 'rappi', 'pedidosya'];
 import { solesDeTexto } from '../caja/dinero';
 import {
   Cuenta,
   BotonesDeAceptacion,
   BotonReintentar,
+  ControlDeCanal,
   Refresco,
 } from './componentes';
 
@@ -78,10 +90,11 @@ export default async function OperacionesPage({
   const yaSeIntento = params['intento'] === '1';
   const ruta = '/panel/operaciones';
 
-  const [porAceptar, excepciones, politicas] = await Promise.all([
+  const [porAceptar, excepciones, politicas, estructura] = await Promise.all([
     cargar(ruta, yaSeIntento, () => panel.pedidos({ status: 'received' })),
     cargar(ruta, yaSeIntento, () => panel.excepciones()),
     cargar(ruta, yaSeIntento, () => panel.politicasDeAceptacion()),
+    cargar(ruta, yaSeIntento, () => panel.estructura()),
   ]);
 
   // En curso: una llamada por estado. Podría hacerse una sola sin filtro, pero
@@ -111,6 +124,15 @@ export default async function OperacionesPage({
 
   const degradadas = conexiones.filter((c) => c.status !== 'active');
 
+  // Qué canales están cerrados AHORA. La saturación de cocina los pausa sola
+  // (RN-KIT-04) y hasta ahora eso pasaba sin que nadie pudiera verlo ni
+  // deshacerlo: en el local se vive como que las ventas se paran de golpe.
+  const local = estructura.locations[0];
+  const pausas = local
+    ? await panel.pausas(local.id).catch((): PausaDeCanal[] => [])
+    : [];
+  const pausadas = new Map(pausas.map((p) => [p.channel, p]));
+
   const conPlazo = porAceptar.map((p: PedidoDelPanel) => ({
     pedido: p,
     limite: limiteDeRechazo(
@@ -135,6 +157,50 @@ export default async function OperacionesPage({
         Qué está entrando y qué necesita una decisión ahora. Se actualiza sola
         cada 30 segundos.
       </p>
+
+      {/* Los canales van ARRIBA de la torre: si un canal está cerrado, la
+          columna «por aceptar» estará vacía por una razón que no es que no
+          haya clientes. Sin esto, la pantalla dice «todo tranquilo» mientras
+          el negocio no vende. */}
+      <h2>
+        Canales{' '}
+        {pausas.length > 0 ? (
+          <span className="etiqueta etiqueta--pausado">
+            {pausas.length} cerrado{pausas.length === 1 ? '' : 's'}
+          </span>
+        ) : null}
+      </h2>
+      {local ? (
+        <div className="canales">
+          {CANALES.map((canal) => {
+            const pausa = pausadas.get(canal);
+            return (
+              <article
+                key={canal}
+                className={pausa ? 'ficha ficha--revision' : 'ficha'}
+              >
+                <p>
+                  <strong>{canal}</strong>{' '}
+                  {pausa ? (
+                    <span className="etiqueta etiqueta--pausado">cerrado</span>
+                  ) : (
+                    <span className="etiqueta">abierto</span>
+                  )}
+                </p>
+                {pausa?.reason ? (
+                  <p className="tarjeta__pie">{pausa.reason}</p>
+                ) : null}
+                <ControlDeCanal
+                  locationId={local.id}
+                  channel={canal}
+                  pausado={Boolean(pausa)}
+                  {...(pausa ? { pausadoPor: pausa.pausedBy } : {})}
+                />
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="torre">
         {/* ------------------------------------------------ Por aceptar */}
