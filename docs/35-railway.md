@@ -124,6 +124,30 @@ privilegios, que es justo lo que hace falta al rotar un secreto. En un
 despliegue normal **no hace falta repetirlo**: las tablas nuevas heredan los
 permisos por `ALTER DEFAULT PRIVILEGES`.
 
+### Si el Postgres no es alcanzable desde fuera
+
+Lo de arriba supone que puedes conectarte a la base desde tu máquina, lo que en
+Railway exige activarle un **TCP Proxy** al servicio de Postgres (Settings →
+Networking). Es un clic, y deja además `psql` a mano para operar.
+
+Si prefieres **no exponer la base a internet** —que es la postura por defecto
+razonable—, el arranque se ejecuta desde dentro de la red privada con un
+servicio desechable:
+
+1. Crear un servicio con `infra/railway/bootstrap.json` como configuración. Usa
+   la misma imagen que la API y arranca `bootstrap-roles.js`; su política de
+   reinicio es `NEVER` porque **termina y ya está**: sin eso, un proceso que
+   sale con éxito se reinicia en bucle.
+2. Darle tres variables: `ADMIN_DATABASE_URL` (apuntando a
+   `postgres.railway.internal`), `SAHANA_APP_PASSWORD` y
+   `SAHANA_MIGRATOR_PASSWORD`.
+3. Comprobar en sus logs que terminó bien y **borrar el servicio**. Al borrarlo
+   se van sus variables, así que la URL de administrador no queda guardada en
+   ningún sitio.
+
+No hace falta leer su salida para saber las dos URLs: son la de administrador
+con el usuario y la contraseña cambiados, y esas contraseñas las eliges tú.
+
 **La URL de administrador no va en ninguna variable de ningún servicio.**
 
 ## 4. Variables
