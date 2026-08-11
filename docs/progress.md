@@ -1009,6 +1009,61 @@ Van tres fallos en dos sesiones que **solo aparecen cuando hay datos de verdad**
 (el buscador de pedidos, el «Ventas» de la portada, y este). Sembrar datos
 realistas y comprobar el resultado —no la mera presencia— es lo que los saca.
 
+## La tienda como producto, y no como plantilla
+
+El propietario pidió que la carta y el carrito «se puedan usar de verdad», que
+haya oferta de bienvenida, que el cliente pueda montar **su** web contra nuestra
+API, que la tienda se vea con su marca y que se pueda pagar con Apple Pay o
+Google Pay. Eso se hizo en cinco tandas —tienda rehecha, promociones, ADR-0020
+con clave publicable y CORS, aspecto por marca, medios de pago— y las tres
+últimas comparten el mismo hallazgo, repetido:
+
+**había API y no había quien la llamara.**
+
+- `POST /payments/connections` existía desde F5 sin ninguna pantalla: la única
+  forma de conectar una pasarela era un `curl`. Ahora está en `/panel/pagos`, y
+  se añadió el `GET` que faltaba — sin él la conexión era de un solo uso, porque
+  el token del webhook se devuelve UNA vez y quien cerrara la pantalla sin
+  copiarlo perdía la URL de confirmación de cobros. Eso se manifiesta como «los
+  pedidos se quedan en pendiente», sin ninguna pista.
+- El checkout aceptaba `payment` desde que existe el módulo de pagos y **la
+  tienda nunca se lo mandaba**: todo pedido salía como contra entrega, incluso
+  en un negocio con pasarela conectada.
+- `POST /delivery/shipments/:id/tracking-link` emitía desde T5.16 un token que
+  ninguna pantalla componía y ninguna página sabía abrir. El enlace que se le
+  daba al cliente era una URL rota.
+
+Ninguno de los tres lo detecta una prueba de API: en los tres casos la API
+contesta perfectamente. Lo que fallaba era que nadie preguntaba.
+
+### Las carteras no son una pasarela
+
+Apple Pay y Google Pay no cobran: entregan un token de red que **la pasarela**
+desencripta. Por eso el checkout no las implementa — declara qué medios acepta
+el negocio (columna `methods` de `pay_connections`) y manda al comprador a la
+página de Culqi, que es quien pinta esos botones. De paso, ni un dato de tarjeta
+pasa por nuestro servidor.
+
+Lo que sí es nuestro es **no anunciar lo que no va a estar**: Apple Pay solo se
+enseña si `ApplePaySession.canMakePayments()` lo confirma y Google Pay si existe
+`PaymentRequest`. Es necesario y no suficiente —la palabra final la tiene la
+pasarela—, pero elimina el caso que ocurriría el 100 % de las veces: Apple Pay
+ofrecido en el Chrome de un Android. Es la única parte de cliente del checkout,
+porque en el servidor no hay navegador al que preguntar.
+
+Apple exige además su archivo de verificación en `/.well-known/` de **cada
+dominio**. En un SaaS multimarca eso no es un archivo: es uno por cliente, y lo
+sirve el mismo proceso que resuelve por host. Sin él el botón no aparece y no
+hay ningún error que lo explique.
+
+### Lo que sigue faltando aquí
+
+El adaptador HTTP real de Culqi. Hoy la pasarela es el simulador de F5, que
+devuelve una URL de sandbox que no resuelve; para conectarlo hacen falta
+credenciales `pk_test_`/`sk_test_` del propietario. El camino entero —elegir
+medio, crear la intención, salir a la pasarela, volver por webhook firmado— está
+construido y probado contra el simulador: lo que falta es la llamada real.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.
 
 ---
@@ -1131,8 +1186,9 @@ U+FEFF —está en el conjunto de espacios en blanco de JavaScript—, así que 
 `replace` del BOM que había escrito eran código muerto. Se quitaron y se explicó
 el mecanismo real donde toca.
 
-**Próxima acción de Claude Code:** de los seis hallazgos quedan tres que son
-decisión del propietario (**PA-09** pagos mixtos, **PA-10** salón y QR, **PA-11**
-stock reservado) y dos que dependen de F6 (liquidación de propinas, P&L con
-gastos). Sin esas decisiones, lo que queda con más valor es desplegar en Railway
-en cuanto haya credenciales.
+**Próxima acción de Claude Code:** conectar Culqi de verdad en cuanto el
+propietario pase sus credenciales de sandbox, y hacer que el enlace de
+seguimiento salga solo por WhatsApp al recoger el pedido (la plantilla existe;
+hoy hay que pegarlo a mano). Siguen pendientes de decisión del propietario
+**PA-09** (pagos mixtos), **PA-10** (salón y QR) y **PA-11** (stock reservado),
+y dependen de F6 la liquidación de propinas y el P&L con gastos.
