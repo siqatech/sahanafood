@@ -31,6 +31,19 @@ import { TABLAS_APPEND_ONLY } from './append-only.js';
  * instancia es suya— pero en local sí, y no avisa.
  */
 
+/**
+ * Roles que este arranque crea. Existe como constante porque
+ * `roles-contrato.test.ts` la compara con los roles que NOMBRAN las
+ * migraciones: si alguien añade un `GRANT`/`REVOKE` a un rol nuevo y no lo
+ * crea aquí, el despliegue se para a mitad de la cadena de migraciones, con
+ * parte del esquema ya aplicado. Pasó con `sahana_support`.
+ */
+export const ROLES_QUE_CREA = [
+  'sahana_app',
+  'sahana_migrator',
+  'sahana_support',
+] as const;
+
 export interface ResultadoDeRoles {
   /** Para el servicio de API y el worker. */
   databaseUrl: string;
@@ -144,6 +157,18 @@ export async function bootstrapRoles(input: {
         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sahana_app') THEN
           CREATE ROLE sahana_app LOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS;
         END IF;
+        -- Rol de soporte: consultas cross-tenant con motivo (docs/09 §7). Está
+        -- RESERVADO —no lo usa ningún código todavía— pero tiene que EXISTIR,
+        -- porque la migración 0002 le revoca permisos sobre \`audit_log\` y no se
+        -- puede revocar nada a un rol que no existe: la cadena de migraciones se
+        -- para en la segunda.
+        --
+        -- Se crea NOLOGIN a propósito, que es lo que lo diferencia del init de
+        -- Docker: un rol que nadie usa no debe poder conectarse. El día que
+        -- exista la herramienta de soporte se le pone contraseña con ALTER ROLE.
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sahana_support') THEN
+          CREATE ROLE sahana_support NOLOGIN NOSUPERUSER NOCREATEROLE NOBYPASSRLS;
+        END IF;
       END
       $$;
     `);
@@ -183,7 +208,9 @@ export async function bootstrapRoles(input: {
     // todas—, pero depender de una sola barrera para el aislamiento entre
     // clientes es exactamente lo que no se hace.
     await cliente.query('ALTER SCHEMA public OWNER TO sahana_migrator');
-    await cliente.query('GRANT USAGE ON SCHEMA public TO sahana_app');
+    await cliente.query(
+      'GRANT USAGE ON SCHEMA public TO sahana_app, sahana_support',
+    );
     await cliente.query(
       `GRANT CONNECT ON DATABASE "${admin.bd}" TO sahana_app, sahana_migrator`,
     );
@@ -197,6 +224,10 @@ export async function bootstrapRoles(input: {
     await cliente.query(`
       ALTER DEFAULT PRIVILEGES FOR ROLE sahana_migrator IN SCHEMA public
         GRANT USAGE, SELECT ON SEQUENCES TO sahana_app;
+    `);
+    await cliente.query(`
+      ALTER DEFAULT PRIVILEGES FOR ROLE sahana_migrator IN SCHEMA public
+        GRANT SELECT ON TABLES TO sahana_support;
     `);
 
     // Si ya había tablas —re-ejecución, o una base migrada antes de esto— hay
