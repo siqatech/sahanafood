@@ -895,4 +895,41 @@ entregadas de verdad, la prueba de la portada se rompió: buscaba el texto
 marca y por canal estaban siempre vacías**. Con datos reales aparecen tres veces.
 Acotada al rótulo de la tarjeta.
 
+### El agente de IA: el módulo con más superficie y cero pantalla
+
+Identidad, reglas deterministas, versiones con publicación y vuelta atrás,
+fuentes de conocimiento, sandbox y presupuesto. Todo construido en T5.19–T5.32,
+todo probado, **todo inalcanzable**.
+
+Y aquí la consecuencia es peor que en los otros módulos, porque el agente
+**habla en nombre del negocio, por escrito, a clientes reales**. Sin pantalla,
+lo que diga es lo que quedó sembrado el día del alta: si el tono no encaja, si
+promete algo que no se cumple o si contesta sobre un tema del que no debería, no
+había forma de corregirlo — y sí la había de que siguiera hablando.
+
+`/panel/agente`, por marca porque cada una habla distinto. Lo que la pantalla
+insiste en dejar claro:
+
+· **Guardar no es publicar.** Son dos botones y dos estados, porque lo que el
+negocio dice por escrito no puede cambiar porque alguien tocó un campo y se fue
+a comer. La pantalla dice qué versión está publicada y desde cuándo.
+
+· **El sandbox devuelve la traza, no solo la respuesta.** Qué regla disparó, qué
+fuentes usó, qué dijo el validador y cuánto costó. Sin eso, «me contestó raro»
+no se puede depurar; con eso se ve si fue una regla, el modelo o una fuente
+desactualizada. La alternativa —editar en vivo y ver qué pasa— se prueba con
+clientes reales.
+
+· **El presupuesto agotado no es «el bot dejó de contestar».** Las reglas
+deterministas siguen funcionando siempre (ADR-0011) y la pantalla lo dice con
+esas palabras, porque «agotado» a secas se lee como una avería.
+
+· **Las fuentes no llevan precios ni stock.** Un precio escrito en una fuente
+queda congelado y el bot lo repetirá cuando ya no sea verdad; eso se consulta en
+vivo. El aviso está junto al campo, que es donde sirve.
+
+· El contador de **veces usada** de cada regla: una regla con cero usos en
+semanas no está protegiendo nada — o no coincide nunca, o llega tarde por
+prioridad.
+
 **Próxima acción de Claude Code:** ya no queda nada bloqueante en `specs/ux/03` — lo que resta (Clientes, Novedades, y el resto de Configuración) es consulta secundaria que no impide operar. El cuello de botella real sigue siendo **DT-02**: sin entorno cloud no hay pilotos, y sin pilotos con un mes de venta no se abre F6. Si aparecen las credenciales, lo siguiente es el Terraform.

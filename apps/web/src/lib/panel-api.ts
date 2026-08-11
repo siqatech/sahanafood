@@ -347,6 +347,74 @@ export interface CobroDelPanel {
     | undefined;
 }
 
+/** La configuración del agente de una marca (spec 19). */
+export interface ConfigDelAgente {
+  id: string;
+  brandId: string;
+  version: number;
+  status: string;
+  identity: {
+    name?: string;
+    role?: string;
+    personality?: string;
+    tone?: string;
+    length?: string;
+    emojis?: boolean;
+  };
+  guidelines: string[];
+  limits: { forbiddenTopics?: string[]; handoffMessage?: string };
+  enabled: boolean;
+  publishedAt: string | null;
+  rules: Array<{
+    id: string;
+    name: string;
+    priority: number;
+    matchMode: string;
+    enabled: boolean;
+    hitCount: number;
+  }>;
+}
+
+export interface VersionDelAgente {
+  id: string;
+  version: number;
+  status: string;
+  publishedAt: string | null;
+}
+
+export interface FuenteDelAgente {
+  id: string;
+  title: string;
+  topic: string | null;
+  version: number;
+  useCount: number;
+  active: boolean;
+}
+
+export interface PresupuestoDeIa {
+  state: string;
+  /** Fracción consumida, 0..1+ */
+  ratio: number;
+  allowLlm: boolean;
+  allowDeterministic: boolean;
+  reason: string;
+}
+
+/** Lo que contestaría el agente, con su traza (spec 19 §2.8). */
+export interface RespuestaDePrueba {
+  resolution: string;
+  text: string | null;
+  trace: {
+    ruleName?: string;
+    sourceIds: string[];
+    toolsCalled: string[];
+    validator?: { ok: boolean; reason?: string };
+    credits: number;
+    budget: string;
+    promptVersion?: string;
+  };
+}
+
 /** Rentabilidad de una marca en un canal (spec 16). */
 export interface RentabilidadDelPanel {
   brandId: string;
@@ -779,6 +847,55 @@ export const panel = {
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),
+
+  configDelAgente: (brandId: string): Promise<ConfigDelAgente> =>
+    llamar<ConfigDelAgente>(`/ai/config?brand=${encodeURIComponent(brandId)}`),
+
+  versionesDelAgente: (brandId: string): Promise<VersionDelAgente[]> =>
+    llamar<VersionDelAgente[]>(
+      `/ai/config/versions?brand=${encodeURIComponent(brandId)}`,
+    ),
+
+  guardarConfigDelAgente: (
+    id: string,
+    input: Record<string, unknown>,
+  ): Promise<ConfigDelAgente> =>
+    llamar<ConfigDelAgente>(`/ai/config/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+
+  publicarAgente: (id: string): Promise<ConfigDelAgente> =>
+    llamar<ConfigDelAgente>(`/ai/config/${id}/publish`, { method: 'POST' }),
+
+  revertirAgente: (id: string): Promise<ConfigDelAgente> =>
+    llamar<ConfigDelAgente>(`/ai/config/${id}/rollback`, { method: 'POST' }),
+
+  fuentesDelAgente: (): Promise<FuenteDelAgente[]> =>
+    llamar<FuenteDelAgente[]>('/ai/sources'),
+
+  guardarFuente: (input: {
+    title: string;
+    topic?: string;
+    body: string;
+  }): Promise<{ id: string; chunks: number }> =>
+    llamar<{ id: string; chunks: number }>('/ai/sources', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  presupuestoDeIa: (): Promise<PresupuestoDeIa> =>
+    llamar<PresupuestoDeIa>('/ai/budget'),
+
+  probarAgente: (input: {
+    conversationId: string;
+    brandId: string;
+    text: string;
+  }): Promise<RespuestaDePrueba> =>
+    llamar<RespuestaDePrueba>('/ai/sandbox', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   rentabilidad: (
     rango: {

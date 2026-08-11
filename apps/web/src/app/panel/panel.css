@@ -366,6 +366,20 @@ tr:last-child td {
 /* El formulario de corrección va DENTRO de la ficha del rechazo: el motivo que
    devolvió el OSE tiene que quedar a la vista mientras se escribe el dato
    nuevo, o se corrige de memoria. */
+/* Los textarea de configuración heredan el mismo aspecto que los inputs: sin
+   esto salen con la tipografía del navegador y parecen de otra aplicación. */
+.campo textarea {
+  width: 100%;
+  max-width: 640px;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-borde);
+  border-radius: 6px;
+  background: var(--panel-fondo);
+  color: inherit;
+  resize: vertical;
+}
+
 .canales {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

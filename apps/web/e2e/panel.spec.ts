@@ -850,6 +850,48 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
   });
 
+  test('EL AGENTE se configura, se prueba SIN clientes y se publica aparte', async ({
+    page,
+  }) => {
+    // El módulo con más superficie construida y cero pantalla: identidad,
+    // reglas, versiones, fuentes, sandbox y presupuesto. Y el agente habla en
+    // nombre del negocio, por escrito, a clientes reales: sin pantalla, lo que
+    // diga es lo que quedó sembrado el día del alta.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Agente' }).click();
+    await expect(page.getByRole('heading', { name: 'Agente' })).toBeVisible();
+
+    // Sin mensaje de derivación no se guarda: es lo que lee el cliente cuando
+    // el bot se rinde, y vacío significa silencio.
+    await page.getByLabel('Cómo se llama').fill('Sahi');
+    await page.getByLabel('Qué dice al pasar a una persona').fill('');
+    await page.getByRole('button', { name: 'Guardar borrador' }).click();
+    await expect(page.getByText(/qué se le dice al cliente/i)).toBeVisible();
+
+    // Y lo tecleado NO se pierde con el error.
+    await expect(page.getByLabel('Cómo se llama')).toHaveValue('Sahi');
+
+    await page
+      .getByLabel('Qué dice al pasar a una persona')
+      .fill('Te paso con alguien del local.');
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.request().method() === 'POST' &&
+          r.request().isNavigationRequest() === false,
+      ),
+      page.getByRole('button', { name: 'Guardar borrador' }).click(),
+    ]);
+
+    // Guardar NO es publicar, y la pantalla lo dice: es la separación que evita
+    // que lo que el negocio dice por escrito cambie porque alguien tocó un
+    // campo y se fue a comer.
+    await expect(page.getByText(/Guardar .*no es publicar/i)).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByLabel('Cómo se llama')).toHaveValue('Sahi');
+  });
+
   test('SALIR cierra de verdad: volver al panel pide la contraseña otra vez', async ({
     page,
   }) => {
