@@ -43,6 +43,16 @@ export interface ShopContext {
    * servidor. `null` cuando no hay ninguna activa, o cuando caducó o se agotó.
    */
   welcome: { code: string; label: string; minOrder: string | null } | null;
+  /** Aspecto de la tienda. Los nulos significan «usa lo de Sahana». */
+  branding: {
+    displayName: string | null;
+    tagline: string | null;
+    logoUrl: string | null;
+    coverUrl: string | null;
+    colorBase: string | null;
+    colorHover: string | null;
+    colorTexto: string | null;
+  };
 }
 
 export interface CatalogProduct {

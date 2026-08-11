@@ -64,6 +64,26 @@ export interface StorefrontContext {
    * a cumplir. La tienda solo lo pinta.
    */
   welcome: { code: string; label: string; minOrder: string | null } | null;
+  /**
+   * El aspecto de la tienda de esta marca.
+   *
+   * Va en el contexto —y no en una llamada aparte— porque se necesita para
+   * pintar el primer píxel: pedirlo después haría que la tienda apareciera con
+   * los colores de Sahana y cambiara a los del cliente medio segundo más tarde,
+   * que es peor que no personalizarla.
+   */
+  branding: Branding;
+}
+
+/** Aspecto de una tienda. Los nulos significan «usa lo de Sahana». */
+export interface Branding {
+  displayName: string | null;
+  tagline: string | null;
+  logoUrl: string | null;
+  coverUrl: string | null;
+  colorBase: string | null;
+  colorHover: string | null;
+  colorTexto: string | null;
 }
 
 /** Una promoción, como la administra el dueño. */
@@ -162,6 +182,49 @@ function describirCupon(c: {
     return `S/ ${Number(c.amount ?? 0).toFixed(2)} de descuento${minimo}`;
   }
   return `Envío gratis${minimo}`;
+}
+
+/**
+ * Un color de marca, o nada.
+ *
+ * Solo `#rrggbb`. Es estrecho a propósito: este valor acaba **dentro de una
+ * hoja de estilos** que se sirve en la tienda, así que cualquier cosa que no
+ * sea un color es texto de un tercero entrando en el CSS. Aceptar
+ * `red; } body { display:none` sería dejar que quien administra una marca
+ * decidiera cómo se ve —o si se ve— la página.
+ *
+ * Se descartan también los nombres de color (`red`) y `rgb()`: no aportan nada
+ * que el hexadecimal no dé, y cada formato admitido es una expresión más que
+ * validar bien.
+ */
+function colorValido(valor: string | undefined): string | null {
+  if (!valor) return null;
+  const limpio = valor.trim().toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(limpio)) {
+    throw new ValidationError(
+      `"${valor}" no es un color. Se escribe en hexadecimal, así: #c8102e.`,
+    );
+  }
+  return limpio;
+}
+
+/**
+ * Una URL de imagen, o nada.
+ *
+ * Solo `https://`. Una imagen por `http://` en una tienda que va por HTTPS la
+ * bloquea el navegador —contenido mixto— y el logo del cliente simplemente no
+ * aparece, sin ningún error visible. Y `javascript:` o `data:` en un atributo
+ * `src` es la otra mitad del mismo problema.
+ */
+function imagenValida(valor: string | undefined): string | null {
+  if (!valor) return null;
+  const limpio = valor.trim();
+  if (!/^https:\/\/[^\s"'<>]+$/.test(limpio)) {
+    throw new ValidationError(
+      'La imagen tiene que ser una dirección https:// — por http:// el navegador la bloquea y no se ve.',
+    );
+  }
+  return limpio;
 }
 
 const CART_TTL_HOURS = 72;
@@ -460,10 +523,43 @@ export class StorefrontService {
       },
     );
 
+    const marcaVisual = await withTenant(
+      this.pool,
+      tenantId,
+      async ({ client }) => {
+        const { rows } = await client.query<{
+          display_name: string | null;
+          tagline: string | null;
+          logo_url: string | null;
+          cover_url: string | null;
+          color_base: string | null;
+          color_hover: string | null;
+          color_texto: string | null;
+        }>(
+          `SELECT display_name, tagline, logo_url, cover_url,
+                  color_base, color_hover, color_texto
+             FROM sto_branding WHERE brand_id = $1`,
+          [brandId],
+        );
+        return rows[0];
+      },
+    );
+
     return {
       brandId,
-      brandName: marca.name,
+      // El nombre que se anuncia manda sobre el interno: «Pollería El Buen
+      // Sabor S.A.C.» es la razón social, y en la cabecera va «El Buen Sabor».
+      brandName: marcaVisual?.display_name?.trim() || marca.name,
       host,
+      branding: {
+        displayName: marcaVisual?.display_name ?? null,
+        tagline: marcaVisual?.tagline ?? null,
+        logoUrl: marcaVisual?.logo_url ?? null,
+        coverUrl: marcaVisual?.cover_url ?? null,
+        colorBase: marcaVisual?.color_base ?? null,
+        colorHover: marcaVisual?.color_hover ?? null,
+        colorTexto: marcaVisual?.color_texto ?? null,
+      },
       // Un cupón caducado o agotado NO se anuncia: prometer un descuento que la
       // caja va a rechazar es peor que no ofrecer ninguno. La consulta ya los
       // descarta, y por eso las mismas condiciones que valida `applyCoupon`
@@ -477,6 +573,115 @@ export class StorefrontService {
           }
         : null,
     };
+  }
+
+  // -------------------------------------------------------------- Aspecto
+
+  /**
+   * Cómo se ve la tienda de una marca (PA-12, referencia: Deliverect).
+   *
+   * Es un `upsert` por marca: no hay historial ni versiones. Cambiar un color no
+   * es publicar una carta —eso sí se versiona, porque un precio pasado importa—;
+   * es una preferencia que se ajusta mirando el resultado, y guardar cada
+   * intento sería ruido.
+   *
+   * Un campo vacío BORRA el valor y devuelve la tienda al aspecto de Sahana. Sin
+   * eso, quitar un logo mal subido exigiría otro botón: el único camino sería
+   * poner encima otra imagen.
+   */
+  async setBranding(
+    tenantId: string,
+    input: {
+      brandId: string;
+      displayName?: string | undefined;
+      tagline?: string | undefined;
+      logoUrl?: string | undefined;
+      coverUrl?: string | undefined;
+      colorBase?: string | undefined;
+      colorHover?: string | undefined;
+      colorTexto?: string | undefined;
+      actorId?: string | undefined;
+    },
+  ): Promise<Branding> {
+    const valores = {
+      displayName: input.displayName?.trim() || null,
+      tagline: input.tagline?.trim() || null,
+      logoUrl: imagenValida(input.logoUrl),
+      coverUrl: imagenValida(input.coverUrl),
+      colorBase: colorValido(input.colorBase),
+      colorHover: colorValido(input.colorHover),
+      colorTexto: colorValido(input.colorTexto),
+    };
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      await ctx.client.query(
+        `INSERT INTO sto_branding
+           (tenant_id, brand_id, display_name, tagline, logo_url, cover_url,
+            color_base, color_hover, color_texto, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+         ON CONFLICT (tenant_id, brand_id) DO UPDATE SET
+           display_name = EXCLUDED.display_name,
+           tagline = EXCLUDED.tagline,
+           logo_url = EXCLUDED.logo_url,
+           cover_url = EXCLUDED.cover_url,
+           color_base = EXCLUDED.color_base,
+           color_hover = EXCLUDED.color_hover,
+           color_texto = EXCLUDED.color_texto,
+           updated_at = now()`,
+        [
+          tenantId,
+          input.brandId,
+          valores.displayName,
+          valores.tagline,
+          valores.logoUrl,
+          valores.coverUrl,
+          valores.colorBase,
+          valores.colorHover,
+          valores.colorTexto,
+        ],
+      );
+
+      await recordAudit(ctx, {
+        actorType: 'user',
+        ...(input.actorId !== undefined ? { actorId: input.actorId } : {}),
+        action: 'storefront.branding_updated',
+        resourceType: 'brand',
+        resourceId: input.brandId,
+        data: { ...valores },
+      });
+
+      return valores;
+    });
+  }
+
+  /** El aspecto guardado de una marca, para la pantalla del panel. */
+  async getBranding(tenantId: string, brandId: string): Promise<Branding> {
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{
+        display_name: string | null;
+        tagline: string | null;
+        logo_url: string | null;
+        cover_url: string | null;
+        color_base: string | null;
+        color_hover: string | null;
+        color_texto: string | null;
+      }>(
+        `SELECT display_name, tagline, logo_url, cover_url,
+                color_base, color_hover, color_texto
+           FROM sto_branding WHERE brand_id = $1`,
+        [brandId],
+      );
+      const r = rows[0];
+      return {
+        displayName: r?.display_name ?? null,
+        tagline: r?.tagline ?? null,
+        logoUrl: r?.logo_url ?? null,
+        coverUrl: r?.cover_url ?? null,
+        colorBase: r?.color_base ?? null,
+        colorHover: r?.color_hover ?? null,
+        colorTexto: r?.color_texto ?? null,
+      };
+    });
   }
 
   // ------------------------------------------------- Claves de integración

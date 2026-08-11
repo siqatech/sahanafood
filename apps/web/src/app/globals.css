@@ -15,6 +15,9 @@
   --color-suave: #6b6b6b;
   --color-borde: #e3e3e3;
   --color-marca: #c8102e;
+  /* Variante para el estado sobre el que se pasa el cursor. El cliente puede
+     cambiarla desde el panel; si no la fija, se usa la misma que la base. */
+  --color-marca-hover: #a20d25;
   --color-error: #a4161a;
   --color-aviso-fondo: #fff4f4;
   --radio: 10px;
@@ -640,6 +643,29 @@ main.con-barra {
   margin: 8px 0 0;
   color: #2d8a4e;
   font-weight: 600;
+}
+
+.marca__logo {
+  height: 36px;
+  width: auto;
+  display: block;
+}
+
+/* Imagen de portada, como en la referencia de Deliverect: ancha, baja y
+   recortada, para que no empuje la carta fuera de la primera pantalla. */
+.portada {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 1;
+  object-fit: cover;
+  border-radius: var(--radio);
+  margin-bottom: 12px;
+}
+
+.lema {
+  margin: 0 0 16px;
+  font-size: 1.0625rem;
+  color: var(--color-suave);
 }
 
 .vacio {

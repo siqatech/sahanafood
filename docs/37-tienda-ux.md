@@ -61,7 +61,28 @@ impide tener dos a la vez, y el aviso en la tienda. Tres decisiones que importan
 
 ## 4. Lo que falta, por orden de valor
 
-### 4.1 La portada como web, no como carta — **necesita decisión**
+### 4.1 El aspecto de la tienda — **HECHO**
+
+El propietario resolvió PA-12 señalando la pantalla de *Branding* de Deliverect:
+nombre que se anuncia, lema, logo, imagen de portada y colores. Está en
+`/panel/aspecto`, con vista previa que se actualiza al escribir — elegir un color
+a ciegas y tener que abrir la tienda en otra pestaña es lo que hace que nadie
+termine de configurarlo.
+
+Va **por marca** y no por negocio: un tenant multimarca es el caso normal aquí,
+y con los colores en el negocio las dos tiendas se verían iguales.
+
+Los colores se validan como `#rrggbb` **en el servidor** y las imágenes exigen
+`https://`. No es celo: ese valor acaba dentro de un atributo `style` que se
+sirve a los clientes del restaurante, y aceptar texto libre sería dejar que
+quien administra una marca decida cómo se ve la página. Hay una prueba
+bloqueante.
+
+Lo que sigue faltando de §4.1: la **portada como página aparte** —historia,
+galería, `/` como inicio y la carta en `/carta`— que cambia las URL que los
+clientes ya tengan guardadas.
+
+### 4.1b La portada como web, no como carta — **necesita decisión**
 
 Hoy `/` **es** la carta. Las referencias tienen portada con lema, historia,
 fotos, horarios, locales y un botón «Comienza tu pedido» que lleva a la carta.

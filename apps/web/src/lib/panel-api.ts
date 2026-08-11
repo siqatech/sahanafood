@@ -32,6 +32,16 @@ export class PanelApiError extends Error {
   }
 }
 
+export interface AspectoDeTienda {
+  displayName: string | null;
+  tagline: string | null;
+  logoUrl: string | null;
+  coverUrl: string | null;
+  colorBase: string | null;
+  colorHover: string | null;
+  colorTexto: string | null;
+}
+
 export interface ClaveDeTienda {
   id: string;
   brandId: string;
@@ -948,6 +958,17 @@ export const panel = {
 
   dominios: (): Promise<DominioDelPanel[]> =>
     llamar<DominioDelPanel[]>('/storefront/domains'),
+
+  aspecto: (brandId: string): Promise<AspectoDeTienda> =>
+    llamar<AspectoDeTienda>(`/storefront/branding/${brandId}`),
+
+  guardarAspecto: (
+    input: { brandId: string } & Partial<AspectoDeTienda>,
+  ): Promise<AspectoDeTienda> =>
+    llamar<AspectoDeTienda>('/storefront/branding', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   clavesDeTienda: (): Promise<ClaveDeTienda[]> =>
     llamar<ClaveDeTienda[]>('/storefront/keys'),

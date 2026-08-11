@@ -57,14 +57,29 @@ export default async function TiendaLayout({
   let brandName = 'Tienda';
   let bienvenida: Awaited<ReturnType<typeof shop.context>>['welcome'] = null;
   let marcaId = '';
+  let marca: Awaited<ReturnType<typeof shop.context>>['branding'] | null = null;
   try {
     const ctx = await shop.context();
     brandName = ctx.brandName;
     bienvenida = ctx.welcome;
     marcaId = ctx.brandId;
+    marca = ctx.branding;
   } catch {
     // Se deja el rótulo neutro.
   }
+
+  // Los colores del cliente entran como VARIABLES CSS, que es lo que permite
+  // que toda la hoja de estilos —escrita una vez— se repinte con su marca sin
+  // duplicar una sola regla.
+  //
+  // Los valores llegan validados por el servidor como `#rrggbb` y nada más. Es
+  // la comprobación que importa: esto acaba dentro de un atributo `style`, y un
+  // valor libre ahí es CSS de un tercero decidiendo cómo se ve —o si se ve— la
+  // página.
+  const tema: Record<string, string> = {};
+  if (marca?.colorBase) tema['--color-marca'] = marca.colorBase;
+  if (marca?.colorHover) tema['--color-marca-hover'] = marca.colorHover;
+  if (marca?.colorTexto) tema['--color-texto'] = marca.colorTexto;
 
   const carrito = await carritoActual();
   const unidades =
@@ -72,9 +87,18 @@ export default async function TiendaLayout({
 
   return (
     <>
-      <header className="cabecera">
+      <header className="cabecera" style={tema}>
         <Link href="/" className="marca">
-          {brandName}
+          {marca?.logoUrl ? (
+            <img
+              className="marca__logo"
+              src={marca.logoUrl}
+              alt={brandName}
+              height={36}
+            />
+          ) : (
+            brandName
+          )}
         </Link>
         <Link href="/carrito" className="enlace-carrito">
           Carrito
@@ -88,10 +112,16 @@ export default async function TiendaLayout({
 
       {/* El hueco de abajo evita que la barra fija tape el último plato: sin
           él, el producto del final de la carta queda siempre medio oculto. */}
-      <main className={unidades > 0 ? 'con-barra' : undefined}>{children}</main>
+      <main className={unidades > 0 ? 'con-barra' : undefined} style={tema}>
+        {marca?.coverUrl ? (
+          <img className="portada" src={marca.coverUrl} alt="" />
+        ) : null}
+        {marca?.tagline ? <p className="lema">{marca.tagline}</p> : null}
+        {children}
+      </main>
 
       {unidades > 0 && carrito ? (
-        <Link href="/carrito" className="barra-carrito">
+        <Link href="/carrito" className="barra-carrito" style={tema}>
           <span className="barra-carrito__cuenta">
             {unidades} {unidades === 1 ? 'producto' : 'productos'}
           </span>

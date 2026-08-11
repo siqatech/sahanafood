@@ -48,6 +48,20 @@ const addLineSchema = z.object({
   notes: z.string().max(280).optional(),
 });
 
+const brandingSchema = z.object({
+  brandId: z.string().uuid(),
+  // Cadenas VACÍAS admitidas: es como el panel dice «quita esto y vuelve al
+  // aspecto por defecto». Sin ellas, borrar un logo mal subido exigiría otro
+  // botón distinto.
+  displayName: z.string().max(80).optional(),
+  tagline: z.string().max(160).optional(),
+  logoUrl: z.string().max(500).optional(),
+  coverUrl: z.string().max(500).optional(),
+  colorBase: z.string().max(20).optional(),
+  colorHover: z.string().max(20).optional(),
+  colorTexto: z.string().max(20).optional(),
+});
+
 const cuponSchema = z.object({
   id: z.string().uuid().optional(),
   brandId: z.string().uuid(),
@@ -127,6 +141,29 @@ export class StorefrontAdminController {
   }> {
     const input = parse(domainSchema, body);
     return this.storefront.registerDomain(req.auth!.tid, {
+      ...input,
+      actorId: req.auth!.sub,
+    });
+  }
+
+  /** El aspecto de la tienda de una marca. */
+  @Get('branding/:brandId')
+  @RequirePermission('storefront.read')
+  async getBranding(
+    @Req() req: AuthenticatedRequest,
+    @Param('brandId') brandId: string,
+  ): Promise<unknown> {
+    return this.storefront.getBranding(req.auth!.tid, brandId);
+  }
+
+  @Post('branding')
+  @RequirePermission('storefront.manage_domains')
+  async setBranding(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parse(brandingSchema, body);
+    return this.storefront.setBranding(req.auth!.tid, {
       ...input,
       actorId: req.auth!.sub,
     });

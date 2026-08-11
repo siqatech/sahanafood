@@ -509,3 +509,83 @@ tr:last-child td {
   padding: 10px 12px;
   margin-top: 8px;
 }
+
+/* --------------------------------------------- Aspecto de la tienda
+ *
+ * Formulario y vista previa lado a lado. La previa no es un adorno: elegir un
+ * color a ciegas y tener que abrir la tienda en otra pestaña para verlo es lo
+ * que hace que nadie termine de configurarlo.
+ */
+.aspecto {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .aspecto {
+    grid-template-columns: 1fr 280px;
+  }
+}
+
+.previa__rotulo {
+  margin: 0 0 8px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b6b6b;
+}
+
+.previa__marco {
+  border: 1px solid #e3e3e3;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+  color: var(--previa-texto);
+}
+
+.previa__cabecera {
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--previa-marca);
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.previa__lema {
+  margin: 8px 0 0;
+  font-size: 0.9375rem;
+  color: #6b6b6b;
+}
+
+.previa__plato {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.previa__precio {
+  font-weight: 700;
+}
+
+.previa__boton {
+  text-align: center;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--previa-marca);
+  color: #fff;
+  font-weight: 700;
+}
+
+input[type='color'] {
+  width: 44px;
+  height: 40px;
+  padding: 2px;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}

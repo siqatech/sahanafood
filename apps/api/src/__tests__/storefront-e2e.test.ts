@@ -858,6 +858,78 @@ suite('Tienda web', () => {
     );
   });
 
+  it('EL ASPECTO DE LA TIENDA es el del cliente, y llega con el contexto', async () => {
+    // PA-12, referencia del propietario: la pantalla de Branding de Deliverect.
+    // El aspecto viaja en el contexto y no en una llamada aparte porque se
+    // necesita para pintar el primer píxel: pedirlo después haría que la tienda
+    // apareciera con los colores de Sahana y cambiara medio segundo más tarde.
+    const guardado = await storefront.setBranding(tenantA, {
+      brandId: brandA,
+      displayName: 'El Buen Sabor',
+      tagline: 'Pollo a la brasa desde 1998',
+      logoUrl: 'https://cdn.ejemplo.pe/logo.png',
+      colorBase: '#00A859',
+    });
+    expect(guardado.colorBase).toBe('#00a859');
+
+    const ctx = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    expect(ctx.body.branding.colorBase).toBe('#00a859');
+    expect(ctx.body.branding.tagline).toBe('Pollo a la brasa desde 1998');
+    // El nombre que se anuncia manda sobre el interno de la marca.
+    expect(ctx.body.brandName).toBe('El Buen Sabor');
+
+    // Vaciar un campo lo BORRA y devuelve el valor por defecto: sin esto,
+    // quitar un logo mal subido exigiría otro botón distinto.
+    await storefront.setBranding(tenantA, {
+      brandId: brandA,
+      displayName: '',
+      logoUrl: '',
+      colorBase: '#00A859',
+    });
+    const limpio = await http()
+      .get('/api/v1/shop/context')
+      .set('host', HOST_A)
+      .expect(200);
+    expect(limpio.body.branding.logoUrl).toBeNull();
+    expect(limpio.body.brandName).not.toBe('El Buen Sabor');
+  });
+
+  it('BLOQUEANTE: un color inventado no entra en la hoja de estilos', async () => {
+    // Este valor acaba DENTRO de un atributo `style` que se sirve a los
+    // clientes del restaurante. Aceptar texto libre sería dejar que quien
+    // administra una marca decida cómo se ve —o si se ve— la página.
+    await expect(
+      storefront.setBranding(tenantA, {
+        brandId: brandA,
+        colorBase: 'red; } body { display: none; } .x {',
+      }),
+    ).rejects.toThrow(/no es un color/);
+
+    await expect(
+      storefront.setBranding(tenantA, { brandId: brandA, colorBase: 'red' }),
+    ).rejects.toThrow(/hexadecimal/);
+
+    // Y una imagen por http:// o con `javascript:` tampoco: la primera la
+    // bloquea el navegador por contenido mixto y no se ve, y la segunda es la
+    // otra mitad del mismo problema.
+    await expect(
+      storefront.setBranding(tenantA, {
+        brandId: brandA,
+        logoUrl: 'http://cdn.ejemplo.pe/logo.png',
+      }),
+    ).rejects.toThrow(/https/);
+
+    await expect(
+      storefront.setBranding(tenantA, {
+        brandId: brandA,
+        logoUrl: 'javascript:alert(1)',
+      }),
+    ).rejects.toThrow(/https/);
+  });
+
   it('el cupón de un tenant no vale en la tienda del otro', async () => {
     // Mismo código, otro tenant: RLS hace que ni siquiera se vea.
     const carrito = await abrirCarrito(HOST_B);
