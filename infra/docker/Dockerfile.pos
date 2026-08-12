@@ -1,0 +1,71 @@
+# POS y KDS de Sahana Food (PWA).
+#
+# Construcción desde la RAÍZ del repositorio:
+#   docker build -f infra/docker/Dockerfile.pos -t sahana/pos .
+#
+# Servicio APARTE de la tienda, y no una ruta más de `apps/web`, por una razón
+# del navegador y no de organización: un *service worker* solo controla su
+# propio directorio hacia abajo. Servido en `/pos/`, dejaría fuera de la caché a
+# la propia aplicación y el POS no arrancaría sin red — que es lo único que este
+# service worker existe para conseguir.
+
+FROM node:22-bookworm-slim AS deps
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY apps/pos/package.json apps/pos/
+COPY apps/print-agent/package.json apps/print-agent/
+COPY packages/domain/package.json packages/domain/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/ai-prompts/package.json packages/ai-prompts/
+# CA corporativa opcional, igual que en las otras imágenes: si no se pasa, el
+# archivo llega vacío y no se toca nada. Nunca se desactiva la verificación.
+RUN --mount=type=secret,id=ca_bundle,target=/tmp/ca-bundle.crt \
+  sh -c 'if [ -s /tmp/ca-bundle.crt ]; then export NODE_EXTRA_CA_CERTS=/tmp/ca-bundle.crt; fi; pnpm install --frozen-lockfile --ignore-scripts'
+
+FROM deps AS build
+WORKDIR /app
+COPY . .
+
+# Adónde llama el POS. Vite lo resuelve **en tiempo de compilación**, así que
+# esto no es una variable de ejecución: una imagen del POS vale para un solo
+# destino de API, y cambiarlo obliga a reconstruir. Se deja explícito aquí
+# porque el fallo de olvidarlo es mudo — la PWA carga y ninguna llamada llega.
+ARG VITE_SAHANA_API_URL=http://localhost:3000
+ENV VITE_SAHANA_API_URL=$VITE_SAHANA_API_URL
+
+# Versión del service worker.
+#
+# El nombre de la caché es `sahana-pos-<versión>`, y al activarse borra las que
+# no coinciden. Si esta cadena no cambiara entre despliegues, **la tablet
+# seguiría sirviendo la aplicación vieja para siempre** y no habría ningún error
+# que lo delatara: la PWA arranca, con el código de hace tres meses.
+#
+# Por eso el valor por defecto es la marca de tiempo de la construcción y no una
+# constante: no hay nada que recordar configurar. Se puede fijar desde fuera
+# (por ejemplo, al SHA del commit) cuando interese que dos construcciones del
+# mismo código no invaliden la caché.
+ARG SW_VERSION=""
+RUN VERSION="${SW_VERSION:-$(date -u +%Y%m%d%H%M%S)}" \
+  && echo "service worker: $VERSION" \
+  && VITE_SW_VERSION="$VERSION" pnpm --filter @sahana/domain build \
+  && VITE_SW_VERSION="$VERSION" pnpm --filter @sahana/pos build
+
+FROM nginx:1.27-alpine AS runtime
+
+# nginx y no un servidor de Node escrito a mano: servir archivos estáticos
+# parece trivial y no lo es —normalización de rutas, rangos, tipos MIME— y un
+# fallo ahí sirve archivos que no tocan. No entra como dependencia del producto:
+# es la imagen base de un servicio que no ejecuta código nuestro.
+COPY --from=build /app/apps/pos/dist /usr/share/nginx/html
+COPY infra/docker/pos.nginx.conf /etc/nginx/templates/default.conf.template
+
+# Railway asigna el puerto por `PORT`. La plantilla de nginx lo sustituye al
+# arrancar (`/etc/nginx/templates` es la convención de esta imagen).
+ENV PORT=8080
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/" || exit 1
