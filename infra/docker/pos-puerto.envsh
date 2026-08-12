@@ -1,0 +1,15 @@
+# Asegura que `PORT` tenga un valor ANTES de que se sustituya la plantilla.
+#
+# Es un `.envsh` y no un `.sh` a propósito: el arranque de la imagen de nginx
+# *sourcea* los `.envsh` y *ejecuta* los `.sh`, así que solo un `.envsh` puede
+# exportar algo que vea el paso siguiente. Y va con el número 05 para caer antes
+# del 20, que es el que corre `envsubst`.
+#
+# Sin esto: `envsubst` solo sustituye variables DEFINIDAS. Con `PORT` ausente o
+# vacío —la plataforma inyecta la suya y pisa la de la imagen— el archivo se
+# queda con `listen ;` y nginx muere al arrancar con «invalid number of
+# arguments in "listen" directive». El contenedor no llega a escribir un solo
+# registro, así que en el panel se ve un despliegue fallido y ninguna pista.
+: "${PORT:=8080}"
+export PORT
+echo "pos: sirviendo en el puerto $PORT"

@@ -65,9 +65,14 @@ FROM nginx:1.27-alpine AS runtime
 # es la imagen base de un servicio que no ejecuta código nuestro.
 COPY --from=build /app/apps/pos/dist /usr/share/nginx/html
 COPY infra/docker/pos.nginx.conf /etc/nginx/templates/default.conf.template
+# Da un valor a `PORT` antes de que se sustituya la plantilla. Ver el archivo:
+# sin él, una plataforma que inyecte `PORT` vacío deja `listen ;` y nginx muere
+# sin escribir un solo registro.
+COPY infra/docker/pos-puerto.envsh /docker-entrypoint.d/05-puerto.envsh
+# Ejecutable, aunque solo se *sourcee*: el arranque de nginx ignora en silencio
+# —con un aviso que nadie mira— cualquier archivo de esa carpeta que no lo sea.
+RUN chmod +x /docker-entrypoint.d/05-puerto.envsh
 
-# Railway asigna el puerto por `PORT`. La plantilla de nginx lo sustituye al
-# arrancar (`/etc/nginx/templates` es la convención de esta imagen).
 ENV PORT=8080
 EXPOSE 8080
 
