@@ -1,15 +1,35 @@
-# Asegura que `PORT` tenga un valor ANTES de que se sustituya la plantilla.
+# Prepara el puerto y la escucha IPv6 ANTES de que se sustituya la plantilla.
 #
 # Es un `.envsh` y no un `.sh` a propósito: el arranque de la imagen de nginx
 # *sourcea* los `.envsh` y *ejecuta* los `.sh`, así que solo un `.envsh` puede
-# exportar algo que vea el paso siguiente. Y va con el número 05 para caer antes
-# del 20, que es el que corre `envsubst`.
+# exportar algo que vea el paso siguiente. Va con el número 05 para caer antes
+# del 20, que es el que corre `envsubst`. Y **tiene que ser ejecutable** aunque
+# solo se sourcee: si no, el arranque lo salta con un aviso que nadie mira.
+
+# 1. `PORT`.
 #
-# Sin esto: `envsubst` solo sustituye variables DEFINIDAS. Con `PORT` ausente o
-# vacío —la plataforma inyecta la suya y pisa la de la imagen— el archivo se
-# queda con `listen ;` y nginx muere al arrancar con «invalid number of
-# arguments in "listen" directive». El contenedor no llega a escribir un solo
-# registro, así que en el panel se ve un despliegue fallido y ninguna pista.
+# `envsubst` solo sustituye variables DEFINIDAS. Con `PORT` ausente o vacío
+# —la plataforma inyecta la suya y pisa la de la imagen— el archivo se queda
+# con `listen ;` y nginx muere al arrancar con «invalid number of arguments in
+# "listen" directive», sin llegar a escribir nada más.
 : "${PORT:=8080}"
 export PORT
-echo "pos: sirviendo en el puerto $PORT"
+
+# 2. Escucha IPv6.
+#
+# La red privada de Railway es IPv6, y su sonda de salud entra por ahí. Con
+# `listen 8080;` a secas nginx solo abre IPv4: la sonda no conecta, la
+# plataforma para el contenedor y el despliegue queda en «fallido» con el único
+# registro «Stopping Container». Ni un error de nginx, porque nginx está bien.
+#
+# Se decide aquí y no en la plantilla porque **no todo entorno tiene IPv6**:
+# en un Docker local sin él, `listen [::]:8080` no arranca. Con esto, la misma
+# imagen sirve en los dos sitios.
+if [ -f /proc/net/if_inet6 ]; then
+  ESCUCHA_IPV6="listen [::]:${PORT};"
+else
+  ESCUCHA_IPV6=""
+fi
+export ESCUCHA_IPV6
+
+echo "pos: puerto $PORT${ESCUCHA_IPV6:+ (IPv4 e IPv6)}"
