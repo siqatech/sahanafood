@@ -307,7 +307,8 @@ export default async function OperacionesPage({
                 <strong>Comprobante rechazado</strong> {d.number ?? ''}
               </p>
               <p className="tarjeta__pie">
-                {d.rejectionReason ?? 'sin motivo devuelto'} · S/ {d.total}
+                {d.rejectionReason ?? 'sin motivo devuelto'} · S/{' '}
+                {solesDeTexto(d.total)}
               </p>
               <p className="tarjeta__pie">
                 La venta no se pierde:{' '}

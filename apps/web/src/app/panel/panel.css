@@ -216,6 +216,13 @@ tr:last-child td {
   display: flex;
   gap: 8px;
   align-items: center;
+  /* Envuelve. Sin esto, un formulario de una línea metido en una tarjeta
+     estrecha —las de canal, las de «por aceptar»— empuja su último elemento
+     fuera del recuadro, y ese último elemento es siempre el BOTÓN: la acción
+     queda medio tapada por la tarjeta de al lado. No da error, no lo ve el
+     typecheck y no lo nota nadie leyendo el código; se ve mirando la pantalla
+     con datos de verdad. */
+  flex-wrap: wrap;
 }
 
 .panel input[type='text'],
@@ -385,6 +392,12 @@ tr:last-child td {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
+}
+
+/* Dentro de una tarjeta de canal —220 px— el motivo se lleva la primera línea
+   entera, y minutos y botón caben juntos en la segunda. */
+.canales form.en-linea input[name='reason'] {
+  flex: 1 1 100%;
 }
 
 .correccion {

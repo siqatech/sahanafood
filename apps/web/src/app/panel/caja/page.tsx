@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { panel, type DocumentoDelPanel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
-import { soles, hayDiferencia } from './dinero';
+import { soles, solesDeTexto, hayDiferencia } from './dinero';
 
 /**
  * Caja y comprobantes (specs/ux/03).
@@ -197,7 +197,7 @@ export default async function CajaPage({
                       </>
                     ) : null}
                   </td>
-                  <td className="dinero">S/ {d.total}</td>
+                  <td className="dinero">S/ {solesDeTexto(d.total)}</td>
                   <td>{fecha(d.issuedAt)}</td>
                 </tr>
               ))}

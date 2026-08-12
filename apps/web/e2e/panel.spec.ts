@@ -399,7 +399,14 @@ test.describe('Panel de gestión en navegador', () => {
       page.getByRole('heading', { name: 'Qué pidió' }),
     ).toBeVisible();
     // Las líneas, con nombre e importe: el snapshot de lo vendido.
-    await expect(page.locator('tbody tr').first()).toContainText('S/');
+    //
+    // El importe con DOS decimales, no con los cuatro del `NUMERIC(14,4)`.
+    // La línea los enseñaba crudos —«S/ 76.0000»— y el total de abajo, ya
+    // formateado, ponía «S/ 76.00»: dos cifras distintas para lo mismo en la
+    // misma pantalla, delante de quien está contestando un reclamo.
+    await expect(page.locator('tbody tr').first()).toContainText(
+      /S\/\s\d+\.\d{2}(?!\d)/,
+    );
     // Y el historial, del más reciente al más antiguo.
     await expect(
       page.getByRole('heading', { name: 'Qué le pasó' }),

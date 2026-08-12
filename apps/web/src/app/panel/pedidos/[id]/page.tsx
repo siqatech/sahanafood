@@ -122,7 +122,12 @@ export default async function PedidoPage({
                     ) : null}
                   </td>
                   <td>{l.quantity}</td>
-                  <td className="dinero">S/ {l.lineTotal}</td>
+                  {/* Por el formateador, no crudo. `lineTotal` llega como el
+                      `NUMERIC(14,4)` de la base —«76.0000»— y enseñarlo tal cual
+                      ponía cuatro decimales en la línea y dos en el total de
+                      abajo, en la misma pantalla. Quien la mira para contestar
+                      un reclamo no tiene por qué saber que son la misma cifra. */}
+                  <td className="dinero">S/ {solesDeTexto(l.lineTotal)}</td>
                 </tr>
               ))}
             </tbody>
