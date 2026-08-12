@@ -52,6 +52,7 @@ Un proyecto de Railway con seis piezas:
 | `api`       | `infra/railway/api.json`    | NestJS + migraciones   | sí (o solo privado) |
 | `worker`    | `infra/railway/worker.json` | BullMQ, sin HTTP       | **no**          |
 | `web`       | `infra/railway/web.json`    | Next.js: panel y tiendas | sí          |
+| `pos`       | `infra/railway/pos.json`    | PWA de POS/KDS sobre nginx | sí        |
 
 Los tres archivos de `infra/railway/` son la configuración de cada servicio. En
 Railway se declara uno por servicio, en *Settings → Config-as-code*, con la ruta
@@ -207,9 +208,22 @@ hay fuga de datos —el tenant sale del token— pero un formulario de acceso do
 nadie lo espera es donde se pescan contraseñas. Con la variable puesta, en
 cualquier otro host el panel responde 404.
 
-Si `api` no necesita ser pública —el caso normal: solo la consume `web`— no le
-generes dominio. El POS y el print-agent sí la necesitan desde fuera; si los vas
-a usar, dale dominio propio.
+**`api` necesita dominio público.** No por `web` —esa la consume por la red
+privada— sino por los dos que corren FUERA del clúster: el POS, que vive en el
+navegador de una tablet del local, y la web de pedidos que monte un cliente con
+su clave publicable (ADR-0020). El POS además lleva esa URL **compilada dentro**
+(Vite resuelve `VITE_SAHANA_API_URL` al construir), así que cambiarla obliga a
+reconstruir su imagen, no a reiniciarla.
+
+### El print-agent NO va en Railway
+
+Se llegó a crear como servicio y se quedó *crashed*, que es lo correcto: es un
+agente que corre **en una máquina del local**, junto a la impresora térmica, y
+por diseño no conoce el tenant ni habla con nuestra API — recibe bytes de la PWA
+que tiene delante (ADR-0008). En la nube no tiene ninguna impresora que atender,
+y desplegarlo allí solo puede acabar en un componente instalado en máquinas
+ajenas llevando credenciales que no debe llevar. Se instala con su instalador,
+no se despliega.
 
 ## 5. Migraciones
 
