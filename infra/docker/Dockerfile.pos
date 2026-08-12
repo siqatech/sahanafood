@@ -78,3 +78,15 @@ EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
   CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/" || exit 1
+
+# El arranque INVOCA el entrypoint de la imagen en vez de dejarlo implícito.
+#
+# Railway sustituye el arranque por el `startCommand` del servicio y con él el
+# ENTRYPOINT, así que `/docker-entrypoint.sh` no llegaba a correr: no se
+# renderizaba la plantilla y nginx servía su `default.conf` de fábrica en el
+# puerto 80. El contenedor arrancaba «bien» —los registros lo confirmaban— y la
+# sonda fallaba contra un puerto donde no había nadie.
+#
+# Escrito así, la misma línea vale como CMD local y como `startCommand` de la
+# plataforma, que es la que está en `infra/railway/pos.json`.
+CMD ["/docker-entrypoint.sh", "nginx", "-g", "daemon off;"]
