@@ -1,3 +1,4 @@
+import { Canal } from '../canal';
 import Link from 'next/link';
 import {
   panel,
@@ -171,7 +172,7 @@ export default async function RepartoPage({
               <article key={p.id} className="ficha ficha--revision">
                 <p>
                   <strong>Pedido #{p.orderNumber}</strong> ·{' '}
-                  <span className="etiqueta">{p.channel}</span>
+                  <Canal canal={p.channel} />
                 </p>
                 <p className="tarjeta__pie">
                   S/ {soles(p.total)}. Si el cliente paga al recibir, deja el

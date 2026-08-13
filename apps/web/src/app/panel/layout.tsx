@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { tokenDeAcceso } from '../../lib/panel-session';
+import { Navegacion } from './navegacion';
 import './panel.css';
 
 /**
@@ -51,49 +52,42 @@ export default async function PanelLayout({
   // misma pantalla de acceso, y eso hace dudar de si la contraseña falló.
   const conSesion = (await tokenDeAcceso()) !== undefined;
 
+  // Sin sesión, el marco es una sola columna: la pantalla de acceso no necesita
+  // —ni debe tener— una barra lateral que no lleva a ningún sitio.
+  if (!conSesion) {
+    return (
+      <div className="panel panel--suelto">
+        <header className="panel__cabecera">
+          <Link href="/panel" className="panel__marca">
+            Sahana&nbsp;Food
+          </Link>
+        </header>
+        <main className="panel__cuerpo">{children}</main>
+      </div>
+    );
+  }
+
   return (
-    <div className="panel">
-      <header className="panel__cabecera">
+    <div className="panel panel--con-barra">
+      {/* La barra lateral, y no una fila de enlaces arriba: con veintidós
+          pantallas la fila se sale de cualquier portátil y no agrupa nada.
+          En móvil la barra se convierte en una tira que se desplaza, porque
+          «consultar es mobile-first» (specs/ux/03) y ahí el ancho es del
+          contenido. */}
+      <aside className="panel__barra">
         <Link href="/panel" className="panel__marca">
           Sahana&nbsp;Food
         </Link>
-        {conSesion ? (
-          <>
-            <nav className="panel__nav">
-              <Link href="/panel">Hoy</Link>
-              <Link href="/panel/operaciones">Operaciones</Link>
-              <Link href="/panel/pedidos">Pedidos</Link>
-              <Link href="/panel/cocina">Cocina</Link>
-              <Link href="/panel/reparto">Reparto</Link>
-              <Link href="/panel/caja">Caja</Link>
-              <Link href="/panel/comprobantes">Comprobantes</Link>
-              <Link href="/panel/inventario">Inventario</Link>
-              <Link href="/panel/catalogo">Carta</Link>
-              <Link href="/panel/excepciones">Excepciones</Link>
-              <Link href="/panel/conversaciones">Conversaciones</Link>
-              <Link href="/panel/agente">Agente</Link>
-              <Link href="/panel/mensajeria">Mensajería</Link>
-              <Link href="/panel/canales">Canales</Link>
-              <Link href="/panel/promociones">Promociones</Link>
-              <Link href="/panel/pagos">Cobros</Link>
-              <Link href="/panel/aspecto">Aspecto</Link>
-              <Link href="/panel/integracion">Integración</Link>
-              <Link href="/panel/negocio">Negocio</Link>
-              <Link href="/panel/reportes">Rentabilidad</Link>
-              <Link href="/panel/equipo">Equipo</Link>
-              <Link href="/panel/auditoria">Histórico</Link>
-            </nav>
-            {/* Formulario y no enlace: cerrar sesión cambia estado en el
-                servidor, y un GET lo dejaría a merced de cualquier imagen
-                remota que apuntara a esta URL. */}
-            <form action="/panel/salir" method="post">
-              <button type="submit" className="panel__salir">
-                Salir
-              </button>
-            </form>
-          </>
-        ) : null}
-      </header>
+        <Navegacion />
+        {/* Formulario y no enlace: cerrar sesión cambia estado en el
+            servidor, y un GET lo dejaría a merced de cualquier imagen
+            remota que apuntara a esta URL. */}
+        <form action="/panel/salir" method="post" className="panel__pie-barra">
+          <button type="submit" className="panel__salir">
+            Salir
+          </button>
+        </form>
+      </aside>
       <main className="panel__cuerpo">{children}</main>
     </div>
   );

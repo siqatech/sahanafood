@@ -21,6 +21,7 @@ import { politicaPara, limiteDeRechazo } from './plazos';
  */
 const CANALES = ['web', 'pos', 'whatsapp', 'rappi', 'pedidosya'];
 import { solesDeTexto } from '../caja/dinero';
+import { Canal } from '../canal';
 import {
   Cuenta,
   BotonesDeAceptacion,
@@ -220,8 +221,7 @@ export default async function OperacionesPage({
           {excepciones.map((p) => (
             <article key={p.id} className="ficha ficha--revision">
               <p>
-                <strong>#{p.orderNumber}</strong>{' '}
-                <span className="etiqueta">{p.channel}</span>
+                <strong>#{p.orderNumber}</strong> <Canal canal={p.channel} />
               </p>
               <p className="tarjeta__pie">
                 No se pudo traducir a nuestra carta · {hora(p.createdAt)}
@@ -234,8 +234,7 @@ export default async function OperacionesPage({
             <article key={pedido.id} className="ficha">
               <p>
                 <strong>#{pedido.orderNumber}</strong>{' '}
-                <span className="etiqueta">{pedido.channel}</span>{' '}
-                <Cuenta limite={limite} />
+                <Canal canal={pedido.channel} /> <Cuenta limite={limite} />
               </p>
               <p className="tarjeta__pie">
                 Entró a las {hora(pedido.createdAt)}
@@ -266,7 +265,7 @@ export default async function OperacionesPage({
                   {lista.map((p) => (
                     <p key={p.id} className="fila-compacta">
                       <strong>#{p.orderNumber}</strong>{' '}
-                      <span className="etiqueta">{p.channel}</span>{' '}
+                      <Canal canal={p.channel} />{' '}
                       <span className="tarjeta__pie">
                         desde {hora(p.createdAt)}
                       </span>

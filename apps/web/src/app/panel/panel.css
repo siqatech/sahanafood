@@ -44,26 +44,82 @@
   text-decoration: none;
 }
 
+/* --- Marco con barra lateral ------------------------------------------- */
+
+.panel--con-barra {
+  display: grid;
+  /* La barra fija y el contenido con el resto. `minmax(0, 1fr)` y no `1fr`:
+     sin el mínimo en cero, una tabla ancha empuja la rejilla y la barra se
+     encoge hasta partir los rótulos. */
+  grid-template-columns: 232px minmax(0, 1fr);
+  align-items: start;
+}
+
+.panel__barra {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 14px;
+  background: var(--panel-tarjeta);
+  border-right: 1px solid var(--panel-borde);
+}
+
 .panel__nav {
   display: flex;
+  flex-direction: column;
   gap: 16px;
-  margin-right: auto;
 }
 
-.panel__nav a {
+.panel__grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* El rótulo del grupo no es un enlace y tiene que notarse que no lo es: más
+   pequeño, en mayúsculas y sin el color de texto activo. */
+.panel__grupo-titulo {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--panel-suave);
-  text-decoration: none;
-  font-size: 0.95rem;
-  padding: 6px 0;
 }
 
-.panel__nav a:hover {
+.panel__enlace {
+  display: block;
+  padding: 7px 10px;
+  border-radius: 8px;
   color: var(--panel-texto);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.panel__enlace:hover {
+  background: var(--panel-fondo);
+}
+
+.panel__enlace--actual {
+  background: var(--panel-acento);
+  color: #fff;
+  font-weight: 600;
+}
+
+.panel__pie-barra {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-borde);
 }
 
 .panel__salir {
-  width: auto;
-  padding: 6px 12px;
+  width: 100%;
+  padding: 8px 12px;
   font-size: 0.85rem;
   background: transparent;
   color: var(--panel-suave);
@@ -72,9 +128,43 @@
 }
 
 .panel__cuerpo {
-  max-width: 1040px;
+  max-width: 1100px;
+  padding: 24px;
+  width: 100%;
+}
+
+.panel--suelto .panel__cuerpo {
   margin: 0 auto;
-  padding: 20px;
+}
+
+/* En móvil no hay sitio para una columna fija: la barra pasa arriba y se
+   desplaza en horizontal. «Consultar es mobile-first» (specs/ux/03), y ahí el
+   ancho es del contenido, no del menú. */
+@media (max-width: 860px) {
+  .panel--con-barra {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panel__barra {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--panel-borde);
+  }
+
+  .panel__nav {
+    flex-direction: row;
+    gap: 20px;
+    overflow-x: auto;
+  }
+
+  .panel__grupo {
+    flex: 0 0 auto;
+  }
+
+  .panel__cuerpo {
+    padding: 16px;
+  }
 }
 
 .panel h1 {
@@ -208,6 +298,52 @@ tr:last-child td {
   color: #991b1b;
   background: #fee2e2;
   border-color: #fca5a5;
+}
+
+/* --- Color por canal (docs/25 §Tokens) ---------------------------------
+ *
+ * «Color por canal usado consistentemente en tarjetas, filtros y reportes — el
+ * operador aprende a leer el origen de un vistazo.» Hasta ahora todos los
+ * canales eran la misma píldora gris, y en la torre de control con treinta
+ * tarjetas eso obliga a leer palabra por palabra.
+ *
+ * Son los colores de marca de cada canal a propósito: el operador ya los tiene
+ * aprendidos de esas apps, y contradecirlos costaría más de lo que aporta.
+ * El nombre va SIEMPRE escrito dentro (docs/25 §6). */
+
+.canal {
+  border-width: 1px;
+  border-style: solid;
+}
+
+.canal--propio {
+  color: #14532d;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.canal--pos {
+  color: #1e3a8a;
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.canal--whatsapp {
+  color: #065f46;
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.canal--rappi {
+  color: #9a3412;
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
+.canal--pedidosya {
+  color: #9f1239;
+  background: #ffe4e6;
+  border-color: #fda4af;
 }
 
 /* --- Formularios ------------------------------------------------------- */

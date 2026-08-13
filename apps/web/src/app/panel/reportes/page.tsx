@@ -6,6 +6,7 @@ import {
 } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { solesDeTexto } from '../caja/dinero';
+import { Canal } from '../canal';
 
 /**
  * Rentabilidad y conciliación (spec 16).
@@ -118,7 +119,7 @@ export default async function ReportesPage({
                   <tr key={`${r.brandId}-${r.channel}`}>
                     <td>{r.brandName}</td>
                     <td>
-                      <span className="etiqueta">{r.channel}</span>
+                      <Canal canal={r.channel} />
                     </td>
                     <td>
                       {r.orders}

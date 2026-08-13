@@ -173,7 +173,11 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
 
     const fila = page.locator('tbody tr').first();
-    await expect(fila).toContainText('rappi');
+    // El NOMBRE del canal, no su identificador. La etiqueta ahora lleva el
+    // color del canal y el rótulo que lee una persona; afirmar «rappi» en
+    // minúscula era afirmar el dato crudo de la base, que nunca fue lo que
+    // esta pantalla debía enseñar.
+    await expect(fila).toContainText('Rappi');
     await fila.getByRole('link', { name: 'Resolver' }).click();
 
     // Lo primero que el operador necesita: POR QUÉ se apartó y QUÉ llegó.

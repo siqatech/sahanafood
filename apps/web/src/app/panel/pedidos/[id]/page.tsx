@@ -3,6 +3,7 @@ import { panel, type CobroDelPanel } from '../../../../lib/panel-api';
 import { cargar } from '../../../../lib/panel-guard';
 import { soles, solesDeTexto } from '../../caja/dinero';
 import { FormularioDevolucion } from './formularios';
+import { Canal } from '../../canal';
 
 /**
  * Trazabilidad de UN pedido (specs/ux/03: «la misma vista del runbook 1,
@@ -74,7 +75,7 @@ export default async function PedidoPage({
     <>
       <h1>Pedido #{pedido.orderNumber}</h1>
       <p className="panel__subtitulo">
-        <span className="etiqueta">{pedido.channel}</span>{' '}
+        <Canal canal={pedido.channel} />{' '}
         {ROTULO[pedido.status] ?? pedido.status} · entró el{' '}
         {momento(pedido.createdAt)}
         {pedido.externalRef ? ` · referencia ${pedido.externalRef}` : ''}

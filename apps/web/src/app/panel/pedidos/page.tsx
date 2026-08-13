@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { panel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { soles } from '../caja/dinero';
+import { Canal } from '../canal';
 
 /**
  * Pedidos: buscador y estado (specs/ux/03, «Pedidos»).
@@ -108,7 +109,7 @@ export default async function PedidosPage({
                     <strong>#{p.orderNumber}</strong>
                   </td>
                   <td>
-                    <span className="etiqueta">{p.channel}</span>
+                    <Canal canal={p.channel} />
                   </td>
                   <td>{ROTULO[p.status] ?? p.status}</td>
                   <td className="dinero">S/ {soles(p.total)}</td>

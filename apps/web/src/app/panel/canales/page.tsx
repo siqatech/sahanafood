@@ -1,3 +1,4 @@
+import { Canal } from '../canal';
 import Link from 'next/link';
 import {
   panel,
@@ -97,7 +98,7 @@ export default async function CanalesPage({
               {conexiones.map((c) => (
                 <tr key={c.id}>
                   <td>
-                    <span className="etiqueta">{c.channel}</span>
+                    <Canal canal={c.channel} />
                   </td>
                   <td>{nombreDeMarca.get(c.brandId) ?? '—'}</td>
                   <td>

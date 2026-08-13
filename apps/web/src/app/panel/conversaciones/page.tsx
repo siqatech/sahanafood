@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { panel, type ConversacionDelPanel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
+import { Canal } from '../canal';
 
 /**
  * Bandeja de conversaciones (specs/ux/06) — paga **DT-14**.
@@ -33,7 +34,7 @@ function Fila({ c }: { c: ConversacionDelPanel }) {
     <article className={`ficha${c.handoffAt ? ' ficha--revision' : ''}`}>
       <p>
         <strong>{c.contactName ?? c.contactPhone}</strong>{' '}
-        <span className="etiqueta">{c.channel}</span>{' '}
+        <Canal canal={c.channel} />{' '}
         <span className="etiqueta">{c.brandName}</span>
       </p>
       <p className="tarjeta__pie">

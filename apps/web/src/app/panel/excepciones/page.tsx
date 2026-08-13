@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { panel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
+import { Canal } from '../canal';
 
 /**
  * Bandeja de excepciones (RN-ORD-10, specs/ux/03) — paga **DT-04**.
@@ -72,7 +73,7 @@ export default async function ExcepcionesPage({
                     <strong>#{p.orderNumber}</strong>
                   </td>
                   <td>
-                    <span className="etiqueta">{p.channel}</span>
+                    <Canal canal={p.channel} />
                   </td>
                   <td>
                     {/* Hora y no «hace 3 min»: un relativo calculado en el
