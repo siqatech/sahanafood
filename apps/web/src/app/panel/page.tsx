@@ -3,6 +3,7 @@ import { panel, type SerieDeVentas } from '../../lib/panel-api';
 import { cargar } from '../../lib/panel-guard';
 import { formatDecimal } from '../../lib/money';
 import { CurvaDeVentas } from './curva';
+import { Canal } from './canal';
 
 /**
  * Portada del panel: **«¿cómo vamos hoy?»** (specs/ux/03).
@@ -143,7 +144,9 @@ export default async function PanelHome({
             <tbody>
               {hoy.byChannel.map((c) => (
                 <tr key={c.key}>
-                  <td>{c.label}</td>
+                  <td>
+                    <Canal canal={c.key} />
+                  </td>
                   <td className="dinero">{c.orders}</td>
                   <td className="dinero">{formatDecimal(c.netRevenue)}</td>
                 </tr>
