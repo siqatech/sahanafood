@@ -199,6 +199,51 @@ suite('Analítica — rentabilidad y conciliación', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('LA SERIE alinea los dos periodos por POSICIÓN, no por fecha', async () => {
+    // El fallo que esta prueba existe para evitar: emparejar las dos series por
+    // fecha las desplazaría un periodo entero, y el gráfico compararía el lunes
+    // de esta semana con el lunes de esta semana. La comparación tiene que ser
+    // día N contra día N del periodo anterior.
+    await vender();
+    await drenar();
+
+    const dias = 7;
+    const serie = await analytics.salesSeries(tenantA, dias);
+
+    expect(serie.current).toHaveLength(dias);
+    expect(serie.previous).toHaveLength(dias);
+
+    // Contiguos y del mismo largo: el periodo anterior termina justo antes de
+    // que empiece el actual. Comparar 7 días con 30 produce una caída del 75 %
+    // que no ha ocurrido.
+    const diaAntes = (f: string) =>
+      new Date(new Date(`${f}T12:00:00Z`).getTime() - 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+    expect(serie.previousTo).toBe(diaAntes(serie.from));
+
+    // El último día del periodo actual es HOY, y trae la venta que acabamos de
+    // registrar: sin esto la prueba pasaría con una serie de ceros.
+    const ultimo = serie.current[dias - 1]!;
+    expect(ultimo.businessDate).toBe(serie.to);
+    expect(
+      Number(ultimo.netRevenue),
+      'la serie no recogió la venta de hoy',
+    ).toBeGreaterThan(0);
+
+    // Y los días sin venta SALEN, con cero. Omitirlos haría que la línea uniera
+    // el lunes con el miércoles como si el martes no hubiera existido, y un
+    // martes cerrado es justo lo que hay que poder ver.
+    expect(serie.previous.every((p) => p.netRevenue === '0.0000')).toBe(true);
+  });
+
+  it('LA SERIE rechaza un periodo absurdo en vez de recorrer la tabla entera', async () => {
+    await expect(analytics.salesSeries(tenantA, 100_000)).rejects.toThrow(
+      /2 a 90/,
+    );
+    await expect(analytics.salesSeries(tenantA, 1)).rejects.toThrow(/2 a 90/);
+  });
+
   it('la proyección se alimenta por EVENTOS, no consultando pedidos', async () => {
     // Un `GROUP BY` sobre `ord_orders` a las 20:30 de un viernes compite por
     // las mismas filas que están cerrando pedidos.

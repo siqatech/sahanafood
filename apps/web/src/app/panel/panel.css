@@ -738,3 +738,85 @@ input[type='color'] {
   background: #fff;
   cursor: pointer;
 }
+
+/* --- Gráfico de ventas --------------------------------------------------
+ *
+ * SVG a mano y pintado en el servidor: dos polilíneas no justifican los
+ * 100–500 KB de una librería de gráficos —ni que este componente sea de
+ * cliente— en la primera pantalla que abre el dueño desde el celular. */
+
+.grafico {
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.grafico__lienzo {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.grafico__rejilla {
+  stroke: var(--panel-borde);
+  stroke-width: 1;
+}
+
+.grafico__linea {
+  fill: none;
+  stroke-width: 2.5;
+  /* Las uniones redondeadas evitan las púas que salen en los picos con
+     ángulos cerrados, que se leen como datos que no existen. */
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.grafico__linea--actual {
+  stroke: var(--panel-acento);
+}
+
+/* Punteada y gris: es la referencia, no el protagonista. Y la diferencia no
+   viaja solo en el color — el trazo discontinuo se distingue en blanco y negro
+   y con cualquier daltonismo (docs/25 §6). */
+.grafico__linea--anterior {
+  stroke: #9aa3b2;
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+}
+
+.grafico__fecha {
+  fill: var(--panel-suave);
+  font-size: 11px;
+}
+
+.grafico__leyenda {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  color: var(--panel-suave);
+}
+
+.grafico__clave {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top-width: 3px;
+  border-top-style: solid;
+}
+
+.grafico__clave--actual {
+  border-top-color: var(--panel-acento);
+}
+
+.grafico__clave--anterior {
+  border-top-color: #9aa3b2;
+  border-top-style: dashed;
+}
+
+.grafico--vacio {
+  padding: 8px 16px;
+}

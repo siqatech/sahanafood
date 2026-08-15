@@ -100,6 +100,31 @@ export interface TodaySummary {
   activeNow: number;
 }
 
+/** Un día de la serie. Los importes van como cadena decimal, como todo aquí. */
+export interface SalesPoint {
+  businessDate: string;
+  orders: number;
+  netRevenue: string;
+}
+
+/**
+ * La evolución de la venta, con su periodo anterior para comparar.
+ *
+ * Dos series de la MISMA longitud y alineadas por posición: el día 1 de una
+ * corresponde al día 1 de la otra. Es lo que permite dibujarlas superpuestas
+ * sin que quien las pinta tenga que emparejar fechas —y sin que se le ocurra
+ * emparejarlas por fecha, que las desplazaría una semana entera.
+ */
+export interface SalesSeries {
+  days: number;
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  current: SalesPoint[];
+  previous: SalesPoint[];
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -354,6 +379,95 @@ export class AnalyticsService {
    * están en una proyección diaria y se cuentan con un `count(*)` filtrado por
    * estado: son decenas de filas, no un agregado del histórico.
    */
+  /**
+   * La venta día a día, y el mismo número de días justo antes.
+   *
+   * El panel tenía **el dato de un día y ninguna forma de ver la tendencia**:
+   * `ana_daily_sales` guarda la serie desde F4 y no la devolvía ninguna ruta.
+   * Un número suelto no dice si el negocio sube o baja, que es la única razón
+   * por la que alguien abre esta pantalla dos veces.
+   *
+   * El periodo anterior es **contiguo y del mismo largo** —los 14 días de antes
+   * de los 14 actuales—, no «el mes pasado»: comparar 14 días con 30 produce
+   * una caída del 50 % que no ha ocurrido.
+   *
+   * Los días SIN venta salen en la serie con cero. Omitirlos haría que la línea
+   * uniera el lunes con el miércoles como si el martes no hubiera existido, y
+   * un martes cerrado es exactamente lo que hay que poder ver.
+   */
+  async salesSeries(
+    tenantId: string,
+    days: number,
+    at: Date = new Date(),
+  ): Promise<SalesSeries> {
+    if (!Number.isInteger(days) || days < 2 || days > 90) {
+      throw new ValidationError('El periodo va de 2 a 90 días.');
+    }
+
+    const DIA = 24 * 3_600_000;
+    const fin = at.getTime();
+    // `days - 1` porque hoy cuenta: 14 días son hoy y los trece anteriores.
+    const dia = (desplazamiento: number): string =>
+      this.aFechaNegocio(new Date(fin - desplazamiento * DIA));
+
+    const actuales: string[] = [];
+    const anteriores: string[] = [];
+    for (let i = days - 1; i >= 0; i -= 1) {
+      actuales.push(dia(i));
+      anteriores.push(dia(i + days));
+    }
+
+    const desde = actuales[0]!;
+    const hasta = actuales[actuales.length - 1]!;
+    const desdeAnterior = anteriores[0]!;
+    const hastaAnterior = anteriores[anteriores.length - 1]!;
+
+    const filas = await withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        business_date: string;
+        orders: string;
+        gross_revenue: string;
+        discounts: string;
+      }>(
+        `SELECT business_date::text AS business_date,
+                sum(orders)::text AS orders,
+                sum(gross_revenue)::text AS gross_revenue,
+                sum(discounts)::text AS discounts
+           FROM ana_daily_sales
+          WHERE business_date BETWEEN $1::date AND $2::date
+             OR business_date BETWEEN $3::date AND $4::date
+          GROUP BY business_date`,
+        [desdeAnterior, hastaAnterior, desde, hasta],
+      );
+      return rows;
+    });
+
+    const porFecha = new Map(filas.map((r) => [r.business_date, r]));
+    const serie = (fechas: string[]): SalesPoint[] =>
+      fechas.map((f) => {
+        const r = porFecha.get(f);
+        return {
+          businessDate: f,
+          orders: r ? Number(r.orders) : 0,
+          netRevenue: r
+            ? this.aMoney(r.gross_revenue)
+                .subtract(this.aMoney(r.discounts))
+                .toDecimalString()
+            : '0.0000',
+        };
+      });
+
+    return {
+      days,
+      from: desde,
+      to: hasta,
+      previousFrom: desdeAnterior,
+      previousTo: hastaAnterior,
+      current: serie(actuales),
+      previous: serie(anteriores),
+    };
+  }
+
   async today(tenantId: string, at: Date = new Date()): Promise<TodaySummary> {
     const hoy = this.aFechaNegocio(at);
     const haceUnaSemana = this.aFechaNegocio(

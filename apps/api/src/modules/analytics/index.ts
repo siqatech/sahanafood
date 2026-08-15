@@ -5,6 +5,8 @@ export {
   type BrandChannelProfitability,
   type ReconciliationResult,
   type TodaySummary,
+  type SalesSeries,
+  type SalesPoint,
   type TodaySlice,
 } from './app/analytics.service.js';
 export {

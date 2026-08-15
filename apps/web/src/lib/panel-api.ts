@@ -138,6 +138,28 @@ export interface Perfil {
   permissions: string[];
 }
 
+/** Un día de la serie de ventas. */
+export interface PuntoDeVenta {
+  businessDate: string;
+  orders: number;
+  netRevenue: string;
+}
+
+/**
+ * Dos series de la MISMA longitud, alineadas por posición: el día 1 de una
+ * corresponde al día 1 de la otra. Emparejarlas por fecha las desplazaría un
+ * periodo entero.
+ */
+export interface SerieDeVentas {
+  days: number;
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  current: PuntoDeVenta[];
+  previous: PuntoDeVenta[];
+}
+
 export interface ResumenDeHoy {
   businessDate: string;
   comparedDate: string;
@@ -758,6 +780,16 @@ export const panel = {
   perfil: (): Promise<Perfil> => llamar<Perfil>('/auth/me'),
 
   hoy: (): Promise<ResumenDeHoy> => llamar<ResumenDeHoy>('/analytics/today'),
+
+  /**
+   * La venta día a día con su periodo anterior.
+   *
+   * `ana_daily_sales` guarda la serie desde F4 y ninguna ruta la devolvía: el
+   * panel tenía el dato de UN día y ninguna forma de ver la tendencia, que es
+   * lo único que dice si el negocio sube o baja.
+   */
+  serie: (dias = 14): Promise<SerieDeVentas> =>
+    llamar<SerieDeVentas>(`/analytics/series?days=${dias}`),
 
   estructura: (): Promise<Estructura> => llamar<Estructura>('/organization'),
 

@@ -8,6 +8,7 @@ import {
   AnalyticsService,
   type BrandChannelProfitability,
   type ReconciliationResult,
+  type SalesSeries,
   type TodaySummary,
 } from '../app/analytics.service.js';
 
@@ -34,6 +35,26 @@ export class AnalyticsController {
   @RequirePermission('reports.read')
   today(@Req() req: AuthenticatedRequest): Promise<TodaySummary> {
     return this.analytics.today(req.auth!.tid);
+  }
+
+  /**
+   * La venta día a día, con el periodo anterior para comparar.
+   *
+   * `days` acotado en el servicio (2–90). Sin tope, un `?days=100000` obliga a
+   * recorrer la tabla entera y a componer cien mil puntos que nadie va a
+   * dibujar.
+   */
+  @Get('series')
+  @RequirePermission('reports.read')
+  series(
+    @Req() req: AuthenticatedRequest,
+    @Query('days') days?: string,
+  ): Promise<SalesSeries> {
+    const n = days === undefined ? 14 : Number(days);
+    if (!Number.isFinite(n)) {
+      throw new ValidationError('`days` tiene que ser un número de días.');
+    }
+    return this.analytics.salesSeries(req.auth!.tid, n);
   }
 
   /**

@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { panel } from '../../lib/panel-api';
+import { panel, type SerieDeVentas } from '../../lib/panel-api';
 import { cargar } from '../../lib/panel-guard';
 import { formatDecimal } from '../../lib/money';
+import { CurvaDeVentas } from './curva';
 
 /**
  * Portada del panel: **«¿cómo vamos hoy?»** (specs/ux/03).
@@ -41,6 +42,11 @@ export default async function PanelHome({
     panel.hoy(),
   );
 
+  // La curva se degrada sola: es lo que MÁS ayuda a entender el día, pero si
+  // falla, las cifras de arriba siguen siendo la respuesta a «¿cómo vamos?».
+  // Tumbar la portada entera por un gráfico sería el peor intercambio posible.
+  const serie = await panel.serie(14).catch((): SerieDeVentas | null => null);
+
   return (
     <>
       <h1>Hoy</h1>
@@ -77,6 +83,17 @@ export default async function PanelHome({
           </p>
         </div>
       </div>
+
+      {serie ? (
+        <>
+          <h2>Cómo van los últimos 14 días</h2>
+          <CurvaDeVentas
+            actual={serie.current}
+            anterior={serie.previous}
+            etiqueta="los 14 días anteriores"
+          />
+        </>
+      ) : null}
 
       <h2>Por marca</h2>
       {hoy.byBrand.length === 0 ? (

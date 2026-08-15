@@ -451,12 +451,20 @@ suite('Aislamiento — todos los endpoints', () => {
     // B necesita DATOS de analítica y mensajería: dos respuestas de ceros
     // idénticas no demuestran aislamiento, solo que ambos tenants están
     // vacíos. Con datos solo en B, cualquier fuga se ve.
+    //
+    // El día va en la zona del LOCAL y no en `current_date`, que es UTC. Entre
+    // las 19:00 y la medianoche de Lima —00:00 a 05:00 UTC— las dos fechas no
+    // coinciden, y la fila se escribía en un día de negocio que todavía no ha
+    // empezado: fuera de la ventana de cualquier consulta que use la zona del
+    // local, que son todas. La suite pasaba o fallaba según la hora a la que
+    // se ejecutara.
     await withTenant(pool, b.tenantId, async ({ client }) => {
       await client.query(
         `INSERT INTO ana_daily_sales
            (tenant_id, business_date, brand_id, location_id, channel,
             orders, gross_revenue)
-         VALUES ($1, current_date, $2, $3, 'pos', 7, 1234.5600)`,
+         VALUES ($1, (now() AT TIME ZONE 'America/Lima')::date,
+                 $2, $3, 'pos', 7, 1234.5600)`,
         [b.tenantId, demoB.brandIds[0], demoB.locationId],
       );
       const { rows } = await client.query<{ id: string }>(
@@ -1032,6 +1040,18 @@ suite('Aislamiento — todos los endpoints', () => {
       app,
       caseFor('GET /analytics/profitability', (r) =>
         r.get('/api/v1/analytics/profitability'),
+      ),
+    );
+  });
+
+  it('GET /analytics/series', async () => {
+    // La serie diaria dice cuánto vende B cada día: es su cuenta de resultados
+    // repartida en el tiempo, y con ella y un poco de paciencia se deduce su
+    // estacionalidad entera.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /analytics/series', (r) =>
+        r.get('/api/v1/analytics/series?days=7'),
       ),
     );
   });
