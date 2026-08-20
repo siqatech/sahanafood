@@ -820,3 +820,77 @@ input[type='color'] {
 .grafico--vacio {
   padding: 8px 16px;
 }
+
+/* --- Filtros por chips (specs/ux/03) ------------------------------------
+ *
+ * Son ENLACES: el filtro queda en la URL, se puede compartir, el botón de
+ * atrás funciona y la pantalla filtra sin JavaScript. */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--panel-borde);
+  border-radius: 999px;
+  background: var(--panel-tarjeta);
+  color: var(--panel-suave);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  /* Sin salto: «En preparación» partido en dos líneas dentro de una píldora se
+     lee como dos chips. */
+  white-space: nowrap;
+}
+
+.chip:hover {
+  border-color: var(--panel-acento);
+  color: var(--panel-texto);
+}
+
+.chip--activo {
+  background: var(--panel-acento);
+  border-color: var(--panel-acento);
+  color: #fff;
+}
+
+.chip__cuenta {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* El pie del listado: el contador a la izquierda y el export a la derecha. */
+.pie-listado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+/* Enlace con aspecto de botón discreto. Es un ENLACE de verdad porque lo que
+   hace es traer un archivo: un botón con JavaScript no puede poner
+   `content-disposition`, y sin esa cabecera el navegador pinta el CSV en vez
+   de descargarlo. */
+.boton-enlace {
+  padding: 8px 14px;
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  background: var(--panel-tarjeta);
+  color: var(--panel-texto);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.boton-enlace:hover {
+  border-color: var(--panel-acento);
+}

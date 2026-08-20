@@ -371,6 +371,66 @@ test.describe('Panel de gestión en navegador', () => {
     );
   });
 
+  test('LOS CHIPS filtran de verdad, y el CSV exporta LO FILTRADO', async ({
+    page,
+  }) => {
+    // specs/ux/03 pide chips y export CSV en todo listado, y no había ninguno
+    // de los dos. Lo que esta prueba vigila no es que los chips se pinten: es
+    // que el filtro LLEGUE a la API. El cliente del panel tiraba `channel` al
+    // suelo —igual que hacía con `search`— así que un filtro podía verse
+    // marcado y devolver la lista entera, que es indistinguible de funcionar.
+    await entrar(page);
+    await page.goto('/panel/pedidos');
+
+    const filas = page.locator('tbody tr');
+    const total = await filas.count();
+    expect(total, 'la semilla no dejó pedidos que filtrar').toBeGreaterThan(1);
+
+    // La semilla mete pedidos de web, pos y rappi. Al filtrar por Rappi tienen
+    // que quedar MENOS, y todos de Rappi.
+    await page.getByRole('link', { name: 'Rappi', exact: true }).click();
+    await expect(page).toHaveURL(/canal=rappi/);
+
+    const soloRappi = page.locator('tbody tr');
+    const cuantos = await soloRappi.count();
+    expect(cuantos, 'el filtro por canal no redujo la lista').toBeLessThan(
+      total,
+    );
+    expect(cuantos).toBeGreaterThan(0);
+    // Y ninguna fila de otro canal se coló.
+    await expect(soloRappi.filter({ hasText: 'Tienda web' })).toHaveCount(0);
+
+    // El chip activo se dice también sin color (docs/25 §6).
+    await expect(
+      page.getByRole('link', { name: 'Rappi', exact: true }),
+    ).toHaveAttribute('aria-current', 'true');
+
+    // El export arrastra el filtro. Se pide desde el navegador porque lo que
+    // importa es la respuesta con su cabecera, no el clic.
+    const csv = await page.evaluate(async () => {
+      const r = await fetch('/panel/pedidos/csv?canal=rappi');
+      return {
+        estado: r.status,
+        tipo: r.headers.get('content-type'),
+        adjunto: r.headers.get('content-disposition'),
+        texto: await r.text(),
+      };
+    });
+    expect(csv.estado).toBe(200);
+    expect(csv.tipo).toContain('text/csv');
+    // `attachment` es lo que hace que el navegador DESCARGUE en vez de pintar.
+    expect(csv.adjunto).toContain('attachment');
+    expect(csv.adjunto).toMatch(/pedidos-\d{4}-\d{2}-\d{2}\.csv/);
+
+    // Separado por `;`, que es lo que abre Excel en español.
+    expect(csv.texto).toContain('Numero;Canal;Estado');
+    // Y solo Rappi: un export que ignora los filtros se parece demasiado al
+    // bueno para que alguien lo note antes de mandarlo.
+    const lineas = csv.texto.trim().split('\r\n').slice(1);
+    expect(lineas.length).toBe(cuantos);
+    expect(lineas.every((l) => l.includes('rappi'))).toBe(true);
+  });
+
   test('PEDIDOS: buscar por teléfono y ver QUÉ pidió el cliente', async ({
     page,
   }) => {

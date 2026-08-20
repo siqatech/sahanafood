@@ -3,6 +3,7 @@ import { panel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { soles } from '../caja/dinero';
 import { Canal } from '../canal';
+import { Chips } from '../chips';
 
 /**
  * Pedidos: buscador y estado (specs/ux/03, «Pedidos»).
@@ -15,6 +16,23 @@ import { Canal } from '../canal';
  * cuatro cosas que una persona dice por teléfono. El número va por igualdad y
  * no por coincidencia: quien dice «mi pedido es el 12» no quiere ver el 120.
  */
+
+/**
+ * Los canales que se ofrecen como filtro.
+ *
+ * Lista fija, igual que en la torre de control: hay que poder preguntar «¿qué
+ * entró por Rappi?» aunque hoy no haya entrado nada, y una lista deducida de
+ * los pedidos existentes escondería justo el caso interesante — que un canal
+ * dejó de vender.
+ */
+const CANALES = [
+  { valor: '', rotulo: 'Todos' },
+  { valor: 'web', rotulo: 'Tienda web' },
+  { valor: 'pos', rotulo: 'Mostrador' },
+  { valor: 'whatsapp', rotulo: 'WhatsApp' },
+  { valor: 'rappi', rotulo: 'Rappi' },
+  { valor: 'pedidosya', rotulo: 'PedidosYa' },
+];
 
 const ESTADOS = [
   { id: '', rotulo: 'Todos' },
@@ -49,12 +67,20 @@ export default async function PedidosPage({
   const yaSeIntento = params['intento'] === '1';
   const q = typeof params['q'] === 'string' ? params['q'].trim() : '';
   const estado = typeof params['estado'] === 'string' ? params['estado'] : '';
+  const canal = typeof params['canal'] === 'string' ? params['canal'] : '';
+
+  /** Los filtros vivos, para que cada chip conserve los otros. */
+  const otros: Record<string, string> = {};
+  if (q !== '') otros['q'] = q;
+  if (estado !== '') otros['estado'] = estado;
+  if (canal !== '') otros['canal'] = canal;
 
   const pedidos = await cargar('/panel/pedidos', yaSeIntento, () =>
     panel.pedidos({
       limit: 100,
       ...(q !== '' ? { search: q } : {}),
       ...(estado !== '' ? { status: estado } : {}),
+      ...(canal !== '' ? { channel: canal } : {}),
     }),
   );
 
@@ -73,19 +99,41 @@ export default async function PedidosPage({
           aria-label="Buscar pedidos"
           defaultValue={q}
         />
-        <select name="estado" defaultValue={estado} aria-label="Estado">
-          {ESTADOS.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.rotulo}
-            </option>
-          ))}
-        </select>
+        {/* Los chips van en la URL, así que el buscador tiene que arrastrarlos
+            o buscar borraría el filtro que se acaba de poner. */}
+        {estado !== '' ? (
+          <input type="hidden" name="estado" value={estado} />
+        ) : null}
+        {canal !== '' ? (
+          <input type="hidden" name="canal" value={canal} />
+        ) : null}
         <button type="submit">Buscar</button>
       </form>
 
+      <Chips
+        nombre="estado"
+        actual={estado}
+        base="/panel/pedidos"
+        otros={Object.fromEntries(
+          Object.entries(otros).filter(([k]) => k !== 'estado'),
+        )}
+        etiqueta="Filtrar por estado"
+        opciones={ESTADOS.map((e) => ({ valor: e.id, rotulo: e.rotulo }))}
+      />
+      <Chips
+        nombre="canal"
+        actual={canal}
+        base="/panel/pedidos"
+        otros={Object.fromEntries(
+          Object.entries(otros).filter(([k]) => k !== 'canal'),
+        )}
+        etiqueta="Filtrar por canal"
+        opciones={CANALES}
+      />
+
       {pedidos.length === 0 ? (
         <p className="panel__vacio">
-          {q === '' && estado === ''
+          {q === '' && estado === '' && canal === ''
             ? 'Todavía no hay pedidos.'
             : 'Ningún pedido coincide. Prueba con el teléfono, que casi siempre se acierta.'}
         </p>
@@ -132,9 +180,27 @@ export default async function PedidosPage({
         </div>
       )}
 
-      <p className="tarjeta__pie">
-        {pedidos.length === 1 ? '1 pedido' : `${pedidos.length} pedidos`}
-        {pedidos.length === 100 ? ' (hay más: afina la búsqueda)' : ''}
+      <p className="pie-listado">
+        <span className="tarjeta__pie">
+          {pedidos.length === 1 ? '1 pedido' : `${pedidos.length} pedidos`}
+          {pedidos.length === 100 ? ' (hay más: afina la búsqueda)' : ''}
+        </span>
+        {/* Exporta LO FILTRADO, no todo: quien pulsa después de filtrar por
+            cancelados quiere los cancelados, y un archivo que ignora los
+            filtros se parece demasiado al bueno para notarlo a tiempo. Por eso
+            el enlace arrastra la misma consulta que la pantalla. */}
+        {pedidos.length > 0 ? (
+          <a
+            className="boton-enlace"
+            href={`/panel/pedidos/csv${
+              Object.keys(otros).length > 0
+                ? `?${new URLSearchParams(otros).toString()}`
+                : ''
+            }`}
+          >
+            Exportar CSV
+          </a>
+        ) : null}
       </p>
     </>
   );

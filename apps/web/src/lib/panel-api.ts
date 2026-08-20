@@ -882,11 +882,18 @@ export const panel = {
        * mirando el pedido de otro.
        */
       search?: string;
+      /**
+       * Canal de entrada. La API lo acepta desde F4 y este cliente lo tiraba al
+       * suelo, igual que hacía con `search`: no se podía filtrar la lista por
+       * canal desde ninguna pantalla.
+       */
+      channel?: string;
     } = {},
   ): Promise<PedidoDelPanel[]> => {
     const q = new URLSearchParams();
     if (filtros.status) q.set('status', filtros.status);
     if (filtros.search) q.set('search', filtros.search);
+    if (filtros.channel) q.set('channel', filtros.channel);
     if (filtros.limit) q.set('limit', String(filtros.limit));
     const cadena = q.toString();
     return llamar<PedidoDelPanel[]>(`/orders${cadena ? `?${cadena}` : ''}`);
