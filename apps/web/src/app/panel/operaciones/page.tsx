@@ -234,7 +234,8 @@ export default async function OperacionesPage({
             <article key={pedido.id} className="ficha">
               <p>
                 <strong>#{pedido.orderNumber}</strong>{' '}
-                <Canal canal={pedido.channel} /> <Cuenta limite={limite} />
+                <Canal canal={pedido.channel} />{' '}
+                <Cuenta limite={limite} desde={pedido.createdAt} />
               </p>
               <p className="tarjeta__pie">
                 Entró a las {hora(pedido.createdAt)}

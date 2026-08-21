@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { nivelDeTiempo, type NivelDeTiempo } from '@sahana/domain';
 import { api, SinRed, type TicketDeCocina } from '../lib/api';
 
 /**
@@ -36,14 +37,25 @@ const COLUMNAS = [
   { estado: 'ready', rotulo: 'Listos', siguiente: null },
 ];
 
-/** Semáforo de tiempo: verde <70 % del prometido, ámbar hasta el 100 %, rojo pasado. */
-function semaforo(t: TicketDeCocina): string {
+/**
+ * Semáforo de tiempo. La REGLA vive en `@sahana/domain`.
+ *
+ * Estaba escrita aquí y otra vez en el panel, con dos criterios distintos: allí
+ * era un umbral fijo de dos minutos, que con una promesa de treinta avisa al
+ * 93 % del plazo. Dos pantallas discrepando sobre el mismo pedido es peor que
+ * cualquiera de las dos por separado.
+ *
+ * `late` manda sobre el cálculo: lo dice el servidor, que sabe si la promesa se
+ * extendió por saturación (RN-KIT-04). El reloj de una tablet no.
+ */
+function semaforo(t: TicketDeCocina): NivelDeTiempo {
   if (t.late) return 'rojo';
   if (!t.promisedAt) return 'verde';
-  const total = Date.parse(t.promisedAt) - Date.parse(t.createdAt);
-  if (total <= 0) return 'ambar';
-  const transcurrido = Date.now() - Date.parse(t.createdAt);
-  return transcurrido / total >= 0.7 ? 'ambar' : 'verde';
+  return nivelDeTiempo({
+    inicio: Date.parse(t.createdAt),
+    limite: Date.parse(t.promisedAt),
+    ahora: Date.now(),
+  });
 }
 
 export function Cocina({

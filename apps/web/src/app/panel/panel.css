@@ -560,15 +560,18 @@ tr:last-child td {
   font-size: 0.85rem;
 }
 
-.cuenta--ok {
+/* Los nombres son los del semáforo de `@sahana/domain`, que es quien decide el
+   nivel. Antes eran `ok`/`poco`/`vencido` con un umbral fijo aquí; ahora la
+   regla es la de docs/25 —70 % del plazo— y la comparten el panel y el KDS. */
+.cuenta--verde {
   color: var(--panel-sube);
 }
 
-.cuenta--poco {
+.cuenta--ambar {
   color: #b45309;
 }
 
-.cuenta--vencido {
+.cuenta--rojo {
   color: var(--panel-baja);
 }
 

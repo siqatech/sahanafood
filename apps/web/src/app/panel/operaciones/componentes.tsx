@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useState } from 'react';
+import { nivelDeTiempo } from '@sahana/domain';
 import {
   aceptar,
   rechazar,
@@ -26,27 +27,43 @@ function Resultado({ estado }: { estado: EstadoOperaciones }) {
 }
 
 /** Reloj de cuenta atrás hasta `limite`, en mm:ss. */
-export function Cuenta({ limite }: { limite: string }) {
+export function Cuenta({
+  limite,
+  desde,
+}: {
+  limite: string;
+  /**
+   * Cuándo empezó a correr el reloj. Sin esto el semáforo no puede ser
+   * proporcional, que es lo que pide docs/25: «verde <70 % del prometido».
+   */
+  desde: string;
+}) {
   const objetivo = Date.parse(limite);
-  const [restante, setRestante] = useState(() => objetivo - Date.now());
+  const inicio = Date.parse(desde);
+  const [ahora, setAhora] = useState(() => Date.now());
 
   useEffect(() => {
     const id = setInterval(() => {
-      setRestante(objetivo - Date.now());
+      setAhora(Date.now());
     }, 1000);
     return () => {
       clearInterval(id);
     };
-  }, [objetivo]);
+  }, []);
 
-  const segundos = Math.max(0, Math.floor(restante / 1000));
+  const segundos = Math.max(0, Math.floor((objetivo - ahora) / 1000));
   const mm = String(Math.floor(segundos / 60)).padStart(2, '0');
   const ss = String(segundos % 60).padStart(2, '0');
 
-  // Tres estados y no dos: «va bien», «queda poco» y «se acabó». El último no
-  // es rojo intenso por gusto — a partir de ahí el barrido ya puede haberlo
-  // rechazado, y decir «00:00» sin más haría creer que aún se llega.
-  const nivel = segundos === 0 ? 'vencido' : segundos <= 120 ? 'poco' : 'ok';
+  /**
+   * El nivel lo decide `@sahana/domain`, igual que en el KDS.
+   *
+   * Aquí había un umbral FIJO de dos minutos, y eso no es lo que dice la spec:
+   * con la política por defecto —diez minutos— avisaba al 80 % del plazo, y con
+   * una de treinta, al 93 %. Es decir, en las cocinas con más margen el aviso
+   * llegaba cuando ya no servía. Y el KDS pintaba el mismo pedido de otro color.
+   */
+  const nivel = nivelDeTiempo({ inicio, limite: objetivo, ahora });
 
   return (
     <span className={`cuenta cuenta--${nivel}`}>

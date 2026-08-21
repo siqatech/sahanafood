@@ -876,6 +876,29 @@ test.describe('Panel de gestión en navegador', () => {
     ).toContainText('abierto');
   });
 
+  test('EL SEMÁFORO de un pedido dice el nivel sin depender del color', async ({
+    page,
+  }) => {
+    // docs/25 pide el semáforo en cada tarjeta, y que la información NO viaje
+    // solo en el color: en un mostrador con luz directa el ámbar y el rojo se
+    // confunden. Aquí se comprueba lo segundo, que es lo que un cambio de CSS
+    // puede romper sin que nadie lo note.
+    await entrar(page);
+    await page.goto('/panel/operaciones');
+
+    const reloj = page.locator('.cuenta').first();
+    await expect(reloj).toBeVisible();
+
+    // El texto dice el estado por sí solo.
+    await expect(reloj).toHaveText(/quedan \d{2}:\d{2}|plazo vencido/);
+
+    // Y la clase es una de las tres del semáforo compartido. Si alguien renombra
+    // los niveles en `@sahana/domain` y se olvida del CSS, el reloj se queda sin
+    // color y esto lo caza.
+    const clase = (await reloj.getAttribute('class')) ?? '';
+    expect(clase).toMatch(/cuenta--(verde|ambar|rojo)/);
+  });
+
   test('LOS UMBRALES DE COCINA se tocan desde el panel, y en el orden correcto', async ({
     page,
   }) => {

@@ -271,6 +271,19 @@ export {
   type SaturationDecision,
 } from './kitchen/saturation.js';
 
+/**
+ * El semáforo de tiempo de docs/25, en UN solo sitio.
+ *
+ * Lo consumen el KDS y el panel: estaba escrito dos veces con dos reglas
+ * distintas, y las dos pantallas discrepaban sobre el mismo pedido.
+ */
+export {
+  nivelDeTiempo,
+  UMBRAL_AMBAR,
+  type NivelDeTiempo,
+  type VentanaDeTiempo,
+} from './kitchen/semaforo.js';
+
 // --- Bandeja omnicanal (spec 18, F5) ---
 export {
   windowCountdown,
