@@ -56,6 +56,14 @@ const configSchema = z.object({
 
   /** Colector OTLP. Sin él no se arranca el tracing (ver observability/tracing). */
   otelEndpoint: z.string().url().optional(),
+  /**
+   * Base de la página pública de seguimiento, p. ej.
+   * `https://sahanaweb-production.up.railway.app`.
+   *
+   * `.url()` y no una cadena cualquiera: una base mal escrita produce enlaces
+   * rotos en el chat del cliente, y eso se descubre tarde y de la peor manera.
+   */
+  publicTrackingBaseUrl: z.string().url().optional(),
 
   /**
    * Clave maestra de la que se derivan (HKDF) las claves por tenant que cifran
@@ -116,6 +124,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       saturationIntervalMs: env.WORKER_SATURATION_INTERVAL_MS,
     },
     otelEndpoint: sinVacios(env.OTEL_EXPORTER_OTLP_ENDPOINT),
+    // Dónde vive la página de seguimiento, para poder MANDARLA por WhatsApp.
+    //
+    // El servidor no puede adivinarla: hasta ahora la URL la componía el panel
+    // desde `window.location.origin`, y un proceso de fondo que manda un
+    // mensaje no tiene navegador. Es el respaldo — si la marca tiene dominio
+    // propio verificado se usa el suyo, que el cliente reconoce.
+    //
+    // Sin configurar, el aviso de «tu pedido va en camino» se manda igual, solo
+    // que sin enlace: quedarse sin avisar por no tener una URL sería cambiar un
+    // problema pequeño por uno grande.
+    publicTrackingBaseUrl: sinVacios(env.PUBLIC_TRACKING_BASE_URL),
     credentialsMasterKey:
       sinVacios(env.CREDENTIALS_MASTER_KEY) ??
       'dev-only-credentials-master-key-change-me',

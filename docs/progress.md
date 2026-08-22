@@ -1439,3 +1439,49 @@ emitido, no solo en el fuente.
 
 Verde: **752 API · 457 dominio · 5 ui · 35 web · 23 POS · 58 navegador**, 478
 módulos sin violaciones de frontera.
+
+---
+
+## El enlace de seguimiento se manda solo (2026-08-22)
+
+La página de seguimiento estaba construida entera desde T5.16 —token público,
+datos mínimos, sin autenticación— y **en la práctica no la recibía casi nadie**:
+había que emitir el enlace desde el panel y pegarlo a mano en el chat. Una
+promesa hecha y no entregada, que es peor que no haberla hecho.
+
+Ahora el aviso de «tu pedido va en camino» lo lleva dentro. Cuatro decisiones
+que no son obvias:
+
+· **Solo al SALIR.** Mandarlo antes enseñaría una página que dice «todavía en
+  cocina», y un enlace que no aporta nada la primera vez que se abre es un
+  enlace que el cliente ya no vuelve a abrir.
+· **Se REUTILIZA el token vivo** (`PublicTokensService.findLive`). Avisar dos
+  veces —un reintento, un cambio de repartidor— dejaría dos enlaces distintos
+  en el mismo chat, y quien abriera el primero vería un seguimiento que ya nadie
+  actualiza.
+· **El host preferido es el dominio propio VERIFICADO de la marca**, que el
+  cliente reconoce: un enlace a un dominio ajeno en un chat de WhatsApp parece
+  una estafa. Solo verificados — uno pendiente todavía no resuelve, así que
+  sería un enlace muerto, peor que ninguno. Sin dominio propio se usa
+  `PUBLIC_TRACKING_BASE_URL`.
+· **Sin envío o sin base, el aviso se manda IGUAL, sin enlace.** Mostrador,
+  recojo en tienda, o un marketplace que reparte con su flota. Quedarse sin
+  avisar por no tener una URL sería cambiar un problema pequeño por uno grande.
+
+El enlace va **en su propia línea** del texto libre: pegado a la frase, algunos
+clientes de WhatsApp se comen el último carácter al detectarlo.
+
+Mensajería depende ahora de Delivery **por su índice público**, que es para lo
+que existen los índices: de los envíos sabe Delivery. La única consulta que
+cruza módulos por SQL es la del host en `sto_domains`, y está explicada donde
+está: hacer que Delivery dependa de Storefront entero por un `SELECT` de una
+columna acoplaría dos módulos que por lo demás no se conocen.
+
+### Un fallo mío del commit anterior
+
+`9f3bcba` incluía una prueba con un campo que no existe en `SubmitOrderInput`.
+Pasó porque tras escribirla corrí vitest, lint y depcruise **pero no `tsc`** — y
+vitest no comprueba tipos ni ESLint es consciente de ellos. Corregido aquí. La
+lección es del orden: el typecheck va después del último cambio, no antes.
+
+Verde: **756 API · 457 dominio · 5 ui · 35 web · 23 POS · 58 navegador**.

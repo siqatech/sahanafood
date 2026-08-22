@@ -430,7 +430,6 @@ suite('Cocina / KDS', () => {
       brandId,
       locationId: org.locationId,
       channel: 'rappi',
-      externalId: `canal-kds-${Date.now()}`,
       lines: [
         {
           productId: cat.polloId,

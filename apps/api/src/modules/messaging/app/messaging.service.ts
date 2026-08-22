@@ -16,6 +16,7 @@ import type {
   WhatsAppProvider,
   InboundMessage,
 } from '../domain/whatsapp-provider.js';
+import { DeliveryService } from '../../delivery/index.js';
 import { WHATSAPP_PROVIDER } from '../messaging.tokens.js';
 
 /**
@@ -58,6 +59,10 @@ export class MessagingService {
   constructor(
     @Inject(PG_POOL) private readonly pool: Pool,
     @Inject(WHATSAPP_PROVIDER) private readonly provider: WhatsAppProvider,
+    // Por la API pública del módulo, nunca por sus internos: quien manda el
+    // aviso de «va en camino» necesita el enlace de seguimiento, y de los
+    // envíos sabe Delivery.
+    private readonly delivery: DeliveryService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -428,6 +433,14 @@ export class MessagingService {
         );
       }
 
+      // El enlace de seguimiento SOLO al salir. Mandarlo antes enseñaría una
+      // página que dice «todavía en cocina», y un enlace que no aporta nada la
+      // primera vez que se abre es un enlace que ya no se vuelve a abrir.
+      const seguimiento =
+        state === 'dispatched'
+          ? await this.delivery.trackingUrlForOrder(ctx, orderId)
+          : null;
+
       return {
         contacto,
         pedidoTelefono: pedido.customer_phone,
@@ -436,6 +449,9 @@ export class MessagingService {
           pedido.customer_name ?? 'Hola',
           String(pedido.order_number),
           pedido.brand_name,
+          // Cuarto parámetro solo cuando lo hay: una plantilla de WhatsApp con
+          // un hueco vacío se ve como un hueco vacío en el chat del cliente.
+          ...(seguimiento ? [seguimiento] : []),
         ],
         decision: { kind: decision.kind, reason: decision.reason },
       };
@@ -447,7 +463,10 @@ export class MessagingService {
   }
 
   /** Texto equivalente a la plantilla, para dentro de ventana y para el registro. */
-  private textoLibre(state: string, [nombre, numero, marca]: string[]): string {
+  private textoLibre(
+    state: string,
+    [nombre, numero, marca, seguimiento]: string[],
+  ): string {
     const frases: Record<string, string> = {
       accepted: `¡Confirmado! Tu pedido #${numero} de ${marca} ya está en cocina.`,
       preparing: `Tu pedido #${numero} se está preparando.`,
@@ -456,7 +475,10 @@ export class MessagingService {
       rejected: `Lo sentimos: no pudimos tomar tu pedido #${numero}.`,
       cancelled: `Tu pedido #${numero} fue cancelado.`,
     };
-    return `${nombre}: ${frases[state] ?? `Tu pedido #${numero} cambió de estado.`}`;
+    const base = `${nombre}: ${frases[state] ?? `Tu pedido #${numero} cambió de estado.`}`;
+    // En su propia línea: pegado a la frase, algunos clientes de WhatsApp se
+    // comen el último carácter del enlace al detectarlo.
+    return seguimiento ? `${base}\nSíguelo aquí: ${seguimiento}` : base;
   }
 
   // -------------------------------------------------------------------------

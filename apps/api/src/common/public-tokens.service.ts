@@ -96,6 +96,38 @@ export class PublicTokensService {
   }
 
   /**
+   * El token VIVO que ya apunta a este recurso, o `null`.
+   *
+   * Existe para no emitir uno nuevo cada vez que hace falta el mismo enlace.
+   * Sin esto, avisar dos veces de que el pedido salió —un reintento, un cambio
+   * de repartidor— dejaría dos enlaces distintos circulando por el mismo chat,
+   * y el cliente que abriera el primero vería un seguimiento que ya nadie
+   * actualiza. Uno por recurso: el mismo enlace, siempre.
+   *
+   * «Vivo» = no caducado. Un token usado sigue sirviendo: el seguimiento se
+   * abre muchas veces, no una.
+   */
+  async findLive(
+    ctx: TenantContext,
+    input: {
+      purpose: TokenPurpose;
+      resourceType: string;
+      resourceId: string;
+    },
+    now = new Date(),
+  ): Promise<string | null> {
+    const { rows } = await ctx.client.query<{ token: string }>(
+      `SELECT token FROM pub_tokens
+        WHERE purpose = $1 AND resource_type = $2 AND resource_id = $3
+          AND expires_at > $4
+        ORDER BY expires_at DESC
+        LIMIT 1`,
+      [input.purpose, input.resourceType, input.resourceId, now],
+    );
+    return rows[0]?.token ?? null;
+  }
+
+  /**
    * Resuelve un token para un propósito CONCRETO.
    *
    * El propósito es un argumento y no un dato de salida a propósito: obliga a

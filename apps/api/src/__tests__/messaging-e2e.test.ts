@@ -10,6 +10,7 @@ import { TenancyService } from '../modules/tenancy/index.js';
 import { seedDemoOrganization } from '../modules/organization/index.js';
 import { seedDemoCatalog } from '../modules/catalog/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
+import { DeliveryService } from '../modules/delivery/index.js';
 import {
   MessagingService,
   MessagingEventHandlers,
@@ -54,6 +55,7 @@ suite('WhatsApp — notificaciones de estado', () => {
   let handlers: Record<string, unknown>;
 
   const TELEFONO = '+51987654321';
+  let delivery: DeliveryService;
 
   beforeAll(async () => {
     process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-0123456789';
@@ -67,6 +69,7 @@ suite('WhatsApp — notificaciones de estado', () => {
     await app.init();
     ordering = app.get(OrderingService);
     messaging = app.get(MessagingService);
+    delivery = app.get(DeliveryService);
     wa = app.get(WhatsAppSimulatorProvider);
     handlers = app.get(MessagingEventHandlers).handlers() as Record<
       string,
@@ -482,5 +485,85 @@ suite('WhatsApp — notificaciones de estado', () => {
         client.query(`DELETE FROM wa_consents`),
       ),
     ).rejects.toThrow(/permiso|permission/i);
+  });
+
+  // ------------------------------------------------- Enlace de seguimiento
+
+  it('AL SALIR el aviso LLEVA EL ENLACE de seguimiento', async () => {
+    // La página de seguimiento estaba construida entera desde T5.16 y en la
+    // práctica no la recibía casi nadie: había que emitir el enlace desde el
+    // panel y pegarlo a mano en el chat. Una promesa hecha y no entregada.
+    const orderId = await pedirConTelefono();
+    await ordering.applyTransition(tenantA, orderId, 'accept', {
+      actorType: 'system',
+    });
+    const envio = await delivery.createShipment(tenantA, { orderId });
+
+    const r = await messaging.notifyOrderState(tenantA, orderId, 'dispatched');
+    expect(r.sent).toBe(true);
+
+    const mandado = wa.sent.at(-1)!;
+    const texto = JSON.stringify(mandado);
+    expect(texto).toContain('/seguimiento/');
+    expect(envio.id).toBeTruthy();
+  });
+
+  it('EL MISMO ENLACE la segunda vez: dos no se pueden seguir a la vez', async () => {
+    // Avisar dos veces —un reintento, un cambio de repartidor— no debe dejar
+    // dos enlaces distintos en el mismo chat: quien abriera el primero vería
+    // un seguimiento que ya nadie actualiza.
+    const orderId = await pedirConTelefono();
+    await ordering.applyTransition(tenantA, orderId, 'accept', {
+      actorType: 'system',
+    });
+    const envio = await delivery.createShipment(tenantA, { orderId });
+
+    await messaging.notifyOrderState(tenantA, orderId, 'dispatched');
+    const primero = JSON.stringify(wa.sent.at(-1));
+    await messaging.notifyOrderState(tenantA, orderId, 'dispatched');
+    const segundo = JSON.stringify(wa.sent.at(-1));
+
+    const sacarToken = (t: string): string =>
+      t.match(/\/seguimiento\/([A-Za-z0-9_-]+)/)![1]!;
+    expect(sacarToken(primero)).toBe(sacarToken(segundo));
+
+    // Y solo hay UN token vivo PARA ESE ENVÍO. Acotado al envío y no al
+    // tenant: las otras pruebas de este archivo crean los suyos, y contarlos
+    // todos haría que esta prueba dependiera del orden de ejecución.
+    const vivos = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM pub_tokens
+          WHERE purpose = 'order_tracking'
+            AND resource_id = $1
+            AND expires_at > now()`,
+        [envio.id],
+      );
+      return Number(rows[0]!.n);
+    });
+    expect(vivos).toBe(1);
+  });
+
+  it('SIN ENVÍO el aviso se manda IGUAL, solo que sin enlace', async () => {
+    // Mostrador, recojo en tienda, o un marketplace que reparte con su flota.
+    // Quedarse sin avisar por no tener una URL sería cambiar un problema
+    // pequeño por uno grande.
+    const orderId = await pedirConTelefono();
+    const r = await messaging.notifyOrderState(tenantA, orderId, 'dispatched');
+
+    expect(r.sent).toBe(true);
+    expect(JSON.stringify(wa.sent.at(-1))).not.toContain('/seguimiento/');
+  });
+
+  it('ANTES de salir NO se manda el enlace', async () => {
+    // Un enlace que la primera vez dice «todavía en cocina» es un enlace que
+    // el cliente ya no vuelve a abrir.
+    const orderId = await pedirConTelefono();
+    await ordering.applyTransition(tenantA, orderId, 'accept', {
+      actorType: 'system',
+    });
+    await delivery.createShipment(tenantA, { orderId });
+
+    await messaging.notifyOrderState(tenantA, orderId, 'accepted');
+    expect(JSON.stringify(wa.sent.at(-1))).not.toContain('/seguimiento/');
   });
 });

@@ -12,6 +12,7 @@ import {
   type RankedCourier,
 } from '@sahana/domain';
 import { PG_POOL } from '../../../database/database.module.js';
+import { CONFIG, type AppConfig } from '../../../config/config.js';
 import { withTenant, type TenantContext } from '../../../database/rls.js';
 import {
   DomainError,
@@ -102,6 +103,7 @@ export class DeliveryService {
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly publicTokens: PublicTokensService,
     private readonly cash: CashService,
+    @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
   // ---------------------------------------------------------- Repartidores
@@ -579,6 +581,102 @@ export class DeliveryService {
       });
       return { token };
     });
+  }
+
+  /**
+   * La URL de seguimiento del pedido, lista para mandar por WhatsApp — o `null`
+   * si no hay nada que enseñar todavía.
+   *
+   * Existe para que el aviso de «tu pedido va en camino» **lleve el enlace
+   * dentro**. Hasta ahora la página de seguimiento se emitía desde el panel y
+   * alguien tenía que copiarla y pegarla en el chat a mano, así que en la
+   * práctica el cliente casi nunca la recibía: la promesa estaba construida
+   * entera y no llegaba a nadie.
+   *
+   * Tres decisiones:
+   *
+   *  · **Se REUTILIZA el token vivo.** Avisar dos veces —un reintento, un
+   *    cambio de repartidor— no debe dejar dos enlaces distintos en el mismo
+   *    chat: quien abriera el primero vería un seguimiento que ya nadie
+   *    actualiza.
+   *  · **El host preferido es el dominio propio VERIFICADO de la marca.** Es el
+   *    que el cliente reconoce, y un enlace a un dominio ajeno en un chat de
+   *    WhatsApp parece una estafa. Sin dominio verificado se usa la base
+   *    configurada.
+   *  · **Sin envío o sin base, devuelve `null` y no lanza.** El aviso se manda
+   *    igual, sin enlace. Quedarse sin avisar por no tener una URL sería
+   *    cambiar un problema pequeño por uno grande.
+   */
+  async trackingUrlForOrder(
+    ctx: TenantContext,
+    orderId: string,
+  ): Promise<string | null> {
+    const { rows: envios } = await ctx.client.query<{
+      id: string;
+      brand_id: string;
+    }>(
+      `SELECT s.id, o.brand_id
+         FROM dlv_shipments s
+         JOIN ord_orders o ON o.id = s.order_id
+        WHERE s.order_id = $1
+        ORDER BY s.created_at DESC
+        LIMIT 1`,
+      [orderId],
+    );
+    const envio = envios[0];
+    // Sin envío no hay nada que seguir: mostrador, recojo en tienda, o un
+    // marketplace que reparte con su propia flota y su propio seguimiento.
+    if (!envio) return null;
+
+    const base = await this.hostDeSeguimiento(ctx, envio.brand_id);
+    if (!base) return null;
+
+    const existente = await this.publicTokens.findLive(ctx, {
+      purpose: 'order_tracking',
+      resourceType: 'shipment',
+      resourceId: envio.id,
+    });
+    const token =
+      existente ??
+      (await this.publicTokens.issue(ctx, {
+        purpose: 'order_tracking',
+        resourceType: 'shipment',
+        resourceId: envio.id,
+        expiresAt: new Date(Date.now() + TRACKING_TTL_HOURS * 3_600_000),
+      }));
+
+    return `${base}/seguimiento/${token}`;
+  }
+
+  /**
+   * De qué host cuelga el enlace.
+   *
+   * Se consulta `sto_domains` con SQL y no a través del módulo de tienda a
+   * propósito: lo único que hace falta es el host verificado de una marca, y
+   * hacer que Delivery dependa de Storefront entero por un `SELECT` de una
+   * columna acoplaría dos módulos que por lo demás no se conocen.
+   *
+   * **Solo dominios verificados.** Uno pendiente todavía no resuelve, así que
+   * mandaría al cliente un enlace muerto — peor que no mandarle ninguno.
+   */
+  private async hostDeSeguimiento(
+    ctx: TenantContext,
+    brandId: string,
+  ): Promise<string | null> {
+    const { rows } = await ctx.client.query<{ host: string }>(
+      `SELECT host FROM sto_domains
+        WHERE brand_id = $1 AND status = 'verified' AND verified_at IS NOT NULL
+        ORDER BY is_subdomain, host
+        LIMIT 1`,
+      [brandId],
+    );
+    const propio = rows[0]?.host;
+    if (propio) return `https://${propio}`;
+
+    const base = this.config.publicTrackingBaseUrl;
+    // Sin barra final: la URL se compone con `/seguimiento/…` y dos barras
+    // seguidas rompen la ruta en algunos servidores.
+    return base ? base.replace(/\/+$/, '') : null;
   }
 
   /**

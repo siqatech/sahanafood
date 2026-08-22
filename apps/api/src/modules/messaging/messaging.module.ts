@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../database/database.module.js';
+import { DeliveryModule } from '../delivery/index.js';
 import { MessagingService } from './app/messaging.service.js';
 import { MessagingEventHandlers } from './app/messaging-event-handlers.js';
 import { WhatsAppSimulatorProvider } from './app/whatsapp-simulator.provider.js';
@@ -15,7 +16,7 @@ import { WHATSAPP_PROVIDER } from './messaging.tokens.js';
  * la fase.
  */
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, DeliveryModule],
   controllers: [MessagingController],
   providers: [
     MessagingService,
