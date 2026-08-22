@@ -611,7 +611,181 @@ suite('Alta de la carta', () => {
       .expect(422);
   });
 
+  // -------------------------------------------------- IMPORTAR DESDE EXCEL
+
+  /** Una hoja como la exporta un Excel en español: `;` y coma decimal. */
+  const HOJA = [
+    'sku;nombre;categoria;precio_base;precio_web',
+    'IMP-1;Lomo saltado;Criollos;S/ 32,00;35,00',
+    'IMP-2;Arroz chaufa;Criollos;28,50;',
+    'IMP-3;Chicha morada;Bebidas;8,00;',
+  ].join('\n');
+
+  it('LA VISTA PREVIA no escribe nada, y dice qué pasaría', async () => {
+    // docs/26 pide «nunca publicar sin revisión humana» y specs/ux/03
+    // «publicación explícita con diff». Sin simulación, pegar una hoja con un
+    // cero de más publica ciento ochenta precios malos antes de que nadie mire.
+    const otra = await montarNegocio(tokenA, '20512345690', 'Importar');
+    const previa = await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: HOJA, dryRun: true })
+      .expect(201);
+
+    expect(previa.body.simulacion).toBe(true);
+    expect(previa.body.nuevos).toBe(3);
+    expect(previa.body.actualizados).toBe(0);
+    expect(previa.body.categoriasNuevas).toEqual(
+      expect.arrayContaining(['Criollos', 'Bebidas']),
+    );
+    // El precio se lee con COMA decimal: `S/ 32,00` son treinta y dos soles.
+    const lomo = previa.body.filas.find(
+      (f: { sku: string }) => f.sku === 'IMP-1',
+    );
+    expect(lomo.precioBase).toBe('32.0000');
+
+    // Y LO QUE IMPORTA: la carta sigue vacía.
+    const carta = await como(tokenA)(
+      http().get(`/api/v1/catalog/products?brand=${otra.brandId}`),
+    ).expect(200);
+    expect(carta.body).toHaveLength(0);
+  });
+
+  it('APLICAR crea los platos, sus categorías y sus precios por canal', async () => {
+    const otra = await montarNegocio(tokenA, '20512345691', 'Importar2');
+    const hecho = await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: HOJA, dryRun: false })
+      .expect(201);
+    expect(hecho.body.simulacion).toBe(false);
+
+    const carta = await como(tokenA)(
+      http().get(`/api/v1/catalog/products?brand=${otra.brandId}`),
+    ).expect(200);
+    expect(carta.body).toHaveLength(3);
+
+    const lomo = carta.body.find((p: { sku: string }) => p.sku === 'IMP-1');
+    expect(lomo.categoryName).toBe('Criollos');
+    // Precio base Y precio de canal, que es la columna `precio_web`.
+    const base = lomo.prices.find(
+      (x: { channel: string | null }) => x.channel === null,
+    );
+    const web = lomo.prices.find(
+      (x: { channel: string | null }) => x.channel === 'web',
+    );
+    expect(base.price).toBe('32.0000');
+    expect(web.price).toBe('35.0000');
+  });
+
+  it('VOLVER A IMPORTAR la misma hoja no duplica y no marca cambios', async () => {
+    // Es el caso normal: se corrige una fila y se vuelve a pegar la hoja
+    // entera. Si la segunda pasada duplicara, la carta quedaría con dos «Lomo
+    // saltado» a precios distintos y ningún modo de saber cuál cobra la caja.
+    const otra = await montarNegocio(tokenA, '20512345692', 'Importar3');
+    await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: HOJA, dryRun: false })
+      .expect(201);
+
+    const segunda = await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: HOJA, dryRun: true })
+      .expect(201);
+    expect(segunda.body.nuevos).toBe(0);
+    expect(segunda.body.sinCambios).toBe(3);
+
+    const carta = await como(tokenA)(
+      http().get(`/api/v1/catalog/products?brand=${otra.brandId}`),
+    ).expect(200);
+    expect(carta.body).toHaveLength(3);
+  });
+
+  it('UN CAMBIO DE PRECIO se ve en la previa ANTES de aplicarlo', async () => {
+    const otra = await montarNegocio(tokenA, '20512345693', 'Importar4');
+    await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: HOJA, dryRun: false })
+      .expect(201);
+
+    const subida = HOJA.replace('S/ 32,00', 'S/ 39,90');
+    const previa = await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: subida, dryRun: true })
+      .expect(201);
+
+    const lomo = previa.body.filas.find(
+      (f: { sku: string }) => f.sku === 'IMP-1',
+    );
+    expect(lomo.efecto).toBe('actualiza');
+    expect(lomo.precioAnterior).toBe('32.0000');
+    expect(lomo.precioBase).toBe('39.9000');
+    expect(previa.body.actualizados).toBe(1);
+    expect(previa.body.sinCambios).toBe(2);
+  });
+
+  it('UNA HOJA MALA se rechaza ENTERA, nombrando la fila', async () => {
+    // Nada de importar 139 y morir en la 140: una carta a medio importar es
+    // peor que ninguna, porque nadie sabe dónde se cortó.
+    const otra = await montarNegocio(tokenA, '20512345694', 'Importar5');
+    const mala = [
+      'sku;nombre;precio_base',
+      'MAL-1;Bien;10,00',
+      'MAL-2;Mal;no es un precio',
+    ].join('\n');
+
+    const res = await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: mala, dryRun: false })
+      .expect(422);
+    expect(res.body.detail).toContain('fila 3');
+
+    const carta = await como(tokenA)(
+      http().get(`/api/v1/catalog/products?brand=${otra.brandId}`),
+    ).expect(200);
+    expect(carta.body).toHaveLength(0);
+  });
+
+  it('un SKU REPETIDO es un error, no «gana el último»', async () => {
+    // En una hoja de 180 líneas, quedarse con el último hace desaparecer un
+    // producto sin que nadie lo note.
+    const otra = await montarNegocio(tokenA, '20512345695', 'Importar6');
+    const repe = [
+      'sku;nombre;precio_base',
+      'DUP-1;Uno;10,00',
+      'DUP-1;Otro;12,00',
+    ].join('\n');
+
+    await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: repe, dryRun: true })
+      .expect(422);
+  });
+
+  it('por DEFECTO simula: escribir hay que pedirlo', async () => {
+    // Al revés —aplicar salvo que digas lo contrario— una llamada a medio
+    // escribir publicaría la carta sin que nadie la mire.
+    const otra = await montarNegocio(tokenA, '20512345696', 'Importar7');
+    const res = await como(tokenA)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: otra.brandId, csv: HOJA })
+      .expect(201);
+    expect(res.body.simulacion).toBe(true);
+
+    const carta = await como(tokenA)(
+      http().get(`/api/v1/catalog/products?brand=${otra.brandId}`),
+    ).expect(200);
+    expect(carta.body).toHaveLength(0);
+  });
+
   // ------------------------------------------------------ AISLAMIENTO
+
+  it('AISLAMIENTO: B no puede importar una carta en la marca de A', async () => {
+    // La comprobación obligatoria del endpoint nuevo, y aquí el daño sería el
+    // mayor de todos: una importación reescribe la carta ENTERA de una marca.
+    await como(tokenB)(http().post('/api/v1/catalog/import'))
+      .send({ brandId: marcaA, csv: HOJA, dryRun: false })
+      .expect(404);
+
+    const intrusos = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ n: string }>(
+        `SELECT count(*) AS n FROM cat_products WHERE sku LIKE 'IMP-%'
+           AND brand_id = $1`,
+        [marcaA],
+      );
+      return Number(rows[0]!.n);
+    });
+    expect(intrusos).toBe(0);
+  });
 
   it('AISLAMIENTO: B no puede colgar productos de la marca de A', async () => {
     // La comprobación obligatoria de todo endpoint nuevo. `brandId` va en el

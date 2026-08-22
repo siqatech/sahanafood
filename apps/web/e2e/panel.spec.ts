@@ -168,6 +168,81 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(enLaTienda).toContainText('S/ 61.50');
   });
 
+  test('IMPORTAR LA CARTA: se ve el cambio ANTES de aplicarlo', async ({
+    page,
+  }) => {
+    // docs/26 §2 pide el importador en el panel, y docs/26 y specs/ux/03 piden
+    // que nada se publique sin que alguien lo mire. Lo que esta prueba vigila
+    // es justo eso: que la vista previa NO escriba, y que el botón de aplicar
+    // ni siquiera exista hasta tenerla delante.
+    await entrar(page);
+    await page.goto('/panel/catalogo/importar');
+
+    const hoja = [
+      'sku;nombre;categoria;precio_base',
+      'E2E-1;Anticuchos de prueba;Criollos;S/ 24,00',
+    ].join('\n');
+    await page.getByLabel(/Pega aquí las filas/).fill(hoja);
+
+    // Antes de previsualizar no hay forma de aplicar.
+    await expect(
+      page.getByRole('button', { name: /^Aplicar a la/ }),
+    ).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Ver qué va a pasar' }).click();
+    await expect(page.getByText('Esto es lo que va a pasar')).toBeVisible();
+    // Coma decimal del Excel en español: `24,00` son veinticuatro soles.
+    await expect(page.getByText('S/ 24.00')).toBeVisible();
+    await expect(page.getByText('1 nuevos')).toBeVisible();
+
+    // Y la carta sigue sin el plato: la previa no escribe.
+    await page.goto('/panel/catalogo');
+    await expect(
+      page.locator('tbody tr').filter({ hasText: 'Anticuchos de prueba' }),
+    ).toHaveCount(0);
+  });
+
+  test('IMPORTAR LA CARTA: al aplicar, el plato llega a la carta', async ({
+    page,
+  }) => {
+    await entrar(page);
+    await page.goto('/panel/catalogo/importar');
+    const hoja = [
+      'sku;nombre;categoria;precio_base',
+      'E2E-2;Causa de prueba;Criollos;S/ 19,50',
+    ].join('\n');
+    await page.getByLabel(/Pega aquí las filas/).fill(hoja);
+    await page.getByRole('button', { name: 'Ver qué va a pasar' }).click();
+
+    await page.getByRole('button', { name: /^Aplicar a la/ }).click();
+    await expect(page.getByText(/Carta aplicada/)).toBeVisible();
+
+    // LA COMPROBACIÓN QUE IMPORTA: está en la carta, con su precio.
+    await page.goto('/panel/catalogo');
+    const fila = page
+      .locator('tbody tr')
+      .filter({ hasText: 'Causa de prueba' })
+      .first();
+    await expect(fila).toBeVisible();
+    await expect(fila.getByLabel('Precio en todos los canales')).toHaveValue(
+      '19.50',
+    );
+  });
+
+  test('IMPORTAR LA CARTA: una hoja mala se rechaza nombrando la fila', async ({
+    page,
+  }) => {
+    // Una importación de 180 líneas que falla diciendo «importe inválido» y
+    // nada más no se puede arreglar.
+    await entrar(page);
+    await page.goto('/panel/catalogo/importar');
+    await page
+      .getByLabel(/Pega aquí las filas/)
+      .fill('sku;nombre;precio_base\nMAL-1;Roto;no es un precio');
+    await page.getByRole('button', { name: 'Ver qué va a pasar' }).click();
+    await expect(page.getByText(/fila 2/)).toBeVisible();
+  });
+
   test('UN PRECIO MAL ESCRITO se rechaza con un motivo, no con un 500', async ({
     page,
   }) => {

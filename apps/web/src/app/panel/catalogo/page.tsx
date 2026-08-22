@@ -105,12 +105,15 @@ export default async function CatalogoPage({
       {productos.length === 0 ? (
         <Vacio
           titulo="Aún no hay platos en esta carta"
-          accion={{ href: '#anadir', rotulo: 'Crear el primer plato' }}
+          accion={{
+            href: '/panel/catalogo/importar',
+            rotulo: 'Pegar la carta desde Excel',
+          }}
         >
           <p>
-            O sube la carta entera de golpe con el archivo de configuración (
-            <code>docs/34-puesta-en-marcha.md</code> §5), que es lo que conviene
-            si ya la tienes en una hoja de cálculo.
+            Si ya la tienes en una hoja, pégala entera y mira qué va a pasar
+            antes de aplicarla. O crea el primer plato{' '}
+            <Link href="#anadir">aquí abajo</Link>, uno a uno.
           </p>
         </Vacio>
       ) : (
@@ -189,6 +192,20 @@ export default async function CatalogoPage({
           </table>
         </div>
       )}
+
+      <p className="pie-listado">
+        <Link
+          href="/panel/catalogo/importar"
+          className="boton-enlace"
+          prefetch={false}
+        >
+          Importar desde Excel
+        </Link>{' '}
+        <span className="tarjeta__pie">
+          Pega la hoja entera: se ve el cambio antes de aplicarlo y volver a
+          importar no duplica nada.
+        </span>
+      </p>
 
       <h2 id="anadir">Añadir</h2>
       <FormularioNuevoProducto brandId={marca.id} />

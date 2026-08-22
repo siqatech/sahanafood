@@ -488,6 +488,42 @@ tr:last-child td {
   text-align: left;
 }
 
+/* --- Importar la carta (docs/26 §2) ------------------------------------ */
+
+.panel textarea.csv {
+  width: 100%;
+  min-height: 220px;
+  padding: 10px 12px;
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  /* Monoespaciada: son columnas separadas por `;`, y con una proporcional no
+     se ve dónde falta un punto y coma — que es el error más común al pegar. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Qué le pasa a cada fila. Con texto dentro, nunca solo color (docs/25 §6). */
+.efecto--nuevo {
+  color: #14532d;
+  background: var(--sahana-exito-fondo);
+  border-color: var(--sahana-exito-borde);
+}
+
+.efecto--actualiza {
+  color: #92400e;
+  background: var(--sahana-aviso-fondo);
+  border-color: var(--sahana-aviso-borde);
+}
+
+/* «Sin cambios» se queda gris a propósito: es la mayoría de las filas en una
+   reimportación y no debe competir por la atención con las que sí cambian. */
+.efecto--igual {
+  color: var(--panel-suave);
+}
+
 /* --- Checklist de salida en vivo (docs/26 §5) -------------------------- */
 
 .arranque {

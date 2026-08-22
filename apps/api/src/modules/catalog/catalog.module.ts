@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CatalogService } from './app/catalog.service.js';
 import { CatalogPublicationService } from './app/catalog-publication.service.js';
 import { CatalogAdminService } from './app/catalog-admin.service.js';
+import { CatalogImportService } from './app/catalog-import.service.js';
 import {
   CatalogAdminController,
   CatalogController,
@@ -9,7 +10,12 @@ import {
 
 @Module({
   controllers: [CatalogController, CatalogAdminController],
-  providers: [CatalogService, CatalogPublicationService, CatalogAdminService],
+  providers: [
+    CatalogService,
+    CatalogPublicationService,
+    CatalogAdminService,
+    CatalogImportService,
+  ],
   exports: [CatalogService, CatalogPublicationService, CatalogAdminService],
 })
 export class CatalogModule {}

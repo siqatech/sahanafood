@@ -25,6 +25,10 @@ import {
   type PublishedVersionWithSnapshot,
 } from '../app/catalog-publication.service.js';
 import {
+  CatalogImportService,
+  type ResultadoDeImportacion,
+} from '../app/catalog-import.service.js';
+import {
   CatalogAdminService,
   type CategoryView,
   type ModifierGroupView,
@@ -237,7 +241,42 @@ export class CatalogController {
  */
 @Controller({ path: 'catalog', version: '1' })
 export class CatalogAdminController {
-  constructor(private readonly admin: CatalogAdminService) {}
+  constructor(
+    private readonly admin: CatalogAdminService,
+    private readonly importador: CatalogImportService,
+  ) {}
+
+  /**
+   * La carta pegada desde un Excel (docs/26 §2).
+   *
+   * `dryRun` por defecto **true**: quien llama tiene que pedir explícitamente
+   * que se escriba. Al revés —aplicar salvo que digas lo contrario— una llamada
+   * a medio escribir publicaría ciento ochenta precios sin que nadie los mire.
+   */
+  @Post('import')
+  @RequirePermission('catalog.write')
+  importar(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: unknown,
+  ): Promise<ResultadoDeImportacion> {
+    const input = parse(
+      z.object({
+        brandId: z.string().uuid(),
+        // Tope alto pero real: una carta de 500 platos con descripciones cabe
+        // de sobra, y sin tope una pantalla del panel puede mandar un archivo
+        // de cien megas al proceso que atiende los pedidos.
+        csv: z.string().min(1).max(500_000),
+        dryRun: z.boolean().optional(),
+      }),
+      body,
+    );
+    return this.importador.importar(req.auth!.tid, {
+      brandId: input.brandId,
+      csv: input.csv,
+      dryRun: input.dryRun ?? true,
+      actorId: req.auth!.sub,
+    });
+  }
 
   /**
    * La carta tal como está, para el panel. Incluye lo que la tienda oculta:

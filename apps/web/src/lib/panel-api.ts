@@ -629,6 +629,24 @@ export interface SaldoDeRepartidor {
 }
 
 /** Una línea del histórico (spec 17, docs/14#auditoria). */
+export interface FilaImportada {
+  sku: string | null;
+  nombre: string;
+  categoria: string | null;
+  precioBase: string | null;
+  precioAnterior: string | null;
+  efecto: 'nuevo' | 'actualiza' | 'igual';
+}
+
+export interface ResultadoDeImportacion {
+  simulacion: boolean;
+  filas: FilaImportada[];
+  nuevos: number;
+  actualizados: number;
+  sinCambios: number;
+  categoriasNuevas: string[];
+}
+
 export interface PasoDeChecklist {
   id: string;
   titulo: string;
@@ -848,6 +866,23 @@ export const panel = {
    * Pone o quita la foto. Endpoint estrecho: reenviar el producto entero por el
    * upsert borraría descripción y alérgenos, que esta lista no trae.
    */
+  /**
+   * La carta pegada desde un Excel (docs/26 §2).
+   *
+   * `dryRun` sin valor por defecto aquí a propósito: quien llame tiene que
+   * decidirlo mirando. El servidor simula si no se dice nada, pero dejar el
+   * valor implícito también en el cliente escondería la decisión.
+   */
+  importarCarta: (input: {
+    brandId: string;
+    csv: string;
+    dryRun: boolean;
+  }): Promise<ResultadoDeImportacion> =>
+    llamar<ResultadoDeImportacion>('/catalog/import', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
   ponerFoto: (
     productId: string,
     imageUrl: string | null,

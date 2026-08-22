@@ -1541,3 +1541,59 @@ afirmar lo que me habría gustado que fuera.
 
 Verde: **763 API · 457 dominio · 5 ui · 35 web · 23 POS · 59 navegador**, 484
 módulos sin violaciones de frontera.
+
+---
+
+## Pegar la carta desde un Excel, dentro del panel (2026-08-22)
+
+`docs/26` §2 pide el importador **en la pantalla**. Lo que había era un guion de
+línea de comandos: transforma un CSV en el `negocio.json` que aplica
+`setup-business`. Sirve para dar de alta clientes desde nuestra máquina y no le
+sirve de nada al dueño que ya está dentro del panel con su hoja abierta en otra
+pestaña — y ese es el caso que decide la métrica de docs/26, porque escribir 180
+platos a mano es una tarde.
+
+**El guion tenía razón y por eso no se ignoró.** Su cabecera argumenta por qué
+NO escribe en la base: «un segundo camino de escritura al catálogo sería un
+segundo sitio donde los precios pueden salir distintos». Se respeta de dos
+maneras: se parsea con **su misma función**, así que las reglas del Excel
+peruano —`;`, coma decimal, `S/`, y **SKU repetido es error y no “gana el
+último”**— y los mensajes que nombran fila y columna son los mismos ya probados;
+y se escribe por **`CatalogAdminService`**, el mismo upsert del formulario de un
+solo plato. La importación es un lote de esas altas, no una vía paralela.
+
+**Nada se aplica sin que alguien lo mire.** Un solo endpoint con `dryRun`, que
+por defecto es **true**: escribir hay que pedirlo. Y el mismo código calcula la
+vista previa y aplica — dos rutas distintas acabarían divergiendo y lo aprobado
+no sería lo guardado. En la pantalla, el botón de aplicar **no existe** hasta
+tener la previa delante: con una casilla de «aplicar de verdad», marcarla por
+error publica ciento ochenta precios.
+
+Detalles con motivo:
+
+· **El parseo va primero y entero.** Si la fila 140 tiene un precio imposible,
+  no se escribe ninguna de las 139 anteriores: una carta a medio importar es
+  peor que ninguna, porque nadie sabe dónde se cortó.
+· **La previa normaliza los precios por `Money`.** La hoja trae `32,00` y la
+  base guarda `32.0000`; enseñarlos crudos uno al lado del otro se lee como si
+  hubieran cambiado cuando no.
+· **La comparación «igual/cambia» es por `Money`, no por texto.** `45.90` y
+  `45.9000` son el mismo precio, y compararlos como cadenas marcaría toda la
+  carta como «cambia» en cada importación — con lo que el diff dejaría de
+  significar algo.
+· **Queda en el histórico** (`catalog.imported`): es, con diferencia, la acción
+  de mayor alcance del panel, y «¿quién subió esta carta?» tiene que tener
+  respuesta.
+
+### Un ciclo que apareció al conectar las piezas
+
+Importar el parser desde el módulo de catálogo creó un ciclo real —catálogo →
+importador → alta de negocio → tienda → catálogo— que `dependency-cruiser`
+rechazó. La causa: el guion depende de `business-setup.ts`, que conoce media
+aplicación. Se extrajo el parseo puro a `database/carta-csv.ts`, **sin ninguna
+dependencia de módulos**, y el guion ahora lo reutiliza. Las 20 pruebas
+existentes del importador pasan sin tocarlas, que es lo que confirma que la
+extracción no cambió comportamiento.
+
+Verde: **771 API · 457 dominio · 5 ui · 35 web · 23 POS · 62 navegador**, 489
+módulos sin violaciones de frontera.
