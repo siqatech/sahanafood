@@ -1347,3 +1347,45 @@ a lo que uno escribe:
 
 Verde: **751 API · 457 dominio · 35 web · 23 POS · 55 navegador**, 471 módulos
 sin violaciones de frontera.
+
+---
+
+## Chips y export en los listados que faltaban (2026-08-22)
+
+`specs/ux/03` lo pide para **todo listado** —«filtros por chips, export CSV,
+columnas de dinero alineadas derecha»— y solo lo tenía pedidos.
+
+**Histórico.** El filtro era un `<select>` con un botón «Filtrar». Ahora son
+chips con **la cuenta dentro**, y esa es la diferencia real: la pregunta que
+trae a alguien a la auditoría es «¿hubo descuadres?», y con un desplegable hay
+que abrirlo para descubrir que no hubo ninguno. Los atajos que ya existían
+—precios, descuentos aprobados, descuadres— siguen primero; el resto va por
+volumen, y **solo aparece lo que tiene algo detrás**: ofrecer un filtro que
+devuelve cero hace dudar de si falla el filtro o si eso no pasó nunca, que son
+dos conclusiones muy distintas.
+
+Su CSV lleva el **motivo escrito** de cada línea. Es media razón de que exista
+el histórico: «anulado» no explica nada y «RUC mal digitado» se explica solo.
+
+**Comprobantes.** El export trae **los cuatro estados en un archivo**, no solo
+los aceptados. Un comprobante rechazado o encolado es una venta *sin declarar*:
+un archivo que solo trajera los buenos enseñaría un mes que cuadra mientras las
+ventas que faltan quedan fuera del archivo y fuera de la vista. Cada fila lleva
+su estado y el código y motivo del rechazo.
+
+**Inventario.** Chip «Bajo mínimo» con su cuenta — es la única pregunta que se
+le hace de verdad a esa tabla, *qué hay que comprar hoy*, y había que buscarla a
+ojo entre las filas en rojo. Y export de existencias con una columna **«Contado»
+vacía**: el uso real es imprimirlo, recorrer el almacén anotando lo que hay y
+comparar. Sin esa columna el papel no sirve para lo único para lo que se
+imprime. Las cantidades salen como cadena decimal tal cual — pasarlas por
+`Number` para «limpiarlas» les quitaría decimales significativos (350 g de un
+insumo que se mide en kilos es `0.3500`) en un archivo que decide compras.
+
+De paso, los vacíos de esas tres pantallas pasaron a `Vacio`, distinguiendo
+«nada rechazado» —buenas noticias— de «ningún plato descuenta stock», que sí es
+trabajo pendiente y ahora explica su consecuencia: sin receta el food cost es
+cero, así que ese plato aparenta más margen del que tiene.
+
+Verde: **751 API · 457 dominio · 35 web · 23 POS · 58 navegador**, 474 módulos
+sin violaciones de frontera.

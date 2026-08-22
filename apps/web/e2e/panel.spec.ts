@@ -834,9 +834,9 @@ test.describe('Panel de gestión en navegador', () => {
 
     // Se comprueba el EFECTO: el comprobante sale de la cola de rechazados.
     await expect(page.locator('.ficha--revision')).toHaveCount(0);
-    await expect(
-      page.getByText('Nada rechazado. La venta se declara sola al cobrar.'),
-    ).toBeVisible();
+    // El vacío es ahora un `Vacio` con título y cuerpo separados (docs/25),
+    // no una frase suelta: se comprueba el título, que es lo que se lee.
+    await expect(page.getByText('Nada rechazado')).toBeVisible();
   });
 
   test('DEVOLVER EL DINERO se puede hacer desde el pedido, con su motivo', async ({
@@ -900,15 +900,86 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(fila).toBeVisible();
     await expect(fila).toContainText('Dueña de la tienda demo');
 
-    // Y el filtro por acción, que es como se busca de verdad.
-    await page.getByLabel('Filtrar por acción').selectOption('auth.login');
-    await page.getByRole('button', { name: 'Filtrar' }).click();
+    // Y el filtro, que ahora es por chips (specs/ux/03). La diferencia que
+    // importa frente al desplegable que había: el chip **enseña la cuenta sin
+    // abrirlo**, y la pregunta que trae aquí a alguien es «¿hubo descuadres?»,
+    // que con un `<select>` obliga a desplegarlo para descubrir que no hubo.
+    const grupo = page.getByRole('group', { name: 'Filtrar por acción' });
+    await grupo.getByRole('link', { name: /Entró al sistema/ }).click();
     await expect(page).toHaveURL(/accion=auth.login/);
     const filas = page.locator('tbody tr');
     await expect(filas.first()).toContainText('Entró al sistema');
     await expect(
       page.locator('tbody tr').filter({ hasText: 'Cambio de precio' }),
     ).toHaveCount(0);
+    // El chip puesto se dice sin depender del color (docs/25 §6).
+    await expect(
+      grupo.getByRole('link', { name: /Entró al sistema/ }),
+    ).toHaveAttribute('aria-current', 'true');
+  });
+
+  test('EXPORTAR el histórico respeta el filtro y trae el MOTIVO escrito', async ({
+    page,
+  }) => {
+    // El archivo que se entrega cuando alguien pregunta quién tocó qué. Que
+    // solo se pudiera leer en pantalla, cien líneas por vez, convertía una
+    // tabla append-only en algo que en la práctica nadie revisaba.
+    await entrar(page);
+    const todo = await page.evaluate(async () => {
+      const r = await fetch('/panel/auditoria/csv');
+      return { estado: r.status, texto: await r.text() };
+    });
+    expect(todo.estado).toBe(200);
+    // El motivo escrito es media razón de que exista el histórico.
+    expect(todo.texto).toContain('Motivo');
+    expect(todo.texto).toContain('auth.login');
+
+    // Con filtro trae SOLO eso: un export que ignora el filtro de la pantalla
+    // se parece tanto al bueno que nadie nota la diferencia.
+    const filtrado = await page.evaluate(async () => {
+      const r = await fetch('/panel/auditoria/csv?accion=auth.login');
+      return await r.text();
+    });
+    expect(filtrado).toContain('auth.login');
+    expect(filtrado).not.toContain('catalog.price_set');
+  });
+
+  test('LOS COMPROBANTES se exportan con los CUATRO estados, no solo los buenos', async ({
+    page,
+  }) => {
+    // Un comprobante rechazado o en cola es una venta SIN DECLARAR. Un export
+    // que solo trajera los aceptados enseñaría un mes que cuadra mientras las
+    // ventas que faltan se quedan fuera del archivo y fuera de la vista.
+    await entrar(page);
+    const csv = await page.evaluate(async () => {
+      const r = await fetch('/panel/comprobantes/csv');
+      return { estado: r.status, texto: await r.text() };
+    });
+    expect(csv.estado).toBe(200);
+    expect(csv.texto).toContain('Estado;Tipo;Numero');
+    expect(csv.texto).toContain('Motivo del rechazo');
+  });
+
+  test('EL INVENTARIO filtra lo que falta y se exporta para contar a mano', async ({
+    page,
+  }) => {
+    // «Bajo mínimo» es la única pregunta que se le hace de verdad a esa tabla
+    // —qué hay que comprar hoy— y había que buscarla a ojo entre las filas en
+    // rojo.
+    await entrar(page);
+    await page.goto('/panel/inventario');
+    const grupo = page.getByRole('group', { name: 'Filtrar existencias' });
+    await grupo.getByRole('link', { name: /Bajo mínimo/ }).click();
+    await expect(page).toHaveURL(/ver=bajo-minimo/);
+
+    // El export lleva la columna «Contado» vacía: es para lo único para lo que
+    // se imprime esta hoja — recorrer el almacén y anotar lo que hay.
+    const csv = await page.evaluate(async () => {
+      const r = await fetch('/panel/inventario/csv');
+      return { estado: r.status, texto: await r.text() };
+    });
+    expect(csv.estado).toBe(200);
+    expect(csv.texto).toContain('Stock del sistema;Minimo;Bajo minimo;Contado');
   });
 
   test('LA MESA DE DESPACHO asigna, y dice POR QUÉ recomienda a cada uno', async ({

@@ -5,6 +5,8 @@ import {
   type RecetaDelPanel,
 } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
+import { Chips } from '../chips';
+import { Vacio } from '../vacio';
 import { FormularioInsumo, FormularioReceta } from './formularios';
 
 /**
@@ -143,6 +145,13 @@ export default async function InventarioPage({
   const bajoMinimo = existencias.filter((e) => e.belowMinimum);
   const elegido = existencias.find((e) => e.itemId === insumo);
 
+  // «Bajo mínimo» es la única pregunta que se le hace de verdad a esta tabla —
+  // qué hay que comprar hoy— y hasta ahora había que buscarla a ojo entre las
+  // filas en rojo. Como chip, además, el filtro queda en la URL y se comparte
+  // por WhatsApp con quien va al mercado.
+  const soloFaltantes = params['ver'] === 'bajo-minimo';
+  const visibles = soloFaltantes ? bajoMinimo : existencias;
+
   return (
     <>
       <h1>Inventario</h1>
@@ -160,11 +169,33 @@ export default async function InventarioPage({
         ) : null}
       </h2>
 
+      <Chips
+        nombre="ver"
+        actual={soloFaltantes ? 'bajo-minimo' : ''}
+        base="/panel/inventario"
+        otros={insumo !== '' ? { insumo } : {}}
+        etiqueta="Filtrar existencias"
+        opciones={[
+          { valor: '', rotulo: 'Todo', cuenta: existencias.length },
+          {
+            valor: 'bajo-minimo',
+            rotulo: 'Bajo mínimo',
+            cuenta: bajoMinimo.length,
+          },
+        ]}
+      />
+
       {existencias.length === 0 ? (
-        <p className="panel__vacio">
-          Todavía no hay insumos con stock. Se crean con recetas y entran con
-          las compras, que llegan en F6.
-        </p>
+        <Vacio titulo="Todavía no hay insumos con stock">
+          <p>
+            Se crean al declarar un insumo aquí abajo y entran con las compras,
+            que llegan en F6.
+          </p>
+        </Vacio>
+      ) : visibles.length === 0 ? (
+        <Vacio titulo="Nada bajo mínimo" enOrden>
+          <p>Todos los insumos están por encima de su mínimo declarado.</p>
+        </Vacio>
       ) : (
         <div className="tabla-envoltorio">
           <table>
@@ -178,7 +209,7 @@ export default async function InventarioPage({
               </tr>
             </thead>
             <tbody>
-              {existencias.map((e) => (
+              {visibles.map((e) => (
                 <tr key={`${e.warehouseId}-${e.itemId}`}>
                   <td>{e.itemName}</td>
                   <td>{e.warehouseName}</td>
@@ -208,6 +239,19 @@ export default async function InventarioPage({
         </div>
       )}
 
+      <p className="pie-listado">
+        <Link
+          href="/panel/inventario/csv"
+          className="boton-enlace"
+          prefetch={false}
+        >
+          Exportar existencias
+        </Link>{' '}
+        <span className="tarjeta__pie">
+          Para el conteo físico: se imprime, se cuenta a mano y se compara.
+        </span>
+      </p>
+
       <h2>
         {elegido ? `Movimientos de ${elegido.itemName}` : 'Últimos movimientos'}
       </h2>
@@ -233,10 +277,16 @@ export default async function InventarioPage({
 
       <h2>Recetas</h2>
       {recetas.length === 0 ? (
-        <p className="panel__vacio">
-          Ningún plato descuenta stock todavía. Sin receta, el consumo
-          automático no se dispara y el food cost se queda en cero.
-        </p>
+        <Vacio
+          titulo="Ningún plato descuenta stock todavía"
+          accion={{ href: '/panel/reportes', rotulo: 'Ver rentabilidad' }}
+        >
+          <p>
+            Sin receta, el consumo automático no se dispara y el food cost se
+            queda en cero — así que el margen de ese plato sale más alto de lo
+            que es.
+          </p>
+        </Vacio>
       ) : (
         <ul>
           {recetas.map((r: RecetaDelPanel) => (

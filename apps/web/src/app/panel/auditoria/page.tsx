@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { panel, type LineaDeAuditoria } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
+import { Chips, type Chip } from '../chips';
+import { Vacio } from '../vacio';
 
 /**
  * El histórico: quién hizo qué (spec 17, docs/14#auditoria).
@@ -115,7 +117,31 @@ export default async function AuditoriaPage({
     cargar('/panel/auditoria', yaSeIntento, () => panel.accionesAuditadas()),
   ]);
 
-  const registradas = new Set(acciones.map((a) => a.action));
+  // Los chips: primero los atajos que TIENEN algo detrás, luego el resto por
+  // volumen. Ofrecer un filtro que devuelve cero hace dudar de si falla el
+  // filtro o si eso no pasó nunca, y son dos conclusiones muy distintas.
+  const registradas = new Map(acciones.map((a) => [a.action, a.count]));
+  const destacados = ATAJOS.filter((a) => registradas.has(a.action)).map(
+    (a): Chip => ({
+      valor: a.action,
+      rotulo: a.texto,
+      cuenta: registradas.get(a.action) ?? 0,
+    }),
+  );
+  const yaPuestos = new Set(destacados.map((c) => c.valor));
+  const resto = [...acciones]
+    .filter((a) => !yaPuestos.has(a.action))
+    .sort((a, b) => b.count - a.count)
+    .map((a): Chip => ({
+      valor: a.action,
+      rotulo: ROTULO[a.action] ?? a.action,
+      cuenta: a.count,
+    }));
+  const chips: Chip[] = [
+    { valor: '', rotulo: 'Todo' },
+    ...destacados,
+    ...resto,
+  ];
 
   return (
     <>
@@ -125,39 +151,37 @@ export default async function AuditoriaPage({
         la base de datos no le concede permiso ni a la propia aplicación.
       </p>
 
-      <p className="tarjeta__pie">
-        {accion !== '' ? (
-          <>
-            <Link href="/panel/auditoria">Ver todo</Link> ·{' '}
-          </>
-        ) : null}
-        {/* Solo se ofrecen los atajos que tienen algo detrás: un filtro que
-            devuelve cero hace dudar de si falla el filtro o no pasó nunca. */}
-        {ATAJOS.filter((a) => registradas.has(a.action)).map((a) => (
-          <span key={a.action}>
-            <Link href={`/panel/auditoria?accion=${a.action}`}>{a.texto}</Link>
-            {' · '}
-          </span>
-        ))}
-      </p>
-
-      <form method="get">
-        <div className="campo">
-          <label htmlFor="aud-accion">Filtrar por acción</label>
-          <select id="aud-accion" name="accion" defaultValue={accion}>
-            <option value="">— todas —</option>
-            {acciones.map((a) => (
-              <option key={a.action} value={a.action}>
-                {ROTULO[a.action] ?? a.action} ({a.count})
-              </option>
-            ))}
-          </select>
-        </div>
-        <button type="submit">Filtrar</button>
-      </form>
+      {/* Chips y no un desplegable (specs/ux/03: «todo listado: filtros por
+          chips»). La diferencia real es que el chip **enseña la cuenta sin
+          abrirlo**: la pregunta que trae a alguien aquí es «¿hubo descuadres?»,
+          y con un `<select>` hay que desplegarlo para descubrir que no hubo
+          ninguno. Además el filtro queda en la URL y se comparte. */}
+      <Chips
+        nombre="accion"
+        actual={accion}
+        base="/panel/auditoria"
+        otros={{}}
+        etiqueta="Filtrar por acción"
+        opciones={chips}
+      />
 
       {lineas.length === 0 ? (
-        <p className="panel__vacio">Nada registrado con ese filtro todavía.</p>
+        accion === '' ? (
+          <Vacio titulo="Nada registrado todavía" enOrden>
+            <p>
+              El histórico se llena solo: cada precio, cada descuadre y cada
+              devolución dejan aquí su línea.
+            </p>
+          </Vacio>
+        ) : (
+          <Vacio
+            titulo="Nada con ese filtro"
+            accion={{
+              href: '/panel/auditoria',
+              rotulo: 'Ver todo el histórico',
+            }}
+          />
+        )
       ) : (
         <div className="tabla-envoltorio">
           <table>

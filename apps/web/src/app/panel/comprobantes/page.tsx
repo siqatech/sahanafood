@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { panel, type DocumentoDelPanel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { solesDeTexto } from '../caja/dinero';
+import { Vacio } from '../vacio';
 import {
   FormularioCorreccion,
   BotonReenviar,
@@ -101,9 +102,9 @@ export default async function ComprobantesPage({
       </h2>
 
       {rechazados.length === 0 ? (
-        <p className="panel__vacio">
-          Nada rechazado. La venta se declara sola al cobrar.
-        </p>
+        <Vacio titulo="Nada rechazado" enOrden>
+          <p>La venta se declara sola al cobrar.</p>
+        </Vacio>
       ) : (
         rechazados.map((d) => (
           <article key={d.id} className="ficha ficha--revision">
@@ -153,7 +154,7 @@ export default async function ComprobantesPage({
         menos margen del que parece.
       </p>
       {enCola.length === 0 ? (
-        <p className="panel__vacio">Nada pendiente de enviar.</p>
+        <Vacio titulo="Nada pendiente de enviar" enOrden />
       ) : (
         <div className="tabla-envoltorio">
           <table>
@@ -209,7 +210,12 @@ export default async function ComprobantesPage({
 
       <h2>Aceptados</h2>
       {emitidos.length === 0 ? (
-        <p className="panel__vacio">Todavía no hay comprobantes aceptados.</p>
+        <Vacio titulo="Todavía no hay comprobantes aceptados">
+          <p>
+            Se emiten solos al cobrar. Si llevas ventas hechas y esto sigue
+            vacío, mira la cola de arriba.
+          </p>
+        </Vacio>
       ) : (
         <div className="tabla-envoltorio">
           <table>
@@ -254,6 +260,20 @@ export default async function ComprobantesPage({
           </table>
         </div>
       )}
+
+      <p className="pie-listado">
+        <Link
+          href="/panel/comprobantes/csv"
+          className="boton-enlace"
+          prefetch={false}
+        >
+          Exportar CSV
+        </Link>{' '}
+        <span className="tarjeta__pie">
+          Los tres estados en un archivo, con el motivo de cada rechazo. Es lo
+          que pide el contador a fin de mes.
+        </span>
+      </p>
     </>
   );
 }
