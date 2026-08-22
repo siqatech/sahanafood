@@ -2,10 +2,24 @@
 
 import { revalidatePath } from 'next/cache';
 import { panel, PanelApiError, SesionCaducada } from '../../../lib/panel-api';
+import type { Deshacer } from '../aviso';
 
 export interface EstadoCarta {
   error?: string;
   ok?: string;
+  /** Con qué revertir, cuando se puede. Lo pinta `AvisoConDeshacer`. */
+  deshacer?: Deshacer;
+}
+
+/**
+ * ¿Esta llamada ES un deshacer?
+ *
+ * Lo que evita: que revertir ofrezca a su vez revertir. Serían dos avisos que
+ * se deshacen mutuamente sin fin, y a la tercera vuelta nadie sabría en qué
+ * precio quedó el plato.
+ */
+function esDeshacer(form: FormData): boolean {
+  return form.get('esDeshacer') !== null;
 }
 
 /**
@@ -64,7 +78,24 @@ export async function ponerPrecio(
     return traducir(error);
   }
   revalidatePath('/panel/catalogo');
-  return { ok: 'Precio guardado.' };
+
+  // Deshacer = volver a poner el precio que había. El valor anterior lo manda
+  // el formulario, que ya lo tenía en pantalla: preguntárselo otra vez a la API
+  // sería una llamada de más para un dato que el navegador acaba de enseñar.
+  //
+  // Solo si HABÍA precio antes. Un plato que estrena precio no se puede
+  // «deshacer»: la API no borra precios, y un botón que no revierte de verdad
+  // es peor que no ofrecerlo.
+  const anterior = String(form.get('anterior') ?? '').trim();
+  if (esDeshacer(form) || anterior === '') return { ok: 'Precio guardado.' };
+
+  return {
+    ok: 'Precio guardado.',
+    deshacer: {
+      rotulo: `Volver a S/ ${anterior}`,
+      campos: { productId, channel: canal, price: anterior },
+    },
+  };
 }
 
 export async function pausar(
@@ -88,7 +119,20 @@ export async function pausar(
     return traducir(error);
   }
   revalidatePath('/panel/catalogo');
-  return { ok: 'Producto pausado.' };
+  // Deshacer una pausa es reactivar, y eso ya tiene su propia acción. Ocho
+  // segundos importan aquí: pausar el plato equivocado en hora punta lo saca de
+  // la carta de todos los canales a la vez.
+  return {
+    ok: 'Producto pausado.',
+    ...(esDeshacer(form)
+      ? {}
+      : {
+          deshacer: {
+            rotulo: 'Volver a ponerlo a la venta',
+            campos: { productId, channel: canal },
+          },
+        }),
+  };
 }
 
 export async function reanudar(
@@ -103,6 +147,8 @@ export async function reanudar(
     return traducir(error);
   }
   revalidatePath('/panel/catalogo');
+  // Sin deshacer: volver a pausar exige un motivo escrito, y un botón de
+  // «deshacer» que abre otro formulario no es deshacer.
   return { ok: 'Producto reactivado.' };
 }
 
@@ -130,7 +176,22 @@ export async function ponerFoto(
     return traducir(error);
   }
   revalidatePath('/panel/catalogo');
-  return { ok: quitar || url === '' ? 'Foto quitada.' : 'Foto guardada.' };
+
+  const ok = quitar || url === '' ? 'Foto quitada.' : 'Foto guardada.';
+  if (esDeshacer(form)) return { ok };
+
+  // Deshacer devuelve la dirección anterior — o la quita, si antes no había.
+  // Aquí es donde más falta hace: se llega pegando una URL, y una URL pegada
+  // mal se ve al instante en la miniatura.
+  const anterior = String(form.get('anterior') ?? '');
+  return {
+    ok,
+    deshacer: {
+      rotulo:
+        anterior === '' ? 'Dejarlo sin foto' : 'Volver a la foto anterior',
+      campos: { productId, imageUrl: anterior },
+    },
+  };
 }
 
 export async function crearProducto(

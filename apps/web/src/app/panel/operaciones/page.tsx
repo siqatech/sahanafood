@@ -8,6 +8,7 @@ import {
   type PausaDeCanal,
   type ConexionDelPanel,
 } from '../../../lib/panel-api';
+import { Vacio } from '../vacio';
 import { cargar } from '../../../lib/panel-guard';
 import { politicaPara, limiteDeRechazo } from './plazos';
 
@@ -245,9 +246,9 @@ export default async function OperacionesPage({
           ))}
 
           {conPlazo.length + excepciones.length === 0 ? (
-            <p className="panel__vacio">
-              Nada esperando decisión. Los canales automáticos aceptan solos.
-            </p>
+            <Vacio titulo="Nada esperando decisión" enOrden>
+              <p>Los canales automáticos aceptan solos.</p>
+            </Vacio>
           ) : null}
         </section>
 
@@ -255,7 +256,7 @@ export default async function OperacionesPage({
         <section className="torre__columna">
           <h2>En curso</h2>
           {enCurso.every(([, lista]) => lista.length === 0) ? (
-            <p className="panel__vacio">La casa está vacía ahora mismo.</p>
+            <Vacio titulo="La casa está vacía ahora mismo" enOrden />
           ) : (
             enCurso.map(([estado, lista]) =>
               lista.length === 0 ? null : (
@@ -350,7 +351,7 @@ export default async function OperacionesPage({
           ))}
 
           {problemas === 0 ? (
-            <p className="panel__vacio">Nada roto que requiera una decisión.</p>
+            <Vacio titulo="Nada roto que requiera una decisión" enOrden />
           ) : null}
         </section>
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useState } from 'react';
+import { ConfirmacionDestructiva } from '../confirmar';
 import { corregir, reenviar, anular, type EstadoComprobante } from './acciones';
 
 /** Las tres acciones de la cola de corrección (RN-BIL-02). */
@@ -97,7 +98,21 @@ export function BotonReenviar({ id }: { id: string }) {
   );
 }
 
-export function FormularioAnulacion({ id }: { id: string }) {
+/**
+ * Anular un comprobante ya aceptado.
+ *
+ * Es LA acción irreversible del panel, y por eso es la que lleva la
+ * confirmación destructiva de docs/25 en vez de un deshacer: emitir una nota de
+ * crédito manda un documento nuevo al OSE y de ahí a SUNAT. No hay ocho
+ * segundos de gracia que ofrecer — el documento ya salió.
+ */
+export function FormularioAnulacion({
+  id,
+  numero,
+}: {
+  id: string;
+  numero: string;
+}) {
   const [estado, accion, pendiente] = useActionState<
     EstadoComprobante,
     FormData
@@ -105,15 +120,16 @@ export function FormularioAnulacion({ id }: { id: string }) {
   return (
     <>
       <form action={accion} className="en-linea">
-        <input type="hidden" name="id" value={id} />
-        <input
-          name="reason"
-          placeholder="Motivo de la anulación"
-          aria-label={`Motivo de anulación de ${id}`}
-        />
-        <button type="submit" className="discreto" disabled={pendiente}>
-          {pendiente ? '…' : 'Nota de crédito'}
-        </button>
+        <ConfirmacionDestructiva
+          titulo={`Anular ${numero}`}
+          advertencia="Se emite una nota de crédito y se declara al OSE. No se puede deshacer: para revertirla habría que emitir otro comprobante."
+          rotuloBoton="Nota de crédito"
+          rotuloConfirmar="Emitir la nota de crédito"
+          etiquetaMotivo="¿Por qué se anula?"
+          pendiente={pendiente}
+        >
+          <input type="hidden" name="id" value={id} />
+        </ConfirmacionDestructiva>
       </form>
       <Resultado estado={estado} />
     </>

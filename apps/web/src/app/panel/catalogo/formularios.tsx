@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
+import { AvisoConDeshacer } from '../aviso';
 import {
   crearProducto,
   pausar,
@@ -16,12 +17,27 @@ import {
  * Son de cliente solo para poder enseñar el resultado de la acción junto al
  * campo que se acaba de tocar. Sin JavaScript siguen funcionando: cada uno es
  * un `<form>` que postea y la página se recarga con el cambio hecho.
+ *
+ * Precios, pausas y fotos llevan **deshacer de ocho segundos** (docs/25): son
+ * las tres cosas que se tocan a diario y en tablet, y las tres se revierten
+ * sin consecuencias. Lo que no se puede revertir de verdad no lo ofrece.
  */
 
-function Resultado({ estado }: { estado: EstadoCarta }) {
-  if (estado.error) return <p className="panel__error">{estado.error}</p>;
-  if (estado.ok) return <p className="tarjeta__pie">{estado.ok}</p>;
-  return null;
+function Resultado({
+  estado,
+  accionDeshacer,
+}: {
+  estado: EstadoCarta;
+  accionDeshacer?: (form: FormData) => void;
+}) {
+  return (
+    <AvisoConDeshacer
+      ok={estado.ok}
+      error={estado.error}
+      deshacer={estado.deshacer}
+      accionDeshacer={accionDeshacer}
+    />
+  );
 }
 
 export function FormularioPrecio({
@@ -43,6 +59,11 @@ export function FormularioPrecio({
       <form action={accion} className="en-linea">
         <input type="hidden" name="productId" value={productId} />
         <input type="hidden" name="channel" value={channel} />
+        {/* El precio que había, para poder volver a él. Viaja en el formulario
+            porque el navegador ya lo tiene en pantalla: volver a preguntárselo
+            a la API sería una llamada de más por un dato que se acaba de
+            enseñar. */}
+        <input type="hidden" name="anterior" value={actual} />
         <input
           name="price"
           className="corto"
@@ -66,7 +87,8 @@ export function FormularioPrecio({
           {pendiente ? '…' : 'Guardar'}
         </button>
       </form>
-      <Resultado estado={estado} />
+      {/* Deshacer reenvía el precio anterior por esta misma acción. */}
+      <Resultado estado={estado} accionDeshacer={accion} />
     </>
   );
 }
@@ -82,6 +104,13 @@ export function FormularioPausa({
 }) {
   const [estado, accion, pendiente] = useActionState<EstadoCarta, FormData>(
     pausado ? reanudar : pausar,
+    {},
+  );
+  // Un segundo enganche solo para deshacer: revertir una pausa es REACTIVAR, y
+  // eso es otra acción. Reutilizar la de arriba no sirve — cambia de identidad
+  // según `pausado`, justo el valor que la pausa acaba de cambiar.
+  const [, accionReanudar] = useActionState<EstadoCarta, FormData>(
+    reanudar,
     {},
   );
   return (
@@ -100,7 +129,9 @@ export function FormularioPausa({
           {pausado ? 'Reactivar' : 'Pausar'}
         </button>
       </form>
-      <Resultado estado={estado} />
+      {/* Deshacer una pausa es reactivar; deshacer una reactivación exigiría
+          escribir otra vez el motivo, así que esa no se ofrece. */}
+      <Resultado estado={estado} accionDeshacer={accionReanudar} />
     </>
   );
 }
@@ -130,6 +161,7 @@ export function FormularioFoto({
     <>
       <form action={accion} className="foto-campo">
         <input type="hidden" name="productId" value={productId} />
+        <input type="hidden" name="anterior" value={actual ?? ''} />
         {actual ? (
           // Sin `next/image`: la foto vive en el servidor del dueño, no en uno
           // configurado en `next.config`, y el optimizador rechazaría el
@@ -173,7 +205,7 @@ export function FormularioFoto({
           </button>
         ) : null}
       </form>
-      <Resultado estado={estado} />
+      <Resultado estado={estado} accionDeshacer={accion} />
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { Canal } from '../canal';
+import { Vacio } from '../vacio';
 import Link from 'next/link';
 import {
   panel,
@@ -166,7 +167,7 @@ export default async function RepartoPage({
             ) : null}
           </h2>
           {listos.length === 0 ? (
-            <p className="panel__vacio">Nada esperando salir.</p>
+            <Vacio titulo="Nada esperando salir" enOrden />
           ) : (
             listos.map((p) => (
               <article key={p.id} className="ficha ficha--revision">
@@ -197,7 +198,7 @@ export default async function RepartoPage({
             ) : null}
           </h2>
           {sinAsignar.length === 0 ? (
-            <p className="panel__vacio">Nada esperando repartidor.</p>
+            <Vacio titulo="Nada esperando repartidor" enOrden />
           ) : (
             sinAsignar.map((e) => (
               <article key={e.id} className="ficha ficha--revision">
@@ -214,7 +215,7 @@ export default async function RepartoPage({
         <section className="torre__columna">
           <h2>En la calle</h2>
           {enCurso.length === 0 ? (
-            <p className="panel__vacio">Nadie en ruta ahora mismo.</p>
+            <Vacio titulo="Nadie en ruta ahora mismo" enOrden />
           ) : (
             enCurso.map((e) => (
               <article key={e.id} className="ficha">
@@ -246,9 +247,12 @@ export default async function RepartoPage({
 
       <h2>Repartidores</h2>
       {repartidores.length === 0 ? (
-        <p className="panel__vacio">
-          Todavía no hay ninguno. Sin repartidores no se puede asignar nada.
-        </p>
+        <Vacio
+          titulo="Todavía no hay ningún repartidor"
+          accion={{ href: '#alta', rotulo: 'Dar de alta al primero' }}
+        >
+          <p>Sin repartidores no se puede asignar ningún envío.</p>
+        </Vacio>
       ) : (
         <div className="tabla-envoltorio">
           <table>
@@ -297,7 +301,7 @@ export default async function RepartoPage({
         </div>
       )}
 
-      <h3>Dar de alta</h3>
+      <h3 id="alta">Dar de alta</h3>
       <FormularioRepartidor
         locales={estructura.locations.map((l) => ({
           id: l.id,
@@ -312,7 +316,7 @@ export default async function RepartoPage({
         una cerrada sería un ingreso sin arqueo que lo respalde.
       </p>
       {saldos.length === 0 ? (
-        <p className="panel__vacio">Nadie debe efectivo.</p>
+        <Vacio titulo="Nadie debe efectivo" enOrden />
       ) : (
         <div className="tabla-envoltorio">
           <table>

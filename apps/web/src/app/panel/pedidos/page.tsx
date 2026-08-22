@@ -4,6 +4,7 @@ import { cargar } from '../../../lib/panel-guard';
 import { soles } from '../caja/dinero';
 import { Canal } from '../canal';
 import { Chips } from '../chips';
+import { Vacio } from '../vacio';
 
 /**
  * Pedidos: buscador y estado (specs/ux/03, «Pedidos»).
@@ -68,6 +69,7 @@ export default async function PedidosPage({
   const q = typeof params['q'] === 'string' ? params['q'].trim() : '';
   const estado = typeof params['estado'] === 'string' ? params['estado'] : '';
   const canal = typeof params['canal'] === 'string' ? params['canal'] : '';
+  const sinFiltro = q === '' && estado === '' && canal === '';
 
   /** Los filtros vivos, para que cada chip conserve los otros. */
   const otros: Record<string, string> = {};
@@ -132,11 +134,23 @@ export default async function PedidosPage({
       />
 
       {pedidos.length === 0 ? (
-        <p className="panel__vacio">
-          {q === '' && estado === '' && canal === ''
-            ? 'Todavía no hay pedidos.'
-            : 'Ningún pedido coincide. Prueba con el teléfono, que casi siempre se acierta.'}
-        </p>
+        // Un filtro que no devuelve nada SÍ tiene acción: quitarlo. Sin ese
+        // botón, la salida es borrar tres campos a mano y el operador acaba
+        // concluyendo que el pedido se perdió.
+        sinFiltro ? (
+          <Vacio titulo="Todavía no hay pedidos" enOrden>
+            <p>
+              Aparecerán aquí en cuanto entre el primero, de cualquier canal.
+            </p>
+          </Vacio>
+        ) : (
+          <Vacio
+            titulo="Ningún pedido coincide"
+            accion={{ href: '/panel/pedidos', rotulo: 'Quitar los filtros' }}
+          >
+            <p>Prueba con el teléfono, que casi siempre se acierta.</p>
+          </Vacio>
+        )
       ) : (
         <div className="tabla-envoltorio">
           <table>

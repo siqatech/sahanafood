@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { panel, type ProductoDelPanel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
+import { Vacio } from '../vacio';
 import {
   FormularioFoto,
   FormularioNuevoProducto,
@@ -60,10 +61,15 @@ export default async function CatalogoPage({
     return (
       <>
         <h1>Carta</h1>
-        <p className="panel__vacio">
-          Todavía no tienes ninguna marca, y la carta cuelga de una marca.
-          Empieza por <Link href="/panel/negocio">tu negocio</Link>.
-        </p>
+        <Vacio
+          titulo="Todavía no tienes ninguna marca"
+          accion={{ href: '/panel/negocio', rotulo: 'Ir a tu negocio' }}
+        >
+          <p>
+            La carta cuelga de una marca, así que ese es el primer paso. Un
+            local puede vender varias marcas desde la misma cocina.
+          </p>
+        </Vacio>
       </>
     );
   }
@@ -97,11 +103,16 @@ export default async function CatalogoPage({
       ) : null}
 
       {productos.length === 0 ? (
-        <p className="panel__vacio">
-          Aún no hay platos en esta carta. Crea el primero aquí abajo — o sube
-          la carta entera de golpe con el archivo de configuración (
-          <code>docs/34-puesta-en-marcha.md</code> §5).
-        </p>
+        <Vacio
+          titulo="Aún no hay platos en esta carta"
+          accion={{ href: '#anadir', rotulo: 'Crear el primer plato' }}
+        >
+          <p>
+            O sube la carta entera de golpe con el archivo de configuración (
+            <code>docs/34-puesta-en-marcha.md</code> §5), que es lo que conviene
+            si ya la tienes en una hoja de cálculo.
+          </p>
+        </Vacio>
       ) : (
         <div className="tabla-envoltorio">
           <table>
@@ -179,7 +190,7 @@ export default async function CatalogoPage({
         </div>
       )}
 
-      <h2>Añadir</h2>
+      <h2 id="anadir">Añadir</h2>
       <FormularioNuevoProducto brandId={marca.id} />
 
       <p className="tarjeta__pie">

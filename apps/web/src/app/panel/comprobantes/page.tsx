@@ -239,7 +239,14 @@ export default async function ComprobantesPage({
                     {/* Anular exige `billing.void`, que el cajero no tiene: un
                         comprobante ya declarado lo revierte quien responde de
                         él ante SUNAT. Si falta el permiso, la API lo dice. */}
-                    <FormularioAnulacion id={d.id} />
+                    {/* Un aceptado siempre tiene número, pero el tipo lo
+                        admite nulo: mejor un título genérico que un
+                        «Anular null» en el diálogo de una acción que no se
+                        puede deshacer. */}
+                    <FormularioAnulacion
+                      id={d.id}
+                      numero={d.number ?? 'este comprobante'}
+                    />
                   </td>
                 </tr>
               ))}

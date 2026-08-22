@@ -1245,3 +1245,55 @@ violaciones de frontera (463 módulos).
 **Próxima acción de Claude Code:** los tres componentes que `docs/25` da por
 obligatorios y no existen en ninguna pantalla — estado vacío con acción, aviso
 con deshacer de 8 s, y confirmación destructiva que exige motivo escrito.
+
+---
+
+## Los tres componentes que docs/25 daba por obligatorios (2026-08-22)
+
+Estaban en la spec desde el principio y no existían en ninguna pantalla.
+
+**1. Estado vacío con acción** (`vacio.tsx`). El panel tenía unos treinta
+`<p class="panel__vacio">` con una frase suelta. La frase estaba bien escrita;
+el problema es que **un panel recién abierto es casi todo estados vacíos**, y
+treinta callejones sin salida seguidos hacen cerrar la pestaña. La distinción
+que decide si esto ayuda o estorba: «aún no tienes platos» es trabajo pendiente
+y lleva botón; **«nadie debe efectivo» es que todo está en orden y no lo lleva**
+—ponerle uno inventaría trabajo donde no lo hay—. Por eso `accion` es opcional
+y omitirla es una decisión, con su variante visual `enOrden`.
+
+**2. Aviso con deshacer de 8 s** (`aviso.tsx` + `aviso-reglas.ts`). Cambiar un
+precio se hace veinte veces seguidas cuando sube el pollo; pedir «¿seguro?» en
+cada una entrena a pulsar «sí» sin leer y a la vigésima ya no protege de nada.
+Tres decisiones que no son evidentes:
+
+· **El error NO caduca**, solo el «hecho». Un aviso de error que desaparece a
+  los ocho segundos deja al operador creyendo que guardó cuando no guardó — en
+  una carta, eso es cobrar el precio viejo toda la tarde.
+· **Deshacer es una acción de servidor**, no un `setState`. Lo revertido ya está
+  en la base y puede que ya lo viera un cliente.
+· **Lo deshecho no se vuelve a deshacer.** El formulario manda `esDeshacer=1` y
+  la acción omite entonces su propio `deshacer`. Sin eso quedan dos avisos que
+  se revierten mutuamente y nadie sabe en qué precio quedó el plato.
+
+Las reglas viven en un archivo aparte **con pruebas** porque son lo único que
+puede estar mal sin verse: en el instante cero, un aviso que caduca a los ocho
+segundos y uno que no caduca nunca son idénticos. No se añadió `jsdom` ni
+`@testing-library`: `vitest.config.ts` de `apps/web` ya explica por qué los
+componentes se prueban en el navegador y no con un renderizador falso.
+
+**3. Confirmación destructiva con motivo escrito** (`confirmar.tsx`), en la
+anulación de comprobantes — **la única acción irreversible del panel**: la nota
+de crédito se declara al OSE y de ahí no vuelve. El botón que ejecuta está
+apagado hasta que hay motivo; si estuviera activo, esto y un «¿seguro?» serían
+lo mismo. Sin JavaScript se pinta el formulario en línea de siempre, que ya
+exigía el motivo en el servidor: se pierde el diálogo, no la protección.
+
+El reparto entre los dos últimos es deliberado: **reversible → deshacer,
+irreversible → confirmar**. Usar el mismo para todo es lo que convierte los
+diálogos en ruido.
+
+Aplicado a la carta (precios, pausas y fotos), a la portada, a la torre de
+control, a reparto y a pedidos. Los vacíos que quedan con la prosa de antes son
+resultados de filtro neutros, sin más acción que cambiar el filtro.
+
+Verde: **751 API · 447 dominio · 35 web · 23 POS · 53 navegador**.

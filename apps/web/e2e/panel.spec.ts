@@ -197,6 +197,112 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.getByText(/https/).first()).toBeVisible();
   });
 
+  test('DESHACER un precio lo devuelve DE VERDAD, no solo en pantalla', async ({
+    page,
+  }) => {
+    // docs/25: «toast con deshacer (8 s) donde sea reversible». Lo que se
+    // prueba es lo único que puede fallar sin verse: que deshacer sea una
+    // acción de servidor y no un `setState`. Un deshacer que solo repinta el
+    // campo deja al dueño creyendo que el precio viejo volvió mientras la
+    // tienda sigue cobrando el nuevo.
+    await entrar(page);
+    await page.goto('/panel/catalogo');
+    const fila = page
+      .locator('tbody tr')
+      .filter({ hasText: 'Pollo a la brasa entero' })
+      .first();
+    const original = await fila.getByLabel('Precio en web').inputValue();
+
+    await fila.getByLabel('Precio en web').fill('99.90');
+    await fila
+      .getByRole('button', { name: 'Guardar el precio de web' })
+      .click();
+
+    const deshacer = page.getByRole('button', { name: /Deshacer/ }).first();
+    await expect(deshacer).toBeVisible();
+    await deshacer.click();
+
+    // LA COMPROBACIÓN QUE IMPORTA: recargar y que el precio viejo esté puesto.
+    await page.reload();
+    await expect(
+      page
+        .locator('tbody tr')
+        .filter({ hasText: 'Pollo a la brasa entero' })
+        .first()
+        .getByLabel('Precio en web'),
+    ).toHaveValue(original);
+  });
+
+  test('EL AVISO DE ERROR no se va solo; el de hecho sí caduca', async ({
+    page,
+  }) => {
+    // La asimetría de docs/25. Un error que desaparece a los ocho segundos
+    // deja al operador creyendo que guardó cuando no guardó.
+    await entrar(page);
+    await page.goto('/panel/catalogo');
+    const fila = page
+      .locator('tbody tr')
+      .filter({ hasText: 'Pollo a la brasa entero' })
+      .first();
+    await fila.getByLabel('Precio en web').fill('no es un precio');
+    await fila
+      .getByRole('button', { name: 'Guardar el precio de web' })
+      .click();
+
+    const error = page.locator('.aviso--error').first();
+    await expect(error).toBeVisible();
+    await page.waitForTimeout(9000);
+    await expect(error).toBeVisible();
+    // Y se puede cerrar a mano, que es la única salida que debe tener.
+    await error.getByRole('button', { name: 'Cerrar el aviso' }).click();
+    await expect(error).toHaveCount(0);
+  });
+
+  test('ANULAR UN COMPROBANTE exige escribir el motivo, no solo confirmar', async ({
+    page,
+  }) => {
+    // docs/25: «modal de confirmación destructiva (escribir motivo, no solo
+    // "¿seguro?")». Es LA acción irreversible del panel: la nota de crédito
+    // se declara al OSE y de ahí no vuelve.
+    await entrar(page);
+    await page.goto('/panel/comprobantes');
+    const anular = page
+      .getByRole('button', { name: 'Nota de crédito' })
+      .first();
+    await expect(anular).toBeVisible();
+    await anular.click();
+
+    const dialogo = page.locator('dialog.confirmar');
+    await expect(dialogo).toBeVisible();
+    // El botón que ejecuta está APAGADO hasta que hay motivo: si estuviera
+    // activo, «¿seguro?» y esto serían lo mismo.
+    const confirmar = dialogo.getByRole('button', {
+      name: 'Emitir la nota de crédito',
+    });
+    await expect(confirmar).toBeDisabled();
+
+    await dialogo.getByLabel('¿Por qué se anula?').fill('RUC mal digitado');
+    await expect(confirmar).toBeEnabled();
+
+    // Y cancelar no ejecuta nada.
+    await dialogo.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(dialogo).not.toBeVisible();
+  });
+
+  test('UN VACÍO CON TRABAJO PENDIENTE ofrece el siguiente paso', async ({
+    page,
+  }) => {
+    // docs/25, principio 2: «todo vacío dice qué hacer a continuación con un
+    // botón». Un panel recién abierto es casi todo estados vacíos; treinta
+    // callejones sin salida seguidos hacen cerrar la pestaña.
+    await entrar(page);
+    await page.goto('/panel/pedidos?q=no-existe-este-telefono');
+    const vacio = page.locator('.vacio').first();
+    await expect(vacio).toBeVisible();
+    await vacio.getByRole('link', { name: 'Quitar los filtros' }).click();
+    await expect(page).toHaveURL(/\/panel\/pedidos$/);
+  });
+
   test('EL NEGOCIO se lee, y dice claramente lo que todavía no se puede hacer aquí', async ({
     page,
   }) => {

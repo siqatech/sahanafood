@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import { panel, type SerieDeVentas } from '../../lib/panel-api';
+import { Vacio } from './vacio';
 import { cargar } from '../../lib/panel-guard';
 import { formatDecimal } from '../../lib/money';
 import { CurvaDeVentas } from './curva';
@@ -98,10 +98,11 @@ export default async function PanelHome({
 
       <h2>Por marca</h2>
       {hoy.byBrand.length === 0 ? (
-        <p className="panel__vacio">
-          Todavía no hay ventas hoy. Cuando entre el primer pedido aparecerá
-          aquí, repartido por marca.
-        </p>
+        <Vacio titulo="Todavía no hay ventas hoy" enOrden>
+          <p>
+            Cuando entre el primer pedido aparecerá aquí, repartido por marca.
+          </p>
+        </Vacio>
       ) : (
         <div className="tabla-envoltorio">
           <table>
@@ -127,10 +128,15 @@ export default async function PanelHome({
 
       <h2>Por canal</h2>
       {hoy.byChannel.length === 0 ? (
-        <p className="panel__vacio">
-          Nada todavía. Si aún no has publicado tu carta, empieza por{' '}
-          <Link href="/panel/catalogo">la carta</Link>.
-        </p>
+        <Vacio
+          titulo="Nada todavía"
+          accion={{ href: '/panel/catalogo', rotulo: 'Ir a la carta' }}
+        >
+          <p>
+            Sin carta publicada no hay nada que vender, así que ese suele ser el
+            paso que falta.
+          </p>
+        </Vacio>
       ) : (
         <div className="tabla-envoltorio">
           <table>
