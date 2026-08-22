@@ -488,6 +488,86 @@ tr:last-child td {
   text-align: left;
 }
 
+/* --- Checklist de salida en vivo (docs/26 §5) -------------------------- */
+
+.arranque {
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  /* Barra de acento a la izquierda: es lo primero de la portada y tiene que
+     leerse como «esto es para ti», no como una tabla más. */
+  border-left: 3px solid var(--panel-acento);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.arranque__titulo {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.arranque__barra {
+  height: 6px;
+  margin: 12px 0 4px;
+  border-radius: 3px;
+  background: var(--panel-fondo);
+  overflow: hidden;
+}
+
+.arranque__relleno {
+  height: 100%;
+  background: var(--panel-acento);
+  border-radius: 3px;
+}
+
+.arranque__pasos {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.arranque__paso {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.arranque__marca {
+  flex: none;
+  width: 1.1em;
+  font-weight: 700;
+  color: var(--panel-suave);
+}
+
+.arranque__paso--hecho .arranque__marca {
+  color: var(--panel-sube);
+}
+
+/* Lo hecho se atenúa pero NO se tacha: tachado se lee como «cancelado», y
+   estos pasos no se cancelan, se completan. */
+.arranque__paso--hecho .arranque__texto {
+  color: var(--panel-suave);
+}
+
+.arranque__texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.arranque__texto .tarjeta__pie {
+  margin: 0;
+}
+
+.arranque__opcional {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
 /* --- Estado vacío con acción (docs/25, principio 2) --------------------- */
 
 .vacio {

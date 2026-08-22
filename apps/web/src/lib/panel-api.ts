@@ -629,6 +629,30 @@ export interface SaldoDeRepartidor {
 }
 
 /** Una línea del histórico (spec 17, docs/14#auditoria). */
+export interface PasoDeChecklist {
+  id: string;
+  titulo: string;
+  porQue: string;
+  hecho: boolean;
+  donde: string;
+  opcional: boolean;
+}
+
+export interface ChecklistDeSalida {
+  pasos: PasoDeChecklist[];
+  hechos: number;
+  /**
+   * Cuántos pasos OBLIGATORIOS hay.
+   *
+   * Se llama así y no `total` porque la regla de ESLint que protege el dinero
+   * mira los nombres de campo, y con razón: `total: number` es exactamente el
+   * error que esa regla existe para impedir. Aquí es una cuenta de pasos, no un
+   * importe — pero un nombre que obliga a mirar dos veces es un mal nombre.
+   */
+  obligatorios: number;
+  listoParaAbrir: boolean;
+}
+
 export interface LineaDeAuditoria {
   id: string;
   occurredAt: string;
@@ -984,6 +1008,10 @@ export const panel = {
       (r) => r.items,
     );
   },
+
+  /** La checklist de salida en vivo (docs/26 §5). */
+  checklist: (): Promise<ChecklistDeSalida> =>
+    llamar<ChecklistDeSalida>('/onboarding/checklist'),
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),

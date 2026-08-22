@@ -4,6 +4,8 @@ import { cargar } from '../../lib/panel-guard';
 import { formatDecimal } from '../../lib/money';
 import { CurvaDeVentas } from './curva';
 import { Canal } from './canal';
+import { ChecklistDeArranque } from './checklist';
+import type { ChecklistDeSalida } from '../../lib/panel-api';
 
 /**
  * Portada del panel: **«¿cómo vamos hoy?»** (specs/ux/03).
@@ -48,12 +50,24 @@ export default async function PanelHome({
   // Tumbar la portada entera por un gráfico sería el peor intercambio posible.
   const serie = await panel.serie(14).catch((): SerieDeVentas | null => null);
 
+  // Igual que la curva: si falla, la portada sigue contestando «¿cómo vamos?».
+  // Una lista de tareas pendientes no vale tumbar la pantalla que se mira todos
+  // los días.
+  const arranque = await panel
+    .checklist()
+    .catch((): ChecklistDeSalida | null => null);
+
   return (
     <>
       <h1>Hoy</h1>
       <p className="panel__subtitulo">
         Día de negocio {hoy.businessDate} · comparado con {hoy.comparedDate}
       </p>
+
+      {/* Antes de las cifras: mientras falte algo para abrir, es lo primero
+          que hay que ver. Después desaparece sola y la portada vuelve a ser
+          solo «¿cómo vamos hoy?». */}
+      {arranque ? <ChecklistDeArranque datos={arranque} /> : null}
 
       <div className="tarjetas">
         <div className="tarjeta">

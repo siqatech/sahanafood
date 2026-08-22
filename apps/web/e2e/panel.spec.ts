@@ -79,6 +79,44 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
   });
 
+  test('LA CHECKLIST DE ARRANQUE dice lo que falta, y no lo que ya está', async ({
+    page,
+  }) => {
+    // docs/26: «el churn temprano de POS se decide en el onboarding, no en las
+    // features». La semilla demo es un negocio a medio arrancar —local, carta
+    // con precios, PIN, caja y comprobantes aceptados, pero NINGUNA comanda
+    // terminada en cocina—, así que es el caso exacto para el que existe esta
+    // lista.
+    await entrar(page);
+    const arranque = page.locator('.arranque');
+    await expect(arranque).toBeVisible();
+
+    // Lo pendiente va PRIMERO: leer cuatro cosas hechas antes de encontrar la
+    // que falta es lo contrario de ayudar. Se comprueba que el primero está
+    // pendiente, no CUÁL es — cuál depende de qué trae la semilla, y atarlo a
+    // eso convertiría esta prueba en una prueba de la semilla.
+    const primero = arranque.locator('.arranque__paso').first();
+    await expect(primero).not.toHaveClass(/arranque__paso--hecho/);
+
+    // Y lo pendiente es un ENLACE a donde se resuelve, no una frase suelta.
+    const comanda = arranque.getByRole('link', {
+      name: 'Manda una comanda a cocina',
+    });
+    await expect(comanda).toBeVisible();
+
+    // Y dice POR QUÉ, no «paso 6 de 6».
+    await expect(arranque).toContainText('pedido → cocina → listo');
+
+    // Lo ya hecho aparece marcado, no escondido: enseña que se avanzó.
+    await expect(
+      arranque.locator('.arranque__paso--hecho').first(),
+    ).toBeVisible();
+
+    // El enlace lleva de verdad a donde dice.
+    await comanda.click();
+    await expect(page).toHaveURL(/\/panel\/operaciones/);
+  });
+
   test('LA CARTA enseña lo que la tienda oculta y deja cambiar un precio', async ({
     page,
   }) => {
@@ -1139,7 +1177,11 @@ test.describe('Panel de gestión en navegador', () => {
     // solo se podían fijar por API: el dueño veía su negocio dejar de vender a
     // las ocho y media sin ningún sitio donde decir «aguanta hasta cuarenta».
     await entrar(page);
-    await page.getByRole('link', { name: 'Cocina' }).click();
+    // `exact` TAMBIÉN aquí, no solo en el encabezado: buscar por nombre es por
+    // subcadena y sin distinguir mayúsculas, así que «Cocina» casaba también
+    // con el enlace «Manda una comanda a cocina» de la checklist de arranque
+    // en cuanto esa apareció en la portada.
+    await page.getByRole('link', { name: 'Cocina', exact: true }).click();
     // `exact`: la cocina del negocio se llama «Cocina Central» y su h2 casaría
     // con el mismo texto.
     await expect(

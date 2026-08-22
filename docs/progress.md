@@ -1485,3 +1485,59 @@ vitest no comprueba tipos ni ESLint es consciente de ellos. Corregido aquí. La
 lección es del orden: el typecheck va después del último cambio, no antes.
 
 Verde: **756 API · 457 dominio · 5 ui · 35 web · 23 POS · 58 navegador**.
+
+---
+
+## La checklist de salida en vivo (2026-08-22)
+
+`docs/26` §5 y `specs/ux/03` la piden desde el principio —«checklist persistente
+hasta completarse»— y no existía. docs/26 lo dice sin rodeos: **«el churn
+temprano de POS se decide en el onboarding, no en las features»**, y la métrica
+del proyecto es *alta → primera venta real en menos de un día*. Hasta ahora ese
+camino solo existía en un documento: el dueño que entraba por primera vez veía
+catorce pantallas vacías y ninguna le decía cuál era la siguiente.
+
+**Se CALCULA, no se guarda.** No hay tabla de progreso, y es la decisión que
+sostiene todo lo demás: un estado guardado se desincroniza del mundo — alguien
+borra el único usuario con PIN y la checklist sigue diciendo que está hecho, y
+el dueño abre el local convencido de algo que ya no es cierto. Seis `EXISTS` en
+una sola transacción sobre lo que ya existe. Hay una prueba dedicada a esto:
+crea el local, comprueba que el paso se marca, **lo borra**, y comprueba que
+vuelve a estar pendiente.
+
+Detalles con motivo:
+
+· **«Comprobante ACEPTADO», no emitido.** Uno rechazado demuestra que la
+  conexión con el OSE funciona a medias, que es la peor forma de descubrirlo el
+  primer día de venta real.
+· **«Carta CON PRECIO».** Un producto sin precio no se vende en ningún canal
+  (RN-CAT-01): una carta sin precios es una carta que no existe para el cliente.
+· **El opcional no cuenta para el total.** Si la receta contara, un negocio
+  listo para abrir vería «6 de 7» y se quedaría buscando qué le falta.
+· **Cada paso dice POR QUÉ**, no «paso 3 de 6». «Crea un cajero con su PIN» no
+  convence; «sin PIN, un descuadre no tiene a quién preguntarle» sí.
+· **Lo pendiente va primero** y lo hecho se atenúa pero **no se tacha**: tachado
+  se lee como «cancelado», y estos pasos no se cancelan, se completan.
+· **La lista desaparece sola** al completarse, y no se puede cerrar antes — si
+  se pudiera, se cerraría el primer día y la primera venta llegaría sin
+  comprobante.
+
+### Dos cosas que aprendí por las malas
+
+· **La regla de ESLint que protege el dinero saltó con `total: number`.** Era un
+  falso positivo —una cuenta de pasos— pero la respuesta correcta no era
+  silenciar la regla: era **renombrar el campo a `obligatorios`**. `total:
+  number` es exactamente el error que esa regla existe para impedir, y un nombre
+  que obliga a mirar dos veces es un mal nombre.
+· **Cuarta vez que muerde la coincidencia por subcadena de Playwright.** El
+  enlace nuevo «Manda una comanda a cocina» casaba con el localizador
+  `{ name: 'Cocina' }` de la navegación, y rompió una prueba que no tenía nada
+  que ver. Ya lleva `exact: true`.
+
+De paso, la checklist dijo algo útil sobre la propia semilla demo: es un negocio
+**a medio arrancar** —4 de 6—, sin cajero con PIN ni ninguna comanda terminada
+en cocina. La prueba de navegador afirma eso, que es la verdad, en vez de
+afirmar lo que me habría gustado que fuera.
+
+Verde: **763 API · 457 dominio · 5 ui · 35 web · 23 POS · 59 navegador**, 484
+módulos sin violaciones de frontera.

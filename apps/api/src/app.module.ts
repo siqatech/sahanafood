@@ -21,6 +21,7 @@ import { BillingModule } from './modules/billing/index.js';
 import { PaymentsModule } from './modules/payments/index.js';
 import { CommonModule } from './common/common.module.js';
 import { MessagingModule } from './modules/messaging/index.js';
+import { OnboardingModule } from './modules/onboarding/index.js';
 import { AnalyticsModule } from './modules/analytics/index.js';
 import { CashModule } from './modules/cash/index.js';
 import { StorefrontModule } from './modules/storefront/index.js';
@@ -71,6 +72,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     BillingModule,
     PaymentsModule,
     MessagingModule,
+    OnboardingModule,
     AnalyticsModule,
     CashModule,
     StorefrontModule,
