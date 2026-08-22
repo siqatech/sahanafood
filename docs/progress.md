@@ -1192,3 +1192,56 @@ seguimiento salga solo por WhatsApp al recoger el pedido (la plantilla existe;
 hoy hay que pegarlo a mano). Siguen pendientes de decisión del propietario
 **PA-09** (pagos mixtos), **PA-10** (salón y QR) y **PA-11** (stock reservado),
 y dependen de F6 la liquidación de propinas y el P&L con gastos.
+
+---
+
+## Fotos en la carta (2026-08-22)
+
+**El mismo patrón, por sexta vez: un campo que existe en todas partes menos donde
+se usa.** `image_url` está en la tabla desde la migración 0008, el upsert de
+catálogo lo escribe, la tienda lo pinta en la cuadrícula de platos y en la ficha
+del producto — y el panel no tenía **ningún sitio** donde ponerlo. La única forma
+de que un plato tuviera foto era subir la carta entera por archivo o escribir
+SQL a mano. Una carta sin fotos vende bastante menos, y el dueño no tenía cómo
+arreglarlo.
+
+**Por qué un endpoint aparte y no un campo más del formulario.** `POST
+/catalog/products` es un upsert que **reescribe todas las columnas**:
+`description = $6`, `image_url = $7`, `allergens = $8::jsonb`. La lista que
+consume el panel no devuelve ni la descripción ni los alérgenos, así que
+reenviar el producto desde esa pantalla para cambiarle la foto habría dejado los
+dos campos en blanco, en silencio y sin un solo error a la vista. **Un producto
+que pierde sus alérgenos es un problema de salud, no de datos.** De ahí
+`POST /catalog/products/:id/image`, estrecho como `pause` y `resume`, con su
+prueba de que la descripción y los alérgenos siguen ahí después de tocar la foto.
+
+**Se guarda una dirección, no un archivo.** Subir imágenes pide almacenamiento
+de objetos, recorte y límites de tamaño, y nada de eso está decidido. Pegar la
+URL de la foto que el dueño ya tiene resuelve el problema hoy sin comprometer a
+medias una arquitectura de archivos.
+
+**Solo `https`.** Una foto servida por `http` hace que el navegador marque la
+tienda entera como insegura, o bloquee la imagen y deje el hueco. El dueño vería
+su tienda «rota» a una pantalla de distancia de la causa, así que el «no» se da
+al pegarla, con el motivo escrito.
+
+### Dos hallazgos de las pruebas de navegador
+
+· **Localizar por posición caduca.** Las dos pruebas de precio hacían
+  `getByRole('button', {name:'Guardar'}).nth(1)`, dando por hecho que «Tienda
+  web» sería siempre la segunda columna. Añadir la columna de foto las rompió.
+  Ahora cada botón de guardar lleva su nombre accesible —`Guardar el precio de
+  web`— y las pruebas van por nombre. Es además lo correcto de accesibilidad:
+  cuatro botones «Guardar» seguidos en la misma fila no se distinguen con un
+  lector de pantalla.
+· **En Playwright, buscar por nombre es por SUBCADENA.** El primer intento llamó
+  al botón `Guardar precio en web`, que contiene la etiqueta del campo —`Precio
+  en web`— y hacía que `getByLabel` encontrara los dos. El nombre de un control
+  no puede contener el de su vecino.
+
+Verde: **751 API · 447 dominio · 25 web · 23 POS · 49 navegador**, sin
+violaciones de frontera (463 módulos).
+
+**Próxima acción de Claude Code:** los tres componentes que `docs/25` da por
+obligatorios y no existen en ninguna pantalla — estado vacío con acción, aviso
+con deshacer de 8 s, y confirmación destructiva que exige motivo escrito.

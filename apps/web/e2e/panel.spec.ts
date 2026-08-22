@@ -105,7 +105,10 @@ test.describe('Panel de gestión en navegador', () => {
           r.request().method() === 'POST' &&
           r.request().isNavigationRequest() === false,
       ),
-      fila.getByRole('button', { name: 'Guardar' }).nth(1).click(),
+      // Por NOMBRE, no por posición: `.nth(1)` daba por hecho que la columna
+      // «Tienda web» sería siempre la segunda de la fila, y dejó de serlo en
+      // cuanto la carta ganó una columna más.
+      fila.getByRole('button', { name: 'Guardar el precio de web' }).click(),
     ]);
 
     await page.reload();
@@ -137,8 +140,61 @@ test.describe('Panel de gestión en navegador', () => {
       .filter({ hasText: 'Pollo a la brasa entero' })
       .first();
     await fila.getByLabel('Precio en web').fill('S/ 61,50 soles');
-    await fila.getByRole('button', { name: 'Guardar' }).nth(1).click();
+    await fila
+      .getByRole('button', { name: 'Guardar el precio de web' })
+      .click();
     await expect(page.getByText(/no es un precio/i)).toBeVisible();
+  });
+
+  test('LA FOTO de un plato se pone desde la carta y llega a la tienda', async ({
+    page,
+  }) => {
+    // El campo existía en la base desde la migración 0008, la API sabía
+    // leerlo y la tienda sabía pintarlo — pero el panel no tenía dónde
+    // ponerlo. Una carta sin fotos vende bastante menos, y el dueño no tenía
+    // ninguna forma de arreglarlo sin tocar SQL.
+    await entrar(page);
+    await page.goto('/panel/catalogo');
+    const fila = page
+      .locator('tbody tr')
+      .filter({ hasText: 'Pollo a la brasa entero' })
+      .first();
+
+    await fila
+      .getByLabel(/Dirección de la foto/)
+      .fill('https://fotos.ejemplo.pe/pollo.jpg');
+    await fila.getByRole('button', { name: 'Guardar foto' }).click();
+    await expect(page.getByText('Foto guardada.')).toBeVisible();
+
+    // La miniatura es el control: enseña lo que verá el cliente, que es la
+    // única forma de notar que la dirección pegada apunta a otra cosa.
+    await expect(fila.locator('img.foto-campo__miniatura')).toHaveAttribute(
+      'src',
+      'https://fotos.ejemplo.pe/pollo.jpg',
+    );
+
+    // Y se puede deshacer, que es lo que hace falta tras pegar una URL mala.
+    await fila.getByRole('button', { name: 'Quitar foto' }).click();
+    await expect(page.getByText('Foto quitada.')).toBeVisible();
+    await expect(fila.locator('.foto-campo__hueco')).toBeVisible();
+  });
+
+  test('UNA FOTO POR HTTP se rechaza con un motivo, no rompe la tienda', async ({
+    page,
+  }) => {
+    // Servida por http, el navegador marca la tienda entera como insegura o
+    // bloquea la imagen. El dueño vería su tienda «rota» a una pantalla de
+    // distancia de la causa, así que el «no» tiene que darse aquí.
+    await entrar(page);
+    await page.goto('/panel/catalogo');
+    const fila = page.locator('tbody tr').first();
+    // `type="url"` valida el formato en el navegador; lo que se prueba aquí es
+    // la regla del servidor, que es la que de verdad manda.
+    await fila
+      .getByLabel(/Dirección de la foto/)
+      .fill('http://fotos.ejemplo.pe/pollo.jpg');
+    await fila.getByRole('button', { name: 'Guardar foto' }).click();
+    await expect(page.getByText(/https/).first()).toBeVisible();
   });
 
   test('EL NEGOCIO se lee, y dice claramente lo que todavía no se puede hacer aquí', async ({

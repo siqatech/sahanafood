@@ -104,6 +104,8 @@ export interface AdminProductView {
   active: boolean;
   isCombo: boolean;
   prepMinutes: number;
+  /** La foto, si la tiene. El panel necesita saber cuáles faltan. */
+  imageUrl: string | null;
   rowVersion: number;
   prices: Array<{
     channel: string | null;
@@ -769,10 +771,11 @@ export class CatalogAdminService {
         active: boolean;
         is_combo: boolean;
         prep_minutes: number;
+        image_url: string | null;
         row_version: number;
       }>(
         `SELECT p.id, p.category_id, c.name AS category_name, p.sku, p.name,
-                p.active, p.is_combo, p.prep_minutes, p.row_version
+                p.active, p.is_combo, p.prep_minutes, p.image_url, p.row_version
            FROM cat_products p
            LEFT JOIN cat_categories c ON c.id = p.category_id
           WHERE p.brand_id = $1
@@ -835,6 +838,7 @@ export class CatalogAdminService {
         active: p.active,
         isCombo: p.is_combo,
         prepMinutes: p.prep_minutes,
+        imageUrl: p.image_url,
         rowVersion: p.row_version,
         prices: preciosPor.get(p.id) ?? [],
         pauses: pausasPor.get(p.id) ?? [],
@@ -935,6 +939,84 @@ export class CatalogAdminService {
       [brandId],
     );
     if (!rows[0]) throw new NotFoundError('Marca no encontrada.');
+  }
+
+  /**
+   * Pone o quita la foto de un producto.
+   *
+   * Endpoint ESTRECHO a propósito, como `pause` y `resume`. El `upsert` general
+   * reescribe todos los campos —`image_url = $7`, `description = $6`, …— así que
+   * usarlo para cambiar solo la foto obligaría a reenviar el producto entero, y
+   * la lista del panel **no devuelve** la descripción ni los alérgenos: cada vez
+   * que alguien cambiara una imagen borraría esos dos campos, sin ningún error a
+   * la vista. Un producto que pierde sus alérgenos es un problema de salud, no
+   * de datos.
+   *
+   * `null` quita la foto. Es la única forma de deshacer una URL mal pegada sin
+   * pasar por el upsert entero.
+   */
+  async setProductImage(
+    tenantId: string,
+    productId: string,
+    imageUrl: string | null,
+    options: { actorId?: string | undefined } = {},
+  ): Promise<{ id: string; imageUrl: string | null; rowVersion: number }> {
+    if (imageUrl !== null) {
+      let url: URL;
+      try {
+        url = new URL(imageUrl);
+      } catch {
+        throw new ValidationError(
+          'La foto tiene que ser una dirección web completa, empezando por https://.',
+        );
+      }
+      // Solo `https`. Esa URL acaba en un `<img>` de la tienda de un cliente:
+      // servida por `http`, el navegador marca la página entera como insegura
+      // —o bloquea la imagen— y el dueño ve su tienda «rota» sin saber por qué.
+      if (url.protocol !== 'https:') {
+        throw new ValidationError(
+          'La foto tiene que servirse por https:// — con http el navegador la bloquea.',
+        );
+      }
+      if (imageUrl.length > 500) {
+        throw new ValidationError(
+          'La dirección de la foto es demasiado larga.',
+        );
+      }
+    }
+
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        id: string;
+        image_url: string | null;
+        row_version: number;
+      }>(
+        `UPDATE cat_products
+            SET image_url = $2, row_version = row_version + 1, updated_at = now()
+          WHERE id = $1
+          RETURNING id, image_url, row_version`,
+        [productId, imageUrl],
+      );
+      const fila = rows[0];
+      if (!fila) throw new NotFoundError('Producto no encontrado.');
+
+      await this.auditar(
+        ctx,
+        options.actorId,
+        imageUrl === null
+          ? 'catalog.product_image_removed'
+          : 'catalog.product_image_set',
+        'product',
+        fila.id,
+        imageUrl === null ? {} : { imageUrl },
+      );
+
+      return {
+        id: fila.id,
+        imageUrl: fila.image_url,
+        rowVersion: fila.row_version,
+      };
+    });
   }
 
   private async auditar(

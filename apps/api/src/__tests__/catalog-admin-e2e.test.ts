@@ -536,6 +536,81 @@ suite('Alta de la carta', () => {
     expect(porSku.get('PAUSADO')!.pauses[0].channel).toBe('web');
   });
 
+  it('LA FOTO se pone y se quita sin tocar nada más del plato', async () => {
+    // El motivo de que esto sea un endpoint aparte y no un campo del upsert:
+    // el upsert reescribe TODAS las columnas, y la lista del panel no devuelve
+    // ni la descripción ni los alérgenos. Cambiar la foto por ahí los dejaría
+    // en blanco sin un solo error a la vista. Un plato que pierde sus alérgenos
+    // es un problema de salud, no de datos.
+    const a = como(tokenA);
+    const creado = await a(http().post('/api/v1/catalog/products'))
+      .send({
+        brandId: marcaA,
+        sku: 'CON-FOTO',
+        name: 'Pollo a la brasa',
+        description: 'Un cuarto con papas y ensalada.',
+        allergens: ['gluten'],
+      })
+      .expect(201);
+    const id = creado.body.id as string;
+
+    const puesta = await a(http().post(`/api/v1/catalog/products/${id}/image`))
+      .send({ imageUrl: 'https://fotos.ejemplo.pe/pollo.jpg' })
+      .expect(201);
+    expect(puesta.body.imageUrl).toBe('https://fotos.ejemplo.pe/pollo.jpg');
+
+    // Lo que de verdad importa: la descripción y los alérgenos SIGUEN AHÍ.
+    const intactos = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{
+        description: string | null;
+        allergens: string[] | null;
+        image_url: string | null;
+      }>(
+        `SELECT description, allergens, image_url FROM cat_products WHERE id = $1`,
+        [id],
+      );
+      return rows[0]!;
+    });
+    expect(intactos.description).toBe('Un cuarto con papas y ensalada.');
+    expect(intactos.allergens).toEqual(['gluten']);
+    expect(intactos.image_url).toBe('https://fotos.ejemplo.pe/pollo.jpg');
+
+    // Y el panel la devuelve, que es lo que permite enseñar la miniatura.
+    const panel = await a(
+      http().get(`/api/v1/catalog/products?brand=${marcaA}`),
+    ).expect(200);
+    const fila = panel.body.find((p: { id: string }) => p.id === id);
+    expect(fila.imageUrl).toBe('https://fotos.ejemplo.pe/pollo.jpg');
+
+    // `null` la quita: es la única forma de deshacer una URL mal pegada.
+    const quitada = await a(http().post(`/api/v1/catalog/products/${id}/image`))
+      .send({ imageUrl: null })
+      .expect(201);
+    expect(quitada.body.imageUrl).toBeNull();
+  });
+
+  it('una foto por http se RECHAZA: rompería la tienda del cliente', async () => {
+    // Servida por http, el navegador marca la tienda entera como insegura —o
+    // bloquea la imagen y deja el hueco—. El dueño vería su tienda «rota» sin
+    // saber por qué, y el fallo estaría a una pantalla de distancia de la causa.
+    const creado = await como(tokenA)(http().post('/api/v1/catalog/products'))
+      .send({ brandId: marcaA, sku: 'FOTO-INSEGURA', name: 'Ceviche' })
+      .expect(201);
+
+    const mala = await como(tokenA)(
+      http().post(`/api/v1/catalog/products/${creado.body.id}/image`),
+    )
+      .send({ imageUrl: 'http://fotos.ejemplo.pe/ceviche.jpg' })
+      .expect(422);
+    expect(mala.body.detail).toContain('https');
+
+    await como(tokenA)(
+      http().post(`/api/v1/catalog/products/${creado.body.id}/image`),
+    )
+      .send({ imageUrl: 'no es una dirección' })
+      .expect(422);
+  });
+
   // ------------------------------------------------------ AISLAMIENTO
 
   it('AISLAMIENTO: B no puede colgar productos de la marca de A', async () => {
@@ -584,6 +659,35 @@ suite('Alta de la carta', () => {
       { channel: 'pos' },
     );
     expect(precio?.minorUnits).toBe(300_000);
+  });
+
+  it('AISLAMIENTO: B no puede cambiarle la foto a un producto de A', async () => {
+    // La comprobación obligatoria del endpoint nuevo. Es menos evidente que la
+    // del precio y no es menos grave: una foto ajena en la carta del rival
+    // —o una imagen cualquiera— es un defacement de la tienda de A.
+    const producto = await como(tokenA)(http().post('/api/v1/catalog/products'))
+      .send({ brandId: marcaA, sku: 'FOTO-AISLADA', name: 'Plato de A' })
+      .expect(201);
+    await como(tokenA)(
+      http().post(`/api/v1/catalog/products/${producto.body.id}/image`),
+    )
+      .send({ imageUrl: 'https://fotos.ejemplo.pe/de-a.jpg' })
+      .expect(201);
+
+    await como(tokenB)(
+      http().post(`/api/v1/catalog/products/${producto.body.id}/image`),
+    )
+      .send({ imageUrl: 'https://fotos.ejemplo.pe/de-b.jpg' })
+      .expect(404);
+
+    const sigue = await withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ image_url: string | null }>(
+        `SELECT image_url FROM cat_products WHERE id = $1`,
+        [producto.body.id],
+      );
+      return rows[0]!.image_url;
+    });
+    expect(sigue).toBe('https://fotos.ejemplo.pe/de-a.jpg');
   });
 
   it('AISLAMIENTO: dos tenants pueden usar el MISMO SKU', async () => {

@@ -106,6 +106,33 @@ export async function reanudar(
   return { ok: 'Producto reactivado.' };
 }
 
+/**
+ * La foto de un plato.
+ *
+ * Se guarda una **dirección**, no un archivo: subir imágenes pide almacenamiento
+ * de objetos, recorte y límites de tamaño, y nada de eso está decidido todavía
+ * (queda como pregunta abierta en docs/22). Mientras tanto, pegar la URL de la
+ * foto que el dueño ya tiene en su Instagram o en su Drive resuelve el 90 % del
+ * problema —la carta con fotos vende más— sin comprometer una arquitectura de
+ * archivos a medias.
+ */
+export async function ponerFoto(
+  _prev: EstadoCarta,
+  form: FormData,
+): Promise<EstadoCarta> {
+  const productId = String(form.get('productId') ?? '');
+  const url = String(form.get('imageUrl') ?? '').trim();
+  const quitar = form.get('quitar') !== null;
+
+  try {
+    await panel.ponerFoto(productId, quitar || url === '' ? null : url);
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/catalogo');
+  return { ok: quitar || url === '' ? 'Foto quitada.' : 'Foto guardada.' };
+}
+
 export async function crearProducto(
   _prev: EstadoCarta,
   form: FormData,

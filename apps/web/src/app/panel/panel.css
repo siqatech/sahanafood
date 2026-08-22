@@ -380,6 +380,54 @@ tr:last-child td {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- La foto de un plato ----------------------------------------------- */
+
+.panel form.foto-campo {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.panel form.foto-campo input[type='url'] {
+  /* Ancho fijo, no 100 %: dentro de una celda de tabla el 100 % ensancha la
+     columna hasta empujar los precios fuera de la pantalla. Una dirección larga
+     se lee desplazándose por el campo; la carta entera no cabe de otra forma. */
+  width: 190px;
+  padding: 9px 10px;
+  font-size: 0.9rem;
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  font-family: inherit;
+  background: #fff;
+}
+
+.foto-campo__miniatura,
+.foto-campo__hueco {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  flex: none;
+}
+
+.foto-campo__miniatura {
+  object-fit: cover;
+  border: 1px solid var(--panel-borde);
+  background: var(--panel-fondo);
+}
+
+.foto-campo__hueco {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: var(--panel-suave);
+  /* Borde discontinuo: el hueco tiene que leerse como «falta algo», no como una
+     foto que aún no ha cargado. */
+  border: 1px dashed var(--panel-borde);
+  background: var(--panel-fondo);
+}
+
 .panel button {
   width: auto;
   padding: 9px 14px;

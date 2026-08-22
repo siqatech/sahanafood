@@ -203,6 +203,7 @@ export interface ProductoDelPanel {
   active: boolean;
   isCombo: boolean;
   prepMinutes: number;
+  imageUrl: string | null;
   rowVersion: number;
   prices: Array<{
     channel: string | null;
@@ -818,6 +819,19 @@ export const panel = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  /**
+   * Pone o quita la foto. Endpoint estrecho: reenviar el producto entero por el
+   * upsert borraría descripción y alérgenos, que esta lista no trae.
+   */
+  ponerFoto: (
+    productId: string,
+    imageUrl: string | null,
+  ): Promise<{ id: string; imageUrl: string | null }> =>
+    llamar<{ id: string; imageUrl: string | null }>(
+      `/catalog/products/${productId}/image`,
+      { method: 'POST', body: JSON.stringify({ imageUrl }) },
+    ),
 
   pausar: (productId: string, channels: string[], reason: string) =>
     llamar(`/catalog/products/${productId}/pause`, {

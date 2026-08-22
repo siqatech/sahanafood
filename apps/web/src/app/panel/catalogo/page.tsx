@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { panel, type ProductoDelPanel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import {
+  FormularioFoto,
   FormularioNuevoProducto,
   FormularioPausa,
   FormularioPrecio,
@@ -107,6 +108,7 @@ export default async function CatalogoPage({
             <thead>
               <tr>
                 <th>Plato</th>
+                <th>Foto</th>
                 {CANALES.map((c) => (
                   <th key={c.id} className="dinero">
                     {c.rotulo}
@@ -135,6 +137,13 @@ export default async function CatalogoPage({
                           <span className="tarjeta__pie">{p.categoryName}</span>
                         </>
                       ) : null}
+                    </td>
+                    <td>
+                      <FormularioFoto
+                        productId={p.id}
+                        nombre={p.name}
+                        actual={p.imageUrl}
+                      />
                     </td>
                     {CANALES.map((c) => (
                       <td key={c.id} className="dinero">
@@ -176,6 +185,7 @@ export default async function CatalogoPage({
       <p className="tarjeta__pie">
         {productos.length === 1 ? '1 plato' : `${productos.length} platos`} ·{' '}
         {productos.filter((p) => p.prices.length === 0).length} sin precio ·{' '}
+        {productos.filter((p) => p.imageUrl === null).length} sin foto ·{' '}
         {productos.filter((p) => p.pauses.length > 0).length} pausados
       </p>
     </>

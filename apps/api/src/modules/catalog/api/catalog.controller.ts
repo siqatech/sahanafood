@@ -462,4 +462,30 @@ export class CatalogAdminController {
     });
     return { ok: true };
   }
+
+  /**
+   * La foto de un plato. Endpoint propio, no un campo más del upsert: la lista
+   * del panel no trae la descripción ni los alérgenos, así que reenviar el
+   * producto entero para cambiar la imagen los borraría en silencio.
+   *
+   * `imageUrl: null` quita la foto.
+   */
+  @Post('products/:id/image')
+  @RequirePermission('catalog.write')
+  image(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<{ id: string; imageUrl: string | null; rowVersion: number }> {
+    const input = parse(
+      z.object({ imageUrl: z.string().max(500).nullable() }),
+      body,
+    );
+    // La cadena vacía es lo que manda un formulario cuyo campo se ha vaciado:
+    // vale como «quítala», no como una URL inválida.
+    const url = input.imageUrl === '' ? null : input.imageUrl;
+    return this.admin.setProductImage(req.auth!.tid, id, url, {
+      actorId: req.auth!.sub,
+    });
+  }
 }

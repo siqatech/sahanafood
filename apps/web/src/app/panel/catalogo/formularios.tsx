@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import {
   crearProducto,
   pausar,
+  ponerFoto,
   ponerPrecio,
   reanudar,
   type EstadoCarta,
@@ -36,6 +37,7 @@ export function FormularioPrecio({
     ponerPrecio,
     {},
   );
+  const donde = channel === 'base' ? 'todos los canales' : channel;
   return (
     <>
       <form action={accion} className="en-linea">
@@ -46,9 +48,21 @@ export function FormularioPrecio({
           className="corto"
           defaultValue={actual}
           inputMode="decimal"
-          aria-label={`Precio en ${channel === 'base' ? 'todos los canales' : channel}`}
+          aria-label={`Precio en ${donde}`}
         />
-        <button type="submit" disabled={pendiente}>
+        {/* El botón dice «Guardar» —encima de su columna no hace falta más—
+            pero su nombre accesible dice CUÁL. En la fila de un plato hay
+            cuatro botones de guardar; con un lector de pantalla, cuatro
+            «Guardar» seguidos no se distinguen.
+
+            «Guardar el precio de web» y no «Guardar precio en web»: el nombre
+            del botón NO debe contener el del campo —«Precio en web»—, o
+            cualquier búsqueda por etiqueta encuentra los dos. */}
+        <button
+          type="submit"
+          disabled={pendiente}
+          aria-label={`Guardar el precio de ${donde}`}
+        >
           {pendiente ? '…' : 'Guardar'}
         </button>
       </form>
@@ -85,6 +99,79 @@ export function FormularioPausa({
         <button type="submit" className="discreto" disabled={pendiente}>
           {pausado ? 'Reactivar' : 'Pausar'}
         </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * La foto, en miniatura y con su campo.
+ *
+ * La miniatura es el propio control: enseña lo que el cliente verá, que es la
+ * única forma de detectar que la URL pegada apunta a otra cosa. Cuando no hay
+ * foto se ve un hueco con la palabra «sin foto» — un plato sin foto en la carta
+ * es trabajo pendiente, igual que uno sin precio, y ocultarlo lo eterniza.
+ */
+export function FormularioFoto({
+  productId,
+  nombre,
+  actual,
+}: {
+  productId: string;
+  nombre: string;
+  actual: string | null;
+}) {
+  const [estado, accion, pendiente] = useActionState<EstadoCarta, FormData>(
+    ponerFoto,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="foto-campo">
+        <input type="hidden" name="productId" value={productId} />
+        {actual ? (
+          // Sin `next/image`: la foto vive en el servidor del dueño, no en uno
+          // configurado en `next.config`, y el optimizador rechazaría el
+          // dominio. Es el mismo criterio que la tienda.
+          <img
+            className="foto-campo__miniatura"
+            src={actual}
+            alt={`Foto de ${nombre}`}
+            width={56}
+            height={56}
+            loading="lazy"
+          />
+        ) : (
+          <span className="foto-campo__hueco" aria-hidden="true">
+            sin foto
+          </span>
+        )}
+        <input
+          name="imageUrl"
+          type="url"
+          defaultValue={actual ?? ''}
+          placeholder="https://…"
+          aria-label={`Dirección de la foto de ${nombre}`}
+        />
+        {/* «Guardar foto» y no «Guardar» a secas: en la misma fila hay tres
+            botones de guardar precio, y tres controles con el mismo nombre
+            accesible son tres formas de pulsar el equivocado —con un lector de
+            pantalla, la única. */}
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Guardar foto'}
+        </button>
+        {actual ? (
+          <button
+            type="submit"
+            name="quitar"
+            value="1"
+            className="discreto"
+            disabled={pendiente}
+          >
+            Quitar foto
+          </button>
+        ) : null}
       </form>
       <Resultado estado={estado} />
     </>
