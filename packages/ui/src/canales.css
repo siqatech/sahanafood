@@ -1,0 +1,128 @@
+/*
+ * El color por canal (docs/25 §Tokens).
+ *
+ * > color por canal (propio=verde marca, Rappi=naranja, PedidosYa=rojo,
+ * > WhatsApp=verde WA, POS=azul) usados consistentemente en tarjetas, filtros y
+ * > reportes — el operador aprende a leer el origen de un vistazo.
+ *
+ * «Consistentemente» es la palabra que obliga a que esto viva en un paquete y
+ * no en la hoja de estilos de una app: hasta ahora solo el panel los pintaba y
+ * el KDS no los tenía, así que el operador que aprendía «naranja = Rappi»
+ * mirando el panel llegaba a la cocina y encontraba todas las comandas iguales.
+ *
+ * Son los colores de marca de cada plataforma **a propósito**: el operador ya
+ * los tiene aprendidos de esas apps, y contradecirlos costaría más de lo que
+ * aporta ser original.
+ *
+ * **El nombre del canal va SIEMPRE escrito dentro de la píldora** (docs/25 §6:
+ * «sin información solo por color»). Un turno con un cocinero daltónico, o una
+ * pantalla con reflejo, deja el color inservible; el texto no falla nunca.
+ */
+
+.canal {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--sahana-radio-pildora, 999px);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+/* Canales propios: la tienda web del negocio. Verde de marca. */
+.canal--propio {
+  color: #14532d;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+/* Mostrador. Azul: es el único canal donde el cliente está delante. */
+.canal--pos {
+  color: #1e3a8a;
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.canal--whatsapp {
+  color: #065f46;
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.canal--rappi {
+  color: #9a3412;
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
+.canal--pedidosya {
+  color: #9f1239;
+  background: #ffe4e6;
+  border-color: #fda4af;
+}
+
+/* Un canal que no conocemos todavía. Gris y con su identificador crudo dentro:
+   esconderlo sería peor — un pedido cuyo origen no se sabe es exactamente el
+   que hay que mirar. */
+.canal--otro {
+  color: #5b6270;
+  background: #eef1f5;
+  border-color: #dfe3ea;
+}
+
+/*
+ * Variante para fondo oscuro (KDS).
+ *
+ * No se reutilizan las píldoras claras: sobre gris 10 % un fondo `#dcfce7`
+ * deslumbra a dos metros y en un turno de ocho horas cansa la vista, que es
+ * justo lo que docs/25 evita al pedir «gris 90 % sobre gris 10 %» en vez de
+ * blanco sobre negro. Aquí el color va en el BORDE y en el texto, y el fondo se
+ * queda oscuro.
+ */
+.kds .canal,
+.canal--oscuro {
+  background: transparent;
+  border-width: 2px;
+  /* Más grande que en el panel: el KDS se lee **a dos metros** (docs/25). Una
+     píldora de 0,75 rem que funciona a 60 cm en el panel es ilegible desde el
+     otro lado de la cocina, y una etiqueta que no se lee es una etiqueta que
+     no está. */
+  font-size: 1rem;
+  padding: 3px 12px;
+}
+
+.kds .canal--propio,
+.canal--oscuro.canal--propio {
+  color: #86efac;
+  border-color: #86efac;
+}
+
+.kds .canal--pos,
+.canal--oscuro.canal--pos {
+  color: #93c5fd;
+  border-color: #93c5fd;
+}
+
+.kds .canal--whatsapp,
+.canal--oscuro.canal--whatsapp {
+  color: #6ee7b7;
+  border-color: #6ee7b7;
+}
+
+.kds .canal--rappi,
+.canal--oscuro.canal--rappi {
+  color: #fdba74;
+  border-color: #fdba74;
+}
+
+.kds .canal--pedidosya,
+.canal--oscuro.canal--pedidosya {
+  color: #fda4af;
+  border-color: #fda4af;
+}
+
+.kds .canal--otro,
+.canal--oscuro.canal--otro {
+  color: #cbd2dc;
+  border-color: #6b7280;
+}

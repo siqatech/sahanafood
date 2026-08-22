@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { nivelDeTiempo, type NivelDeTiempo } from '@sahana/domain';
+import { aspectoDeCanal } from '@sahana/ui';
 import { api, SinRed, type TicketDeCocina } from '../lib/api';
 
 /**
@@ -160,6 +161,18 @@ export function Cocina({
                   <div className="comanda__cabecera">
                     <span className="comanda__numero">#{t.orderNumber}</span>
                     <span className="comanda__marca">{t.brandName}</span>
+                    {/* El canal, con su color (docs/25). En una cocina oscura
+                        con cuatro marcas y cuatro canales, «de dónde vino»
+                        decide qué se cocina antes: el repartidor de Rappi está
+                        esperando en la puerta y el pedido web es programado.
+                        El nombre va escrito, nunca solo el color. */}
+                    <span
+                      className={`canal ${aspectoDeCanal(t.channel).clase}`}
+                    >
+                      {t.channel === ''
+                        ? 'origen desconocido'
+                        : aspectoDeCanal(t.channel).rotulo}
+                    </span>
                   </div>
                   <ul className="comanda__lineas">
                     {t.lines.map((l) => (

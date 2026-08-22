@@ -13,18 +13,25 @@
  *
  * CSS a mano, sin framework, por el mismo motivo que en la tienda: la tablet
  * descarga esto una vez y lo arranca cada día.
+ *
+ * Los COLORES vienen de `@sahana/ui` (docs/25 §Tokens). Los alias cortos se
+ * quedan porque son el nombre con el que se lee esta hoja, pero su valor ya no
+ * se escribe aquí: el mismo gris de borde estaba repetido en las tres apps y
+ * cambiarlo en una no cambiaba nada en las otras dos.
  */
+@import '@sahana/ui/tokens.css';
+@import '@sahana/ui/canales.css';
 
 :root {
   --fondo: #f4f6f8;
-  --tarjeta: #ffffff;
-  --texto: #16181d;
-  --suave: #5b6270;
-  --borde: #d8dde5;
-  --acento: #14532d;
-  --error: #b91c1c;
-  --aviso: #b45309;
-  --radio: 12px;
+  --tarjeta: var(--sahana-blanco);
+  --texto: var(--sahana-gris-90);
+  --suave: var(--sahana-gris-60);
+  --borde: var(--sahana-gris-30);
+  --acento: var(--sahana-acento);
+  --error: var(--sahana-error);
+  --aviso: var(--sahana-aviso);
+  --radio: var(--sahana-radio);
 }
 
 * {
@@ -568,9 +575,18 @@ label {
 
 .comanda__cabecera {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
   gap: 12px;
+  /* Envuelve: con marca y canal juntos a la derecha, un nombre de marca largo
+     empujaba la píldora del canal fuera de la tarjeta. */
+  flex-wrap: wrap;
+}
+
+/* El número a la izquierda; marca y canal juntos a la derecha, en ese orden.
+   `margin-left: auto` en la marca y no `space-between` en el contenedor: con
+   tres hijos, `space-between` deja la marca flotando en el centro. */
+.comanda__marca {
+  margin-left: auto;
 }
 
 /* El número corto, ENORME: es lo que se lee a dos metros. */

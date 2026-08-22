@@ -1389,3 +1389,53 @@ cero, así que ese plato aparenta más margen del que tiene.
 
 Verde: **751 API · 457 dominio · 35 web · 23 POS · 58 navegador**, 474 módulos
 sin violaciones de frontera.
+
+---
+
+## `packages/ui`: los tokens, y el canal que faltaba en la cocina (2026-08-22)
+
+docs/25 sitúa los tokens en `packages/ui`, «consumidos por las 3 apps web». El
+paquete no existía y cada app repetía sus colores: **diecisiete hexadecimales
+duplicados** entre `globals.css`, `panel.css` y `estilos.css`. Repetir un color
+no rompe nada el día que se escribe; rompe el día que alguien aclara el gris de
+los bordes en una sola de las tres y nadie se entera, porque nadie abre las tres
+a la vez.
+
+**El caso que lo hizo urgente no era la duplicación, era una ausencia.** El
+color por canal —que docs/25 pide «usado consistentemente… el operador aprende a
+leer el origen de un vistazo»— estaba escrito solo en el panel, y **el KDS ni
+siquiera recibía el canal del pedido**. `TicketView` no lo traía. Así que quien
+aprendía «naranja = Rappi» mirando el panel llegaba a la cocina y encontraba
+todas las comandas iguales. No es un adorno: un pedido de Rappi tiene un
+repartidor esperando en la puerta y uno de la tienda web es un reparto
+programado, así que el orden en que se cocinan no es el mismo.
+
+Ahora el canal viaja en el ticket —consultado desde el **pedido**, no duplicado
+en la tabla de tickets, que es como los dos empezarían a discrepar— y el KDS lo
+pinta con su píldora.
+
+**Lo que el paquete NO tiene: componentes.** Ni un botón. Son tres superficies
+con tres usuarios, tres distancias de lectura y tres tamaños de objetivo táctil
+—el panel a 60 cm, el POS a 30 con prisa, el KDS a dos metros entre vapor—. Un
+`<Boton>` común acabaría con seis variantes y una propiedad `tamano`, que es la
+forma larga de no compartir nada. Lo que se comparte es el **vocabulario**: qué
+es «error», qué es «Rappi», cuánto es un radio. Cada app conserva sus alias
+locales (`--panel-fondo`, `--fondo`) y solo cambia de dónde sale el valor.
+
+Dos detalles que no son evidentes:
+
+· **Las píldoras claras no valen en el KDS.** Sobre gris 10 %, un fondo
+  `#dcfce7` deslumbra a dos metros y cansa en un turno de ocho horas — justo lo
+  que docs/25 evita al pedir «gris 90 % sobre gris 10 %». En oscuro el color va
+  en el borde y el texto, y el fondo se queda oscuro. Y la píldora **crece a
+  1 rem**: 0,75 rem se lee a 60 cm y no desde el otro lado de la cocina.
+· **Un canal desconocido enseña su identificador crudo.** Inventarle un nombre
+  bonito escondería que el sistema no lo reconoce, y ese es justo el pedido que
+  hay que mirar.
+
+Se verificó que el `@import` de un paquete del workspace resuelve **en los dos
+empaquetadores** —webpack de Next y Vite— y que los tokens acaban en el CSS
+emitido, no solo en el fuente.
+
+Verde: **752 API · 457 dominio · 5 ui · 35 web · 23 POS · 58 navegador**, 478
+módulos sin violaciones de frontera.

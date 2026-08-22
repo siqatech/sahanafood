@@ -408,6 +408,57 @@ suite('Cocina / KDS', () => {
     expect(suyo!.waitingMinutes).toBeGreaterThanOrEqual(0);
   });
 
+  it('EL TICKET LLEVA SU CANAL: en cocina decide qué se cocina antes', async () => {
+    // El canal se guarda en el PEDIDO, no en el ticket, y hasta ahora la cola
+    // no lo devolvía: en el KDS todas las comandas se veían iguales. No es un
+    // adorno — un pedido de Rappi tiene un repartidor esperando en la puerta y
+    // uno de la tienda web es un reparto programado, así que el orden en que se
+    // cocinan no es el mismo.
+    const dePos = await ordering.submit(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'pos',
+      lines: [
+        {
+          productId: cat.polloId,
+          quantity: 1,
+          modifierOptionIds: [cat.optionGrandeId],
+        },
+      ],
+    });
+    const deRappi = await ordering.submit(tenantA, {
+      brandId,
+      locationId: org.locationId,
+      channel: 'rappi',
+      externalId: `canal-kds-${Date.now()}`,
+      lines: [
+        {
+          productId: cat.polloId,
+          quantity: 1,
+          modifierOptionIds: [cat.optionGrandeId],
+        },
+      ],
+    });
+    await aceptar(dePos.id);
+    await aceptar(deRappi.id);
+    await drenarEventos();
+
+    const cola = await kitchen.queue(tenantA, { stationId: parrillaId });
+    const enPos = cola.find((t) => t.orderId === dePos.id);
+    const enRappi = cola.find((t) => t.orderId === deRappi.id);
+    expect(enPos!.channel).toBe('pos');
+    expect(enRappi!.channel).toBe('rappi');
+
+    // Y por HTTP, que es como lo lee la tablet.
+    const res = await auth(
+      http().get(`/api/v1/kitchen/queue?station=${parrillaId}`),
+    ).expect(200);
+    const porHttp = (
+      res.body as Array<{ orderId: string; channel: string }>
+    ).find((t) => t.orderId === deRappi.id);
+    expect(porHttp!.channel).toBe('rappi');
+  });
+
   it('GET /kitchen/load resume la carga por estación', async () => {
     const res = await auth(
       http().get(`/api/v1/kitchen/load?kitchen=${org.kitchenId}`),

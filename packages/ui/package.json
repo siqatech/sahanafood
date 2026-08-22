@@ -1,0 +1,31 @@
+{
+  "name": "@sahana/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tokens de diseño y vocabulario visual compartidos por las tres apps web (docs/25). Sin componentes: son tres superficies con tres usuarios distintos y un botón común sería un botón malo para las tres.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./tokens.css": "./src/tokens.css",
+    "./canales.css": "./src/canales.css"
+  },
+  "files": [
+    "dist",
+    "src/tokens.css",
+    "src/canales.css"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

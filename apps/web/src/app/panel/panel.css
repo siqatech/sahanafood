@@ -11,17 +11,25 @@
  * Va aparte de `globals.css` —que es de la tienda— porque son dos superficies
  * con dos usuarios distintos, y mezclarlas obliga a que cada cambio de una
  * pase por la revisión de la otra.
+ *
+ * Los COLORES, en cambio, sí se comparten: vienen de `@sahana/ui` (docs/25
+ * §Tokens). Los alias `--panel-*` se quedan porque son el nombre con el que se
+ * lee esta hoja, pero su valor ya no se escribe aquí — antes había diecisiete
+ * hexadecimales repetidos entre las tres apps, y ninguno se enteraba cuando
+ * otra los cambiaba.
  */
+@import '@sahana/ui/tokens.css';
+@import '@sahana/ui/canales.css';
 
 .panel {
-  --panel-fondo: #f6f7f9;
-  --panel-tarjeta: #ffffff;
-  --panel-texto: #16181d;
-  --panel-suave: #5b6270;
-  --panel-borde: #dfe3ea;
-  --panel-acento: #14532d;
-  --panel-sube: #15803d;
-  --panel-baja: #b91c1c;
+  --panel-fondo: var(--sahana-gris-05);
+  --panel-tarjeta: var(--sahana-blanco);
+  --panel-texto: var(--sahana-gris-90);
+  --panel-suave: var(--sahana-gris-60);
+  --panel-borde: var(--sahana-gris-20);
+  --panel-acento: var(--sahana-acento);
+  --panel-sube: var(--sahana-exito);
+  --panel-baja: var(--sahana-error);
 
   min-height: 100vh;
   background: var(--panel-fondo);
@@ -290,62 +298,19 @@ tr:last-child td {
 
 .etiqueta--pausado {
   color: #92400e;
-  background: #fef3c7;
-  border-color: #fcd34d;
+  background: var(--sahana-aviso-fondo);
+  border-color: var(--sahana-aviso-borde);
 }
 
 .etiqueta--sin-precio {
   color: #991b1b;
-  background: #fee2e2;
-  border-color: #fca5a5;
+  background: var(--sahana-error-fondo);
+  border-color: var(--sahana-error-borde);
 }
 
-/* --- Color por canal (docs/25 §Tokens) ---------------------------------
- *
- * «Color por canal usado consistentemente en tarjetas, filtros y reportes — el
- * operador aprende a leer el origen de un vistazo.» Hasta ahora todos los
- * canales eran la misma píldora gris, y en la torre de control con treinta
- * tarjetas eso obliga a leer palabra por palabra.
- *
- * Son los colores de marca de cada canal a propósito: el operador ya los tiene
- * aprendidos de esas apps, y contradecirlos costaría más de lo que aporta.
- * El nombre va SIEMPRE escrito dentro (docs/25 §6). */
-
-.canal {
-  border-width: 1px;
-  border-style: solid;
-}
-
-.canal--propio {
-  color: #14532d;
-  background: #dcfce7;
-  border-color: #86efac;
-}
-
-.canal--pos {
-  color: #1e3a8a;
-  background: #dbeafe;
-  border-color: #93c5fd;
-}
-
-.canal--whatsapp {
-  color: #065f46;
-  background: #d1fae5;
-  border-color: #6ee7b7;
-}
-
-.canal--rappi {
-  color: #9a3412;
-  background: #ffedd5;
-  border-color: #fdba74;
-}
-
-.canal--pedidosya {
-  color: #9f1239;
-  background: #ffe4e6;
-  border-color: #fda4af;
-}
-
+/* El color por canal vive ahora en `@sahana/ui/canales.css`, importado arriba:
+   docs/25 lo pide «usado consistentemente» en las tres apps, y estaba escrito
+   solo aquí — el KDS no lo tenía en absoluto. */
 /* --- Formularios ------------------------------------------------------- */
 
 .panel form.en-linea {

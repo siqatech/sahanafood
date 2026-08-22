@@ -1,0 +1,92 @@
+/*
+ * Tokens de diseño (docs/25 §Tokens: «packages/ui, consumidos por las 3 apps
+ * web»).
+ *
+ * ## Por qué existe este archivo
+ *
+ * Antes de él, `apps/web/src/app/globals.css`, `apps/web/src/app/panel/panel.css`
+ * y `apps/pos/src/estilos.css` repetían **diecisiete colores en hexadecimal**
+ * cada uno por su cuenta. Repetir un color no rompe nada el día que se escribe;
+ * rompe el día que alguien aclara el gris de los bordes en una sola de las tres
+ * y nadie se entera, porque nadie abre las tres a la vez.
+ *
+ * El caso que lo hizo urgente: **el color por canal**. docs/25 lo pide «usado
+ * consistentemente en tarjetas, filtros y reportes — el operador aprende a leer
+ * el origen de un vistazo». Estaba escrito solo en el panel; el KDS no lo tenía
+ * en absoluto. Un aprendizaje visual que solo vale en una de las tres pantallas
+ * no es un aprendizaje, es una trampa.
+ *
+ * ## Lo que NO hay aquí
+ *
+ * **Componentes.** Ni un botón, ni una tabla. Son tres superficies con tres
+ * usuarios, tres distancias de lectura y tres tamaños de objetivo táctil —el
+ * panel se lee a 60 cm, el POS se toca a 30 con prisa, el KDS se mira a dos
+ * metros entre vapor—. Un `<Boton>` común acabaría con seis variantes y una
+ * propiedad `tamano` para elegir, que es la forma larga de no compartir nada.
+ * Lo que sí se comparte es el **vocabulario**: qué es «error», qué es «Rappi»,
+ * cuánto es un radio.
+ *
+ * Cada app sigue definiendo sus propios alias locales —`--panel-fondo`,
+ * `--fondo`— a partir de estos: así el token compartido cambia en un sitio y
+ * cada superficie mantiene el nombre con el que se lee su hoja de estilos.
+ */
+
+:root {
+  /* --- Neutros ---------------------------------------------------------- */
+  --sahana-blanco: #ffffff;
+  --sahana-gris-05: #f6f7f9;
+  --sahana-gris-10: #eef1f5;
+  --sahana-gris-20: #dfe3ea;
+  --sahana-gris-30: #d8dde5;
+  --sahana-gris-50: #8b93a1;
+  --sahana-gris-60: #5b6270;
+  --sahana-gris-90: #16181d;
+
+  /* --- Semánticos ------------------------------------------------------
+   *
+   * Verde oscuro como acento y no un azul de aplicación: es una herramienta de
+   * trabajo para un negocio de comida, y el verde es el color de «cobrado» en
+   * todas las pantallas donde importa.
+   */
+  --sahana-acento: #14532d;
+  --sahana-exito: #15803d;
+  --sahana-aviso: #b45309;
+  --sahana-error: #b91c1c;
+  --sahana-info: #1e3a8a;
+
+  /* Fondos suaves para las píldoras de estado. Van en pareja con su color de
+     texto: el par ya está comprobado en contraste AA (docs/25 §6). */
+  --sahana-exito-fondo: #dcfce7;
+  --sahana-exito-borde: #86efac;
+  --sahana-aviso-fondo: #fef3c7;
+  --sahana-aviso-borde: #fcd34d;
+  --sahana-error-fondo: #fee2e2;
+  --sahana-error-borde: #fca5a5;
+
+  /* --- Espaciado y forma -------------------------------------------------
+   *
+   * Base 4 px (docs/25). Dos densidades: «gestión» para el panel, que se lee, y
+   * «operación» para POS y KDS, que se tocan.
+   */
+  --sahana-esp-1: 4px;
+  --sahana-esp-2: 8px;
+  --sahana-esp-3: 12px;
+  --sahana-esp-4: 16px;
+  --sahana-esp-6: 24px;
+  --sahana-esp-8: 32px;
+
+  --sahana-radio: 12px;
+  --sahana-radio-chico: 8px;
+  --sahana-radio-pildora: 999px;
+
+  /* Objetivos táctiles. Son mínimos, no sugerencias: docs/25 §6 fija 48 px en
+     POS y 64 px en KDS, y un botón de 44 px en una tablet con guantes se falla
+     una de cada cinco veces. */
+  --sahana-toque-pos: 48px;
+  --sahana-toque-kds: 64px;
+
+  /* --- Tipografía -------------------------------------------------------- */
+  --sahana-fuente:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+}

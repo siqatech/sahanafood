@@ -168,6 +168,8 @@ export interface TicketDeCocina {
   stationName: string;
   brandId: string;
   brandName: string;
+  /** De dónde vino: un Rappi tiene un repartidor en la puerta, un web no. */
+  channel: string;
   status: string;
   promisedAt: string | null;
   createdAt: string;

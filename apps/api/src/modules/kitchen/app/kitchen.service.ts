@@ -46,6 +46,15 @@ export interface TicketView {
   stationName: string;
   brandId: string;
   brandName: string;
+  /**
+   * De dónde vino el pedido.
+   *
+   * El KDS lo necesita tanto como la marca: un pedido de Rappi tiene un
+   * repartidor esperando en la puerta y uno de la tienda web es un reparto
+   * programado. docs/25 pide color por canal «usado consistentemente», y en la
+   * cocina —que es donde se decide qué se cocina antes— era donde faltaba.
+   */
+  channel: string;
   status: TicketStatus;
   promisedAt: string | null;
   startedAt: string | null;
@@ -826,8 +835,19 @@ export class KitchenService {
         inArray(schema.brands.id, [...new Set(filas.map((f) => f.brandId))]),
       );
 
+    // El canal vive en el pedido, no en el ticket: un ticket es una porción de
+    // un pedido para una estación, y duplicar ahí el canal abriría la puerta a
+    // que los dos discrepen. Una consulta más por lote, no por ticket.
+    const pedidos = await ctx.db
+      .select({ id: schema.orders.id, channel: schema.orders.channel })
+      .from(schema.orders)
+      .where(
+        inArray(schema.orders.id, [...new Set(filas.map((f) => f.orderId))]),
+      );
+
     const nombreEstacion = new Map(estaciones.map((e) => [e.id, e.name]));
     const nombreMarca = new Map(marcas.map((m) => [m.id, m.name]));
+    const canalDe = new Map(pedidos.map((p) => [p.id, p.channel]));
 
     const porTicket = new Map<string, TicketLine[]>();
     for (const l of lineas) {
@@ -850,6 +870,10 @@ export class KitchenService {
       stationName: nombreEstacion.get(f.stationId) ?? 'Estación',
       brandId: f.brandId,
       brandName: nombreMarca.get(f.brandId) ?? 'Marca',
+      // Sin canal conocido se manda cadena vacía y la pantalla la pinta como
+      // «desconocido»: inventar «web» escondería que no lo sabemos, y el pedido
+      // de origen dudoso es justo el que hay que mirar.
+      channel: canalDe.get(f.orderId) ?? '',
       status: f.status as TicketStatus,
       promisedAt: f.promisedAt?.toISOString() ?? null,
       startedAt: f.startedAt?.toISOString() ?? null,

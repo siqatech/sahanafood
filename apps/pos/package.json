@@ -15,7 +15,8 @@
     "@sahana/domain": "workspace:*",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "ulid": "^2.3.0"
+    "ulid": "^2.3.0",
+    "@sahana/ui": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.1.9",

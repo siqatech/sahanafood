@@ -172,6 +172,9 @@ importers:
       '@sahana/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@sahana/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       react:
         specifier: ^19.1.1
         version: 19.2.8
@@ -224,6 +227,9 @@ importers:
       '@sahana/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@sahana/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       next:
         specifier: ^15.5.4
         version: 15.5.23(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@22.20.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -287,6 +293,15 @@ importers:
       fast-check:
         specifier: ^3.23.2
         version: 3.23.2
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.9)(yaml@2.9.0)
+
+  packages/ui:
+    devDependencies:
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
