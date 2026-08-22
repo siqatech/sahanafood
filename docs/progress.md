@@ -1297,3 +1297,53 @@ control, a reparto y a pedidos. Los vacíos que quedan con la prosa de antes son
 resultados de filtro neutros, sin más acción que cambiar el filtro.
 
 Verde: **751 API · 447 dominio · 35 web · 23 POS · 53 navegador**.
+
+---
+
+## Rentabilidad: el total, el peso de cada fila y el archivo del contador (2026-08-22)
+
+La tabla contestaba «¿cuál gana dinero?» pero **no «cuánto ganamos»**, que es la
+primera pregunta de cualquiera que la abre. Nueve columnas de cifras sin una
+línea de total.
+
+**El total se calcula en `@sahana/domain`**, no en el `page.tsx`. Es literal en
+CLAUDE.md —«cálculo de totales SOLO en @sahana/domain»— y aquí se nota: la forma
+corta era un `reduce` con `Number(...)` sobre las cadenas decimales, que mete
+coma flotante justo en la cifra con la que un dueño decide si cierra una marca.
+`totalizarRentabilidad` suma con `Money`, en enteros, y la usan **la pantalla y
+el CSV**, que es lo que garantiza que el archivo y la tabla digan lo mismo.
+
+Dos columnas **no se suman, se recalculan**, y ese es el fallo que las pruebas
+impiden:
+
+· **El porcentaje de margen.** Promediar los porcentajes de fila da un número
+  *plausible* y falso: una marca con dos pedidos al 60 % pesaría igual que otra
+  con doscientos al 5 %, y saldría 32,5 % donde lo cierto es 5,54 %.
+· **El ticket promedio**, por lo mismo: neto total entre pedidos totales, no la
+  media de las medias.
+
+También: tres tarjetas con las cifras del periodo antes de la tabla, una **barra
+de peso** por fila —leer nueve columnas no dice cuál pesa; el porcentaje va en
+el `title` para quien no ve la barra, que es la misma regla que no dar
+información solo por color— y **exportar CSV con la fila de TOTAL dentro**.
+Dejarla fuera obliga a sumar en Excel una columna cuyo total ya estaba bien
+calculado, y una suma hecha dos veces es una suma que va a discrepar. Sin
+periodo el export devuelve 400 y no un archivo vacío: un CSV de cero filas
+parece un periodo sin ventas.
+
+### Tres trampas de localizador, todas del mismo tipo
+
+Las pruebas de navegador fallaron tres veces seguidas por **coincidencia por
+subcadena**, que es el comportamiento por defecto de Playwright y no se parece
+a lo que uno escribe:
+
+· `td.dinero:nth-of-type(1)` significa «el primer `td`, que además sea
+  `.dinero`» — la celda de la marca, que no lo es. `nth-of-type` cuenta por
+  etiqueta, no por clase.
+· `hasText: 'Venta neta'` **no distingue mayúsculas** y casaba también la
+  tarjeta del margen, cuyo pie dice «… de la venta neta».
+· Y la de antes: el nombre accesible de un botón no puede contener el de su
+  campo vecino.
+
+Verde: **751 API · 457 dominio · 35 web · 23 POS · 55 navegador**, 471 módulos
+sin violaciones de frontera.

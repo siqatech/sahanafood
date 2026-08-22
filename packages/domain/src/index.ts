@@ -342,3 +342,10 @@ export {
   type TopicCount,
   type UnansweredTopicsOptions,
 } from './ai/unanswered-topics.js';
+
+export {
+  totalizarRentabilidad,
+  pesoEnPuntosBasicos,
+  type FilaDeRentabilidad,
+  type TotalesDeRentabilidad,
+} from './analytics/rentabilidad.js';

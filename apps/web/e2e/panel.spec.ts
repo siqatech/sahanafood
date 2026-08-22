@@ -1153,6 +1153,84 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
   });
 
+  test('EL TOTAL del informe cuadra con la suma de sus filas', async ({
+    page,
+  }) => {
+    // La tabla contestaba «cuál gana dinero» pero no «cuánto ganamos», que es
+    // la primera pregunta de cualquiera al abrirla. Y el total es justo donde
+    // un `reduce` con `Number(...)` habría metido coma flotante: se calcula en
+    // `@sahana/domain`, y esta prueba comprueba que el resultado es el que se
+    // obtiene sumando lo que se ve en pantalla.
+    await entrar(page);
+    await page.goto('/panel/reportes');
+
+    // Cuarta celda: Marca, Canal, Pedidos, Venta neta. Por posición de
+    // columna y no por clase — `td.dinero:nth-of-type(1)` significa «el primer
+    // td, que además sea .dinero», que es la celda de la marca y no existe.
+    const netos = await page
+      .locator('tbody tr td:nth-child(4)')
+      .allInnerTexts();
+    expect(netos.length).toBeGreaterThan(0);
+
+    // Se suma en céntimos enteros, igual que el dominio: hacerlo con `parseFloat`
+    // aquí probaría la coma flotante contra sí misma.
+    // Solo la primera línea: la celda de venta neta lleva debajo el descuento
+    // cuando lo hay, y sumar las dos daría un total que no es ninguno de los
+    // dos números.
+    const aCentimos = (texto: string): number => {
+      const primera = texto.split('\n')[0] ?? '';
+      return Math.round(
+        Number(primera.replace('S/', '').replace(',', '').trim()) * 100,
+      );
+    };
+    const suma = netos.reduce((acc, t) => acc + aCentimos(t), 0);
+
+    const totalEnPantalla = await page
+      .locator('tfoot .fila-total td.dinero')
+      .first()
+      .innerText();
+    expect(aCentimos(totalEnPantalla)).toBe(suma);
+
+    // Y la tarjeta de cabecera dice lo mismo que el pie de la tabla: dos
+    // cifras distintas para lo mismo en la misma pantalla es peor que ninguna.
+    // Por su RÓTULO y no por `hasText` sobre la tarjeta entera: `hasText` no
+    // distingue mayúsculas, y la tarjeta del margen dice «… de la venta neta»
+    // en su pie, así que casaban las dos.
+    const tarjeta = page
+      .locator('.tarjeta')
+      .filter({
+        has: page.locator('p.tarjeta__rotulo', { hasText: 'Venta neta' }),
+      })
+      .locator('.tarjeta__cifra');
+    expect(aCentimos(await tarjeta.innerText())).toBe(suma);
+  });
+
+  test('EXPORTAR la rentabilidad trae el periodo Y su fila de total', async ({
+    page,
+  }) => {
+    // Este archivo acaba en el correo del contador. Si no trajera el total,
+    // habría que sumar en Excel una columna cuyo total ya estaba bien
+    // calculado — y una suma hecha dos veces es una suma que va a discrepar.
+    await entrar(page);
+    const csv = await page.evaluate(async () => {
+      const r = await fetch(
+        '/panel/reportes/csv?desde=2020-01-01&hasta=2999-12-31',
+      );
+      return { estado: r.status, texto: await r.text() };
+    });
+    expect(csv.estado).toBe(200);
+    expect(csv.texto).toContain('Marca;Canal;Pedidos');
+    expect(csv.texto).toContain('TOTAL;');
+
+    // Sin periodo NO se devuelve un archivo vacío: un CSV de cero filas parece
+    // un periodo sin ventas y quien lo abra concluirá que no se vendió nada.
+    const sinRango = await page.evaluate(async () => {
+      const r = await fetch('/panel/reportes/csv');
+      return r.status;
+    });
+    expect(sinRango).toBe(400);
+  });
+
   test('EL AGENTE se configura, se prueba SIN clientes y se publica aparte', async ({
     page,
   }) => {

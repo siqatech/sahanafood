@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { totalizarRentabilidad, pesoEnPuntosBasicos } from '@sahana/domain';
 import {
   panel,
   type RentabilidadDelPanel,
@@ -7,6 +8,7 @@ import {
 import { cargar } from '../../../lib/panel-guard';
 import { solesDeTexto } from '../caja/dinero';
 import { Canal } from '../canal';
+import { Vacio } from '../vacio';
 
 /**
  * Rentabilidad y conciliación (spec 16).
@@ -31,6 +33,35 @@ function porcentaje(bps: number): string {
   const entero = Math.trunc(bps / 100);
   const resto = Math.abs(bps % 100);
   return `${entero},${String(resto).padStart(2, '0')} %`;
+}
+
+/**
+ * La barra de peso de una fila.
+ *
+ * Es decorativa **y** accesible: el ancho lo ve quien mira, y el porcentaje va
+ * en el título para quien no. Una barra sin texto es información dada solo por
+ * la forma, que es la misma trampa que dar información solo por el color
+ * (docs/25 §6).
+ */
+function Peso({
+  parte,
+  total,
+  nombre,
+}: {
+  parte: string;
+  total: string;
+  nombre: string;
+}) {
+  const bps = pesoEnPuntosBasicos(parte, total);
+  if (bps === 0) return null;
+  return (
+    <span
+      className="peso"
+      title={`${nombre}: ${porcentaje(bps)} de la venta neta del periodo`}
+    >
+      <span className="peso__relleno" style={{ width: `${bps / 100}%` }} />
+    </span>
+  );
 }
 
 function hace(dias: number): string {
@@ -66,6 +97,13 @@ export default async function ReportesPage({
   const filas = [...rentabilidad].sort((a, b) => a.marginBps - b.marginBps);
   const peor = filas[0];
 
+  // El total se calcula en `@sahana/domain`, no aquí: es la regla de CLAUDE.md
+  // y en esta pantalla se nota, porque sumar la columna con `Number(...)` y un
+  // `reduce` metería coma flotante justo en la cifra con la que alguien decide
+  // si cierra una marca.
+  const totales = totalizarRentabilidad(filas);
+  const consulta = new URLSearchParams({ desde, hasta }).toString();
+
   return (
     <>
       <h1>Rentabilidad</h1>
@@ -83,12 +121,57 @@ export default async function ReportesPage({
       </form>
 
       {filas.length === 0 ? (
-        <p className="panel__vacio">
-          Sin ventas en ese rango. El margen se calcula sobre pedidos
-          entregados, no sobre los que están en curso.
-        </p>
+        <Vacio
+          titulo="Sin ventas en ese rango"
+          accion={{ href: '/panel/pedidos', rotulo: 'Ver los pedidos' }}
+        >
+          <p>
+            El margen se calcula sobre pedidos <strong>entregados</strong>, no
+            sobre los que están en curso: si acabas de empezar el día, todavía
+            no hay nada que medir.
+          </p>
+        </Vacio>
       ) : (
         <>
+          {/* Las tres cifras del periodo, antes de la tabla. Nueve columnas de
+              números contestan «cuál gana dinero», pero no «cuánto ganamos»,
+              que es la primera pregunta que hace cualquiera al abrir esto. */}
+          <div className="tarjetas">
+            <div className="tarjeta">
+              <p className="tarjeta__rotulo">Venta neta</p>
+              <p className="tarjeta__cifra">
+                S/ {solesDeTexto(totales.netRevenue)}
+              </p>
+              <p className="tarjeta__pie">
+                {totales.orders} pedidos
+                {totales.cancelled > 0
+                  ? ` · ${totales.cancelled} cancelados`
+                  : ''}
+              </p>
+            </div>
+            <div className="tarjeta">
+              <p className="tarjeta__rotulo">Margen de contribución</p>
+              <p
+                className={`tarjeta__cifra${totales.marginBps < 0 ? ' baja' : ''}`}
+              >
+                S/ {solesDeTexto(totales.contributionMargin)}
+              </p>
+              <p className="tarjeta__pie">
+                {porcentaje(totales.marginBps)} de la venta neta
+              </p>
+            </div>
+            <div className="tarjeta">
+              <p className="tarjeta__rotulo">Ticket promedio</p>
+              <p className="tarjeta__cifra">
+                S/ {solesDeTexto(totales.averageTicket)}
+              </p>
+              <p className="tarjeta__pie">
+                Se descuentan S/ {solesDeTexto(totales.commission)} de comisión
+                y S/ {solesDeTexto(totales.foodCost)} de insumos
+              </p>
+            </div>
+          </div>
+
           {peor && peor.marginBps < 0 ? (
             // Un margen negativo no es un dato más de la tabla: es dinero que
             // se pierde en cada pedido, y cuanto más se venda peor.
@@ -117,7 +200,17 @@ export default async function ReportesPage({
               <tbody>
                 {filas.map((r: RentabilidadDelPanel) => (
                   <tr key={`${r.brandId}-${r.channel}`}>
-                    <td>{r.brandName}</td>
+                    <td>
+                      {r.brandName}
+                      {/* La barra dice de un vistazo cuánto pesa esta fila en
+                          el total. Nueve columnas de cifras no lo dicen: hay
+                          que leerlas todas y compararlas de memoria. */}
+                      <Peso
+                        parte={r.netRevenue}
+                        total={totales.netRevenue}
+                        nombre={`${r.brandName} por ${r.channel}`}
+                      />
+                    </td>
                     <td>
                       <Canal canal={r.channel} />
                     </td>
@@ -164,8 +257,57 @@ export default async function ReportesPage({
                   </tr>
                 ))}
               </tbody>
+              {/* El total, en `tfoot` y no como una fila más del cuerpo: así un
+                  lector de pantalla lo anuncia como resumen y no como «una
+                  marca llamada Total». */}
+              <tfoot>
+                <tr className="fila-total">
+                  <th scope="row" colSpan={2}>
+                    Total del periodo
+                  </th>
+                  <td>{totales.orders}</td>
+                  <td className="dinero">
+                    S/ {solesDeTexto(totales.netRevenue)}
+                  </td>
+                  <td className="dinero">
+                    S/ {solesDeTexto(totales.commission)}
+                  </td>
+                  <td className="dinero">
+                    S/ {solesDeTexto(totales.foodCost)}
+                  </td>
+                  <td className="dinero">
+                    {totales.marginBps < 0 ? (
+                      <strong className="baja">
+                        −S/{' '}
+                        {solesDeTexto(
+                          totales.contributionMargin.replace('-', ''),
+                        )}
+                      </strong>
+                    ) : (
+                      `S/ ${solesDeTexto(totales.contributionMargin)}`
+                    )}
+                  </td>
+                  <td className="dinero">{porcentaje(totales.marginBps)}</td>
+                  <td className="dinero">
+                    S/ {solesDeTexto(totales.averageTicket)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
+
+          <p className="pie-listado">
+            <Link
+              href={`/panel/reportes/csv?${consulta}`}
+              className="boton-enlace"
+              prefetch={false}
+            >
+              Exportar CSV
+            </Link>{' '}
+            <span className="tarjeta__pie">
+              Con el periodo que estás viendo, no con todo el histórico.
+            </span>
+          </p>
 
           <p className="tarjeta__pie">
             Ordenado por margen, de peor a mejor: la pregunta es cuál gana
@@ -194,10 +336,15 @@ export default async function ReportesPage({
       </form>
 
       {conciliacion === null ? (
-        <p className="panel__vacio">
-          No se pudo calcular el cuadre. Suele ser que todavía no hay
-          facturación configurada.
-        </p>
+        <Vacio
+          titulo="No se pudo calcular el cuadre"
+          accion={{ href: '/panel/comprobantes', rotulo: 'Ver comprobantes' }}
+        >
+          <p>
+            Suele ser que todavía no hay facturación configurada: sin
+            comprobantes emitidos no hay con qué comparar la venta.
+          </p>
+        </Vacio>
       ) : conciliacion.matches ? (
         <p className="tarjeta__pie">
           Cuadra: S/ {solesDeTexto(conciliacion.analyticsTotal)} vendidos y

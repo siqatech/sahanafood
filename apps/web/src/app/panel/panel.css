@@ -488,6 +488,41 @@ tr:last-child td {
   color: var(--panel-suave);
 }
 
+/* --- La barra de peso de una fila de informe ---------------------------- */
+
+.peso {
+  display: block;
+  width: 100%;
+  max-width: 140px;
+  height: 4px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--panel-fondo);
+  overflow: hidden;
+}
+
+.peso__relleno {
+  display: block;
+  height: 100%;
+  background: var(--panel-acento);
+  /* Mínimo visible: una fila que aporta el 0,3 % es poco, pero no es nada, y
+     una barra de cero píxeles se lee como «no vendió». */
+  min-width: 2px;
+}
+
+/* La fila de total de una tabla: separada por una línea gruesa y en negrita.
+   Sin ese peso visual se lee como una marca más llamada «Total». */
+.panel tfoot .fila-total th,
+.panel tfoot .fila-total td {
+  border-top: 2px solid var(--panel-borde);
+  font-weight: 700;
+  background: var(--panel-fondo);
+}
+
+.panel tfoot .fila-total th {
+  text-align: left;
+}
+
 /* --- Estado vacío con acción (docs/25, principio 2) --------------------- */
 
 .vacio {
