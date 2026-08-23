@@ -1894,3 +1894,22 @@ La lección se repite en tres capas el mismo día: **un gate que no mira lo que
 dice mirar es peor que no tenerlo.** El presupuesto medía trozos comunes en vez
 de rutas, esta prueba medía una subcadena en vez de un host, y el CI entero
 llevaba 28 ejecuciones sin que nadie leyera el rojo.
+
+### Confirmado: ejecución 130 en verde, los siete trabajos
+
+No es una comprobación local: es la ejecución real de GitHub Actions sobre
+`8bab5f5`. **Lint · Types · Boundaries, Domain, Integration, Browser, Build,
+Imágenes y SCA, todos correctos.** La primera verde en 30 ejecuciones.
+
+Dentro van, ahora sí ejecutándose de verdad: las **787 pruebas de la API** con
+sus gates de aislamiento, las **66 de navegador**, la cobertura de dinero al
+100 % de ramas, el presupuesto de JS midiendo las rutas de la tienda y **las
+tres imágenes** —API, tienda y POS—, esta última construida aquí por primera
+vez.
+
+Hizo falta un ciclo de más porque el primer arreglo no estaba completo: la causa
+de los paquetes sin compilar aparecía en un tercer trabajo, y al desbloquear el
+de tipos salió a la luz la imagen de la tienda, que llevaba rota desde que
+`@sahana/ui` entró como dependencia y **nadie lo veía porque el trabajo se
+omitía**. Un rojo tapaba al otro; hasta que el primero no se arregla, no se sabe
+cuántos hay debajo.
