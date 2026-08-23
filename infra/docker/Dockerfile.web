@@ -13,6 +13,10 @@ COPY apps/print-agent/package.json apps/print-agent/
 COPY packages/domain/package.json packages/domain/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/ai-prompts/package.json packages/ai-prompts/
+# `@sahana/ui` es dependencia de la tienda desde que los colores por canal se
+# compartieron con el POS. Sin su `package.json` aquí, pnpm no crea el enlace
+# del área de trabajo y la compilación de Next no encuentra el paquete.
+COPY packages/ui/package.json packages/ui/
 # Certificado de una CA corporativa, OPCIONAL. Ver la explicación completa en
 # `Dockerfile.api`: va como ARG y no como secreto de BuildKit porque el
 # constructor de Railway solo admite `--mount=type=cache`.
@@ -28,6 +32,7 @@ COPY . .
 # cálculo no se duplica en el navegador — es la regla de «cálculo solo en
 # @sahana/domain», que es lo que impide que la tienda y la caja cobren distinto.
 RUN pnpm --filter @sahana/domain build \
+  && pnpm --filter @sahana/ui build \
   && pnpm --filter @sahana/web build
 
 FROM node:22-bookworm-slim AS runtime

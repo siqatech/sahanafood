@@ -20,6 +20,10 @@ COPY apps/print-agent/package.json apps/print-agent/
 COPY packages/domain/package.json packages/domain/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/ai-prompts/package.json packages/ai-prompts/
+# El KDS pinta el canal con los mismos colores que el panel, y esos colores
+# viven en `@sahana/ui` para que no puedan divergir. Sin su `package.json` aquí
+# no hay enlace del área de trabajo y Vite no resuelve el paquete.
+COPY packages/ui/package.json packages/ui/
 # Certificado de una CA corporativa, OPCIONAL. Ver la explicación completa en
 # `Dockerfile.api`: va como ARG y no como secreto de BuildKit porque el
 # constructor de Railway solo admite `--mount=type=cache` y rechaza el
@@ -55,6 +59,7 @@ ARG SW_VERSION=""
 RUN VERSION="${SW_VERSION:-$(date -u +%Y%m%d%H%M%S)}" \
   && echo "service worker: $VERSION" \
   && VITE_SW_VERSION="$VERSION" pnpm --filter @sahana/domain build \
+  && VITE_SW_VERSION="$VERSION" pnpm --filter @sahana/ui build \
   && VITE_SW_VERSION="$VERSION" pnpm --filter @sahana/pos build
 
 FROM nginx:1.27-alpine AS runtime

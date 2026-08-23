@@ -126,6 +126,12 @@ jobs:
         run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/02-extensions.sql
       - name: Migraciones
         run: pnpm --filter @sahana/api migrate
+      # Tercer sitio con la misma necesidad: las pruebas levantan la aplicación
+      # con `@swc-node`, que resuelve `@sahana/domain` por su `dist`. Sin esto
+      # la suite entera muere al cargar el primer módulo, y el mensaje habla de
+      # un import roto en vez de un paquete sin construir.
+      - name: Construir los paquetes compartidos
+        run: pnpm --filter "./packages/**" build
       # Paso PROPIO y a propósito duplicado dentro de la suite completa (T5.31).
       #
       # El criterio del backlog es que **un cambio de prompt que degrada la
@@ -300,6 +306,20 @@ jobs:
           file: infra/docker/Dockerfile.web
           push: false
           tags: sahana/web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # El POS se despliega como los otros dos y hasta ahora NO se construía
+      # aquí, que es como su imagen se quedó rota sin que nadie se enterara:
+      # `@sahana/ui` entró como dependencia suya y su Dockerfile no lo sabía.
+      # Una imagen que se despliega y no se construye en CI se rompe en el
+      # despliegue, que es el peor sitio para descubrirlo.
+      - name: Imagen del POS
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.pos
+          push: false
+          tags: sahana/pos:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
