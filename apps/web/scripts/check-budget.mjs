@@ -35,6 +35,7 @@ const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  */
 const PRESUPUESTOS = [
   { ruta: '/', nombre: 'catálogo', limite: 200 * 1024 },
+  { ruta: '/producto/[id]', nombre: 'ficha', limite: 200 * 1024 },
   { ruta: '/carrito', nombre: 'carrito', limite: 200 * 1024 },
   { ruta: '/checkout', nombre: 'checkout', limite: 200 * 1024 },
 ];
@@ -44,24 +45,48 @@ function kb(bytes) {
 }
 
 /**
+ * Quita los grupos de rutas —los segmentos entre paréntesis— de una clave del
+ * manifiesto: `/(tienda)/carrito/page` → `/carrito/page`.
+ *
+ * Existe porque no hacerlo tuvo un coste real. La versión anterior buscaba la
+ * clave `/carrito/page` tal cual, la tienda vive dentro del grupo `(tienda)`,
+ * y por tanto NINGUNA búsqueda encontraba nada: las tres rutas daban el mismo
+ * número, el de los trozos comunes, y el presupuesto pasaba en verde midiendo
+ * cero de lo que decía medir. Un presupuesto roto es peor que ninguno, porque
+ * el verde se lee como permiso.
+ */
+function sinGrupos(clave) {
+  return clave.replace(/\/\([^/]+\)/g, '') || '/';
+}
+
+/**
  * Suma el JS de primera carga de una ruta a partir de los manifiestos de la
- * compilación: los trozos comunes a toda la app más los propios de la página.
+ * compilación: los trozos comunes a toda la app, los de la página, y los de
+ * todos los layouts que la envuelven —sin el layout no se pinta nada, así que
+ * no contarlo daría un número que ningún navegador llega a ver.
  */
 function pesoDeRuta(ruta, manifiestoApp, manifiestoBuild, tamanos) {
   const archivos = new Set(manifiestoBuild.rootMainFiles ?? []);
+  const paginas = manifiestoApp.pages ?? {};
 
-  // En el App Router, las claves llevan el sufijo de segmento: `/page`,
-  // `/carrito/page`. Se buscan las dos formas para no depender de la versión.
-  const claves = [
-    `${ruta === '/' ? '' : ruta}/page`,
-    ruta,
-    `${ruta === '/' ? '' : ruta}/layout`,
-    '/layout',
-  ];
-  for (const clave of claves) {
-    for (const archivo of manifiestoApp.pages?.[clave] ?? []) {
-      archivos.add(archivo);
+  const claveDePagina = ruta === '/' ? '/page' : `${ruta}/page`;
+  let encontrada = false;
+
+  for (const [clave, trozos] of Object.entries(paginas)) {
+    const normal = sinGrupos(clave);
+    let aplica = false;
+
+    if (normal === claveDePagina) {
+      aplica = true;
+      encontrada = true;
+    } else if (normal.endsWith('/layout')) {
+      // Un layout en `/x/layout` envuelve todo lo que cuelga de `/x`; el de la
+      // raíz (`/layout`) envuelve la app entera.
+      const dir = normal.slice(0, -'/layout'.length);
+      aplica = dir === '' || ruta === dir || ruta.startsWith(`${dir}/`);
     }
+
+    if (aplica) for (const archivo of trozos) archivos.add(archivo);
   }
 
   let total = 0;
@@ -72,7 +97,7 @@ function pesoDeRuta(ruta, manifiestoApp, manifiestoBuild, tamanos) {
     if (tam === undefined) desconocidos.push(archivo);
     else total += tam;
   }
-  return { total, archivos: archivos.size, desconocidos };
+  return { total, archivos: archivos.size, desconocidos, encontrada };
 }
 
 async function main() {
@@ -121,20 +146,30 @@ async function main() {
   }
 
   let fallo = false;
+  let pesado = false;
   console.log('Presupuesto de JavaScript de primera carga (T5.14)\n');
   for (const p of PRESUPUESTOS) {
-    const { total, archivos, desconocidos } = pesoDeRuta(
+    const { total, archivos, desconocidos, encontrada } = pesoDeRuta(
       p.ruta,
       manifiestoApp,
       manifiestoBuild,
       tamanos,
     );
-    const ok = total <= p.limite && desconocidos.length === 0;
+    // Que la ruta no esté en el manifiesto NO es un aprobado: es que se
+    // renombró o se movió, y el presupuesto dejó de vigilarla.
+    const ok = encontrada && total <= p.limite && desconocidos.length === 0;
     if (!ok) fallo = true;
+    if (encontrada && total > p.limite) pesado = true;
     console.log(
       `  ${ok ? '✔' : '✘'} ${p.nombre.padEnd(10)} ${kb(total).padStart(10)} ` +
         `/ ${kb(p.limite)}  (${archivos} trozos)`,
     );
+    if (!encontrada) {
+      console.log(
+        `      «${p.ruta}» no está en la compilación. ¿Se renombró? ` +
+          'Este presupuesto ya no vigila nada.',
+      );
+    }
     if (desconocidos.length > 0) {
       console.log(
         `      no se pudo medir: ${desconocidos.join(', ')} — el presupuesto NO es fiable`,
@@ -144,10 +179,14 @@ async function main() {
 
   if (fallo) {
     console.error(
-      '\nEl presupuesto de rendimiento se ha superado.\n' +
-        'Antes de subir el límite: mira qué se ha vuelto componente de cliente.\n' +
-        'La tienda es de componentes de servidor salvo donde hay que reaccionar\n' +
-        'a un clic, y cada `use client` nuevo arrastra su árbol al navegador.',
+      pesado
+        ? '\nEl presupuesto de rendimiento se ha superado.\n' +
+            'Antes de subir el límite: mira qué se ha vuelto componente de cliente.\n' +
+            'La tienda es de componentes de servidor salvo donde hay que reaccionar\n' +
+            'a un clic, y cada `use client` nuevo arrastra su árbol al navegador.'
+        : '\nEl presupuesto no se ha superado: es que ha dejado de poder medirse.\n' +
+            'Arriba se detalla cuál de las rutas ya no encaja con la compilación.\n' +
+            'Corrige la ruta en este guion para que vuelva a vigilar la página real.',
     );
     process.exit(1);
   }
