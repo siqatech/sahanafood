@@ -1597,3 +1597,60 @@ extracción no cambió comportamiento.
 
 Verde: **771 API · 457 dominio · 5 ui · 35 web · 23 POS · 62 navegador**, 489
 módulos sin violaciones de frontera.
+
+---
+
+## Modo práctica: equivocarse a propósito, y estrenar limpio (2026-08-23)
+
+`docs/26` §4: «datos demo descartables con un botón "borrar práctica y empezar
+en serio" (borra ventas demo, conserva catálogo)». El problema que resuelve es
+real y no técnico: un dueño recién dado de alta **necesita equivocarse** —cobrar
+mal, anular, cerrar la caja con descuadre, mandar una comanda que no existe—.
+Si esas pruebas se quedan mezcladas con las ventas de verdad, el primer informe
+de rentabilidad miente y el primer cuadre con SUNAT no cuadra. Y si por miedo a
+ensuciar **no** prueba, se estrena el sábado a las ocho de la noche.
+
+**Una marca de tiempo, no un booleano por fila.** La alternativa era
+`es_practica` en cada pedido, comprobante y sesión de caja: quince columnas que
+hay que acordarse de rellenar en quince sitios, y la que se olvide deja una
+venta de práctica contada como real para siempre. Con `went_live_at` en el
+tenant la regla es una sola y no se puede olvidar. Al pulsar, se borra y se
+estampa la fecha — y **desde ese momento el botón no existe**: no hay forma de
+vaciar las ventas de un negocio que ya opera, ni por error ni queriendo.
+
+### La base de datos me dijo que no, y tenía razón
+
+El primer intento falló con `permission denied for table pay_webhook_events`.
+Cinco tablas le niegan el `DELETE` al rol de la aplicación **a propósito**:
+`bil_submissions`, `cash_movements`, `inv_movements`, `ord_order_events` y
+`pay_webhook_events`. La tentación era añadir el permiso en la migración. No se
+hizo:
+
+· Tres de ellas —envíos al OSE, movimientos de caja, eventos del pedido— se van
+  **en cascada con su padre**, que es la única forma correcta de que
+  desaparezcan.
+· `inv_movements` e `inv_stock` **se quedan**, y es la decisión incómoda. El
+  kardex es append-only y su padre no se borra; vaciar el stock dejaría las
+  existencias diciendo una cosa y su libro otra — el descuadre exacto que el
+  kardex existe para impedir. La práctica que movió stock se corrige como
+  cualquier error de inventario: **con otro movimiento**. Y la pantalla lo dice
+  antes de pulsar, porque descubrirlo tres semanas después es mucho peor.
+
+**Los correlativos vuelven a cero**: la primera venta de verdad tiene que ser la
+#1 y la B001-1. Dejar el contador donde estaba obligaría a explicarle a SUNAT
+dónde están los comprobantes 1 a 40. **La auditoría no se borra** — es
+append-only por construcción y es donde queda esta misma acción; un borrado que
+borrara su propia huella es justo el que no se puede permitir.
+
+Usa la confirmación destructiva de docs/25 con **consecuencias listadas**, que
+es lo que specs/ux/03 pide para las acciones peligrosas.
+
+### Y una prueba que estaba mal escrita
+
+La de aislamiento afirmaba «B está a cero». En cuanto las pruebas de práctica le
+dieron estructura a B, empezó a fallar — no por un fallo de aislamiento, sino
+porque estaba atada al orden de ejecución. Ahora compara **antes contra
+después**, que es lo que de verdad quiere decir «lo de A no toca a B».
+
+Verde: **776 API · 457 dominio · 5 ui · 35 web · 23 POS · 63 navegador**, 491
+módulos sin violaciones de frontera.

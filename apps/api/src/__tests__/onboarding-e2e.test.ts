@@ -174,6 +174,117 @@ suite('Checklist de salida en vivo', () => {
     await http().get('/api/v1/onboarding/checklist').expect(403);
   });
 
+  // ------------------------------------------- MODO PRÁCTICA (docs/26 §4)
+
+  it('un tenant nuevo ESTÁ EN PRÁCTICA', async () => {
+    const lista = await onboarding.checklist(tenantB);
+    expect(lista.enPractica).toBe(true);
+  });
+
+  it('EMPEZAR EN SERIO borra las ventas y CONSERVA la configuración', async () => {
+    // Es lo que hace útil practicar: se ensaya con la carta de verdad —cobrar
+    // mal, anular, cerrar con descuadre— y se estrena limpio. Si al vaciar se
+    // llevara también la carta, nadie practicaría.
+    const b = como(tokenB);
+    const empresa = await b(http().post('/api/v1/org/companies'))
+      .send({ legalName: 'Practica S.A.C.', taxId: '20512345699' })
+      .expect(201);
+    const marca = await b(http().post('/api/v1/org/brands'))
+      .send({ companyId: empresa.body.id, name: 'Marca de práctica' })
+      .expect(201);
+    await b(http().post('/api/v1/org/locations'))
+      .send({
+        companyId: empresa.body.id,
+        name: 'Local de práctica',
+        address: 'Av. Práctica 1',
+        lat: -12.11,
+        lng: -77.05,
+      })
+      .expect(201);
+    const plato = await b(http().post('/api/v1/catalog/products'))
+      .send({ brandId: marca.body.id, sku: 'PRAC-1', name: 'Plato ensayado' })
+      .expect(201);
+    await b(http().post('/api/v1/catalog/prices'))
+      .send({ productId: plato.body.id, priceMinor: 250_000 })
+      .expect(201);
+
+    // Una venta de práctica, escrita directa: lo que importa aquí es que se
+    // borre, no cómo se creó.
+    await withTenant(pool, tenantB, async ({ client }) => {
+      await client.query(
+        `INSERT INTO ord_orders
+           (tenant_id, brand_id, location_id, order_number, channel, status,
+            subtotal, discount_total, taxable_base, tax, total, currency)
+         VALUES ($1, $2,
+           (SELECT id FROM org_locations LIMIT 1),
+           1, 'pos', 'delivered', 25, 0, 21.1864, 3.8136, 25, 'PEN')`,
+        [tenantB, marca.body.id],
+      );
+    });
+
+    const res = await b(http().post('/api/v1/onboarding/go-live'))
+      .send({ reason: 'Terminamos de ensayar, abrimos el sábado' })
+      .expect(201);
+    expect(res.body.wentLiveAt).toBeTruthy();
+    expect(res.body.borrados.ord_orders).toBe(1);
+
+    // LO QUE IMPORTA: las ventas se fueron, la configuración se quedó.
+    const quedo = await withTenant(pool, tenantB, async ({ client }) => {
+      const { rows } = await client.query<{
+        pedidos: string;
+        productos: string;
+        precios: string;
+        locales: string;
+        marcas: string;
+      }>(
+        `SELECT (SELECT count(*) FROM ord_orders)   AS pedidos,
+                (SELECT count(*) FROM cat_products) AS productos,
+                (SELECT count(*) FROM cat_prices)   AS precios,
+                (SELECT count(*) FROM org_locations) AS locales,
+                (SELECT count(*) FROM org_brands)   AS marcas`,
+      );
+      return rows[0]!;
+    });
+    expect(Number(quedo.pedidos)).toBe(0);
+    expect(Number(quedo.productos)).toBe(1);
+    expect(Number(quedo.precios)).toBe(1);
+    expect(Number(quedo.locales)).toBe(1);
+    expect(Number(quedo.marcas)).toBe(1);
+  });
+
+  it('LA AUDITORÍA sobrevive, y guarda el motivo escrito', async () => {
+    // Un borrado que borrara su propia huella es justo el que no se puede
+    // permitir. `audit_log` es append-only por construcción.
+    const huella = await withTenant(pool, tenantB, async ({ client }) => {
+      const { rows } = await client.query<{ reason: string | null }>(
+        `SELECT reason FROM audit_log WHERE action = 'tenant.went_live'`,
+      );
+      return rows;
+    });
+    expect(huella).toHaveLength(1);
+    expect(huella[0]!.reason).toContain('ensayar');
+  });
+
+  it('YA NO SE PUEDE otra vez: un negocio en serio no vacía sus ventas', async () => {
+    // La protección entera. Sin esto, «borrar la práctica» sería un botón que
+    // borra la facturación de un negocio con seis meses de historia.
+    const lista = await onboarding.checklist(tenantB);
+    expect(lista.enPractica).toBe(false);
+
+    await como(tokenB)(http().post('/api/v1/onboarding/go-live'))
+      .send({ reason: 'Otra vez, a ver si cuela' })
+      .expect(422);
+  });
+
+  it('SIN MOTIVO no se ejecuta', async () => {
+    await como(tokenA)(http().post('/api/v1/onboarding/go-live'))
+      .send({ reason: '' })
+      .expect(422);
+    await como(tokenA)(http().post('/api/v1/onboarding/go-live'))
+      .send({})
+      .expect(422);
+  });
+
   // ------------------------------------------------------ AISLAMIENTO
 
   it('AISLAMIENTO: lo que hace A no marca la checklist de B', async () => {
@@ -182,6 +293,8 @@ suite('Checklist de salida en vivo', () => {
     // `EXISTS` sin filtrar por tenant haría que B viera su checklist completa
     // por el trabajo de A, y abriría el local sin haber emitido un comprobante
     // en su vida.
+    const antesDeB = await onboarding.checklist(tenantB);
+
     const a = como(tokenA);
     const empresa = await a(http().post('/api/v1/org/companies'))
       .send({ legalName: 'Solo de A S.A.C.', taxId: '20512345688' })
@@ -199,15 +312,20 @@ suite('Checklist de salida en vivo', () => {
     const deA = await onboarding.checklist(tenantA);
     expect(deA.pasos.find((p) => p.id === 'estructura')!.hecho).toBe(true);
 
+    // Se compara ANTES contra DESPUÉS en vez de afirmar «B está a cero»: B
+    // tiene su propia estructura de las pruebas de práctica, y atar esta
+    // comprobación a un cero convertiría el aislamiento en una prueba del
+    // orden de ejecución.
     const deB = await onboarding.checklist(tenantB);
-    expect(deB.pasos.find((p) => p.id === 'estructura')!.hecho).toBe(false);
-    expect(deB.hechos).toBe(0);
+    expect(deB.hechos).toBe(antesDeB.hechos);
+    expect(deB.pasos.map((p) => p.hecho)).toEqual(
+      antesDeB.pasos.map((p) => p.hecho),
+    );
 
     // Y por HTTP con el token de B, que es el camino real.
     const res = await como(tokenB)(
       http().get('/api/v1/onboarding/checklist'),
     ).expect(200);
-    expect(res.body.hechos).toBe(0);
-    expect(res.body.listoParaAbrir).toBe(false);
+    expect(res.body.hechos).toBe(antesDeB.hechos);
   });
 });

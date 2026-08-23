@@ -5,6 +5,7 @@ import { formatDecimal } from '../../lib/money';
 import { CurvaDeVentas } from './curva';
 import { Canal } from './canal';
 import { ChecklistDeArranque } from './checklist';
+import { ModoPractica } from './practica';
 import type { ChecklistDeSalida } from '../../lib/panel-api';
 
 /**
@@ -68,6 +69,11 @@ export default async function PanelHome({
           que hay que ver. Después desaparece sola y la portada vuelve a ser
           solo «¿cómo vamos hoy?». */}
       {arranque ? <ChecklistDeArranque datos={arranque} /> : null}
+
+      {/* Después de la checklist: primero se termina de montar, y solo cuando
+          está montado tiene sentido ofrecer estrenar. Desaparece para siempre
+          al pulsarlo. */}
+      {arranque?.enPractica ? <ModoPractica /> : null}
 
       <div className="tarjetas">
         <div className="tarjeta">

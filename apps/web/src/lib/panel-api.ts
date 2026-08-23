@@ -656,9 +656,17 @@ export interface PasoDeChecklist {
   opcional: boolean;
 }
 
+export interface ResultadoDePractica {
+  wentLiveAt: string;
+  borrados: Record<string, number>;
+  seConserva: string[];
+}
+
 export interface ChecklistDeSalida {
   pasos: PasoDeChecklist[];
   hechos: number;
+  /** true mientras el negocio siga practicando (docs/26 §4). */
+  enPractica: boolean;
   /**
    * Cuántos pasos OBLIGATORIOS hay.
    *
@@ -1047,6 +1055,13 @@ export const panel = {
   /** La checklist de salida en vivo (docs/26 §5). */
   checklist: (): Promise<ChecklistDeSalida> =>
     llamar<ChecklistDeSalida>('/onboarding/checklist'),
+
+  /** «Borrar la práctica y empezar en serio» (docs/26 §4). Irreversible. */
+  empezarEnSerio: (reason: string): Promise<ResultadoDePractica> =>
+    llamar<ResultadoDePractica>('/onboarding/go-live', {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
 
   accionesAuditadas: (): Promise<Array<{ action: string; count: number }>> =>
     llamar<Array<{ action: string; count: number }>>('/audit/actions'),

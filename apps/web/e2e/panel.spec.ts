@@ -117,6 +117,42 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page).toHaveURL(/\/panel\/operaciones/);
   });
 
+  test('MODO PRÁCTICA: el botón exige motivo y LISTA las consecuencias', async ({
+    page,
+  }) => {
+    // Es la acción más destructiva del panel: borra las ventas del negocio
+    // entero. specs/ux/03 pide para las peligrosas «modal con motivo escrito +
+    // consecuencias listadas», y aquí la consecuencia que sorprende es la que
+    // más falta hace decir: el kardex NO se borra.
+    await entrar(page);
+    const practica = page.locator('.practica');
+    await expect(practica).toBeVisible();
+
+    await practica
+      .getByRole('button', { name: 'Borrar la práctica y empezar en serio' })
+      .click();
+    const dialogo = page.locator('dialog.confirmar');
+    await expect(dialogo).toBeVisible();
+    await expect(dialogo).toContainText('No se puede deshacer');
+    await expect(dialogo).toContainText('kardex');
+
+    // Sin motivo, el botón que ejecuta está apagado.
+    const confirmar = dialogo.getByRole('button', {
+      name: 'Sí, empezar en serio',
+    });
+    await expect(confirmar).toBeDisabled();
+    await dialogo
+      .getByLabel('¿Por qué empiezas en serio?')
+      .fill('Terminamos de ensayar');
+    await expect(confirmar).toBeEnabled();
+
+    // Y cancelar no ejecuta: esta prueba NO vacía la semilla, que las demás
+    // pruebas del archivo necesitan.
+    await dialogo.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(dialogo).not.toBeVisible();
+    await expect(practica).toBeVisible();
+  });
+
   test('LA CARTA enseña lo que la tienda oculta y deja cambiar un precio', async ({
     page,
   }) => {

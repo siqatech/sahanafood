@@ -43,6 +43,8 @@ export const tenants = pgTable('ten_tenants', {
   currency: text('currency').notNull().default('PEN'),
   timezone: text('timezone').notNull().default('America/Lima'),
   settings: jsonb('settings').notNull().default({}),
+  /** NULL = sigue en modo práctica y puede vaciar sus ventas (docs/26 §4). */
+  wentLiveAt: timestamp('went_live_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

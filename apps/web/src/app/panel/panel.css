@@ -524,6 +524,30 @@ tr:last-child td {
   color: var(--panel-suave);
 }
 
+/* --- Modo práctica (docs/26 §4) ---------------------------------------- */
+
+.practica {
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  /* Ámbar y no rojo: practicar no es un problema, es lo que hay que hacer. El
+     rojo se reserva para lo que va mal. */
+  border-left: 3px solid var(--sahana-aviso);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.practica--hecho {
+  border-left-color: var(--panel-sube);
+}
+
+.practica__lista {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--panel-suave);
+  font-size: 0.85rem;
+}
+
 /* --- Checklist de salida en vivo (docs/26 §5) -------------------------- */
 
 .arranque {
