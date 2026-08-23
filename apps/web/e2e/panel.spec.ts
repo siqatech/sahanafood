@@ -1627,6 +1627,63 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.locator('.panel__punto')).toHaveCount(0);
   });
 
+  test('CLIENTES: un señor, no tres, aunque pida por tres canales', async ({
+    page,
+  }) => {
+    // `specs/ux/03` lista «Clientes» en la estructura del panel y era el último
+    // hueco de esa lista. Lo que la pantalla tiene que demostrar es la
+    // unificación: el mismo teléfono cuenta una vez aunque el nombre llegue
+    // escrito de tres formas distintas según el canal.
+    await entrar(page);
+    await page.getByRole('link', { name: 'Clientes', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
+
+    const fila = page.locator('tbody tr').first();
+    await expect(fila).toBeVisible();
+    // El gasto va en columna de dinero, alineado a la derecha (docs/25 §4).
+    await expect(fila.locator('td.dinero').first()).toContainText('S/');
+
+    // La ficha, con su historial y el enlace de vuelta al pedido.
+    await fila.getByRole('link').first().click();
+    await expect(
+      page.getByRole('heading', { name: 'Historial' }),
+    ).toBeVisible();
+    await expect(page.getByText('Ha gastado')).toBeVisible();
+  });
+
+  test('CLIENTES: anonimizar avisa de que los PEDIDOS se quedan', async ({
+    page,
+  }) => {
+    // La Ley 29733 da derecho a que se borren los datos personales, y un pedido
+    // tiene cinco años de retención fiscal. La advertencia dice las dos
+    // mitades: sin la segunda, quien tiene que atender la solicitud duda de si
+    // va a romper su contabilidad y no la atiende.
+    await entrar(page);
+    await page.goto('/panel/clientes');
+    await page.locator('tbody tr').first().getByRole('link').first().click();
+
+    const abrir = page.getByRole('button', {
+      name: 'Anonimizar a solicitud del cliente',
+    });
+    await expect(abrir).toBeVisible();
+    await abrir.click();
+
+    const dialogo = page.locator('dialog.confirmar');
+    await expect(dialogo).toBeVisible();
+    await expect(dialogo).toContainText('NO se borran los pedidos');
+    await expect(dialogo).toContainText('retención fiscal');
+
+    const confirmar = dialogo.getByRole('button', {
+      name: 'Sí, borrar sus datos personales',
+    });
+    await expect(confirmar).toBeDisabled();
+
+    // Se cancela: esta prueba NO anonimiza a nadie de la semilla, que las
+    // demás pruebas del archivo siguen necesitando con su nombre.
+    await dialogo.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(dialogo).not.toBeVisible();
+  });
+
   test('LA TIENDA sigue siendo la tienda: el panel no le puso su cabecera', async ({
     page,
   }) => {

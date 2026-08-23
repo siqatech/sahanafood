@@ -90,6 +90,9 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       // Registrar consentimiento y bajas toca datos personales (RN-T10): se
       // separa de la lectura a propósito.
       'messaging.manage',
+      // Ve la ficha del cliente y su historial; anonimizar queda en
+      // propietario/administrador, porque es irreversible.
+      'crm.read',
       'conversations.read',
       'conversations.reply',
       'conversations.assign',

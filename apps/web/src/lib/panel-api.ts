@@ -647,6 +647,30 @@ export interface ResultadoDeImportacion {
   categoriasNuevas: string[];
 }
 
+export interface ClienteDelPanel {
+  phone: string;
+  name: string | null;
+  orders: number;
+  totalSpent: string;
+  averageTicket: string;
+  firstOrderAt: string;
+  lastOrderAt: string;
+  channels: string[];
+  anonymized: boolean;
+  optedOut: boolean;
+}
+
+export interface FichaDeCliente extends ClienteDelPanel {
+  historial: Array<{
+    id: string;
+    orderNumber: number;
+    status: string;
+    channel: string;
+    createdAt: string;
+    total: string;
+  }>;
+}
+
 export interface PasoDeChecklist {
   id: string;
   titulo: string;
@@ -1059,6 +1083,21 @@ export const panel = {
   /** «Borrar la práctica y empezar en serio» (docs/26 §4). Irreversible. */
   empezarEnSerio: (reason: string): Promise<ResultadoDePractica> =>
     llamar<ResultadoDePractica>('/onboarding/go-live', {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  clientes: (q?: string): Promise<ClienteDelPanel[]> =>
+    llamar<ClienteDelPanel[]>(
+      q ? `/crm/customers?q=${encodeURIComponent(q)}` : '/crm/customers',
+    ),
+
+  cliente: (phone: string): Promise<FichaDeCliente> =>
+    llamar<FichaDeCliente>(`/crm/customers/${encodeURIComponent(phone)}`),
+
+  /** Anonimizar a solicitud (RN-CRM-02). Irreversible. */
+  anonimizarCliente: (phone: string, reason: string): Promise<unknown> =>
+    llamar(`/crm/customers/${encodeURIComponent(phone)}/anonymize`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),

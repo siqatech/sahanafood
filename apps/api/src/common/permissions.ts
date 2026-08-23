@@ -103,6 +103,12 @@ export const PERMISSIONS = [
   // Registrar consentimiento y bajas toca datos personales (RN-T10): se
   // separa de la lectura a propósito.
   'messaging.manage',
+  // Clientes (spec 14, perfil e historial en F5)
+  'crm.read',
+  // Anonimizar a solicitud (RN-CRM-02, Ley 29733). Se separa de leer porque es
+  // IRREVERSIBLE y toca datos personales: quien consulta un teléfono no es
+  // necesariamente quien puede borrarlo para siempre.
+  'crm.anonymize',
   // Bandeja omnicanal (F5)
   'conversations.read',
   // Responder a un cliente. Separado de leer: en un call center la mayoría

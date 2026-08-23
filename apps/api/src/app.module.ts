@@ -22,6 +22,7 @@ import { PaymentsModule } from './modules/payments/index.js';
 import { CommonModule } from './common/common.module.js';
 import { MessagingModule } from './modules/messaging/index.js';
 import { OnboardingModule } from './modules/onboarding/index.js';
+import { CrmModule } from './modules/crm/index.js';
 import { AnalyticsModule } from './modules/analytics/index.js';
 import { CashModule } from './modules/cash/index.js';
 import { StorefrontModule } from './modules/storefront/index.js';
@@ -73,6 +74,7 @@ import { ObservabilityModule } from './observability/observability.module.js';
     PaymentsModule,
     MessagingModule,
     OnboardingModule,
+    CrmModule,
     AnalyticsModule,
     CashModule,
     StorefrontModule,

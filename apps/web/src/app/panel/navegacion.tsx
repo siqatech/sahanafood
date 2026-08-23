@@ -50,6 +50,7 @@ const GRUPOS: Grupo[] = [
     entradas: [
       { href: '/panel/pedidos', rotulo: 'Pedidos' },
       { href: '/panel/conversaciones', rotulo: 'Conversaciones' },
+      { href: '/panel/clientes', rotulo: 'Clientes' },
     ],
   },
   {

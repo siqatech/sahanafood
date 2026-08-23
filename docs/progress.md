@@ -1702,3 +1702,66 @@ la navegación entera.
 
 Verde: **776 API · 457 dominio · 5 ui · 45 web · 23 POS · 64 navegador**, 496
 módulos sin violaciones de frontera.
+
+---
+
+## Clientes: perfil unificado e historial (2026-08-23)
+
+`specs/ux/03` lista «Clientes» en la estructura del panel y era **el último
+hueco de esa lista**. `spec 14` sitúa el perfil y el historial en **F5** —la
+fase actual—; las campañas quedan para F8. Sin esta pantalla, la pregunta más
+común de un dueño —«¿este señor cuánto nos compra?»— solo se contestaba buscando
+su teléfono en el listado de pedidos, una página cada vez.
+
+**El cliente NO es una tabla.** No hay `crm_customers` y es deliberado: se
+**deriva de sus pedidos**, agrupados por teléfono. Una tabla propia habría que
+mantenerla sincronizada en cada alta, cada corrección de teléfono y cada pedido
+de marketplace que llega con el nombre escrito de otra forma — y el día que se
+desincronice, el panel dirá que alguien compró tres veces cuando compró cinco.
+Derivarlo cuesta una consulta agregada y **no puede mentir**. Tampoco hizo falta
+migración.
+
+**Unificado por teléfono**, que es la única clave que el cliente escribe igual
+en los cinco canales. El nombre no sirve: el mismo señor es «Juan Perez» en la
+web, «juan» en WhatsApp y «Juan Pérez Q.» en Rappi. Se enseña el más reciente,
+que es el que él mismo escribió la última vez.
+
+**El gasto cuenta solo lo entregado.** Sumar los cancelados pondría arriba de la
+lista justo al cliente que más cancela — al que NO hay que mandarle una
+promoción. Hay una prueba con un cancelado de S/ 999 que lo fija.
+
+### RN-CRM-02: anonimizar sin romper la contabilidad
+
+> se desvincula PII, queda el registro comercial.
+
+Es la regla entera y la parte que más importa hacer bien: **los pedidos no se
+borran**. Un pedido es un registro contable con cinco años de retención fiscal
+(docs/14), así que borrarlo para atender una solicitud de la Ley 29733 cambiaría
+un problema legal por otro peor. Se va lo que identifica —nombre, teléfono,
+dirección de entrega— y también el contacto de WhatsApp, porque dejarlo haría
+que la anonimización fuera mentira. El importe, la fecha y el canal se quedan, y
+el cuadre con SUNAT sigue cuadrando.
+
+**En el histórico NO se escribe el teléfono.** Sería dejar el dato personal en
+la única tabla que no se puede borrar; queda cuántos pedidos y por qué, que es
+lo que hay que poder demostrar. Una prueba lo comprueba mirando que el número no
+aparezca en `audit_log`.
+
+`crm.anonymize` es un permiso **aparte** de `crm.read`: quien consulta el
+teléfono de un cliente no es necesariamente quien puede borrarlo para siempre.
+El supervisor lee; anonimizar queda en propietario y administrador.
+
+La pantalla usa la confirmación destructiva de docs/25, y la advertencia dice
+**las dos mitades**: lo que se borra y lo que se queda. Sin la segunda, quien
+tiene que atender la solicitud duda de si va a romper su contabilidad y no la
+atiende.
+
+### Y la regla del dinero saltó otra vez, con razón
+
+En una prueba, no en el código de producción: `total: number` en el objeto de un
+ayudante. Es donde se cuela la costumbre, así que pasó a cadena decimal como en
+la base — igual que hizo falta renombrar `total` a `obligatorios` en la
+checklist. La regla lleva tres aciertos.
+
+Verde: **787 API · 457 dominio · 5 ui · 45 web · 23 POS · 66 navegador**, 505
+módulos sin violaciones de frontera.
