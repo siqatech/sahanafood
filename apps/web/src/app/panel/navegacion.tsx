@@ -87,6 +87,7 @@ const GRUPOS: Grupo[] = [
       { href: '/panel/equipo', rotulo: 'Equipo' },
       { href: '/panel/auditoria', rotulo: 'Histórico' },
       { href: '/panel/novedades', rotulo: 'Novedades' },
+      { href: '/panel/ayuda', rotulo: 'Ayuda' },
     ],
   },
 ];

@@ -188,6 +188,18 @@ token— pero un formulario de acceso donde nadie lo espera es donde se pescan
 contraseñas. Con la variable puesta, en cualquier otro host el panel responde
 404, como cualquier ruta que no existe.
 
+**Pon el WhatsApp de soporte en `SAHANA_SUPPORT_WHATSAPP`** (formato
+internacional; sirve `+51 987 654 321` o `51987654321`, se limpia solo). Es el
+destino del botón de Ayuda del panel. Sin ella la pantalla sigue funcionando
+—compone el mensaje y deja copiarlo— pero no abre WhatsApp, porque un botón que
+lo abre sin destinatario hace creer al operador que su mensaje salió.
+
+**Y `SAHANA_VERSION` con la versión que despliegas.** Aparece en el mensaje que
+el cliente le manda a soporte, y sin ella soporte no sabe si el fallo que le
+describen ya está corregido. Si no la pones se dice «sin identificar», que es
+peor que un número pero mejor que uno falso; en Railway se usa
+`RAILWAY_GIT_COMMIT_SHA` como respaldo.
+
 Lo que hay hoy: portada «¿cómo vamos hoy?» (ventas, pedidos, ticket promedio y
 pedidos en marcha, comparados con el mismo día de la semana pasada), carta
 —precios por canal, pausar y reactivar, añadir platos— y negocio —marcas y

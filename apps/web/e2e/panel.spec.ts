@@ -1696,4 +1696,28 @@ test.describe('Panel de gestión en navegador', () => {
       0,
     );
   });
+
+  test('LA AYUDA enseña lo que adjunta, y la casilla manda de verdad', async ({
+    page,
+  }) => {
+    // La confirmación de docs/26 no es un adorno: es la diferencia entre
+    // adjuntar el contexto y filtrarlo. Se comprueba por lo que el operador
+    // VE en la vista previa, que es lo único que puede leer antes de mandar.
+    await entrar(page);
+    await page.goto('/panel/ayuda');
+
+    await page
+      .getByLabel('¿Qué está pasando?')
+      .fill('No me imprime la comanda.');
+
+    const previa = page.locator('.ayuda__previa');
+    await expect(previa).toContainText('No me imprime la comanda.');
+    await expect(previa).toContainText('Datos técnicos');
+    await expect(previa).toContainText('Versión:');
+
+    // Al desmarcar, los datos DESAPARECEN del texto que se va a mandar.
+    await page.getByLabel(/Adjuntar los datos de mi negocio/).uncheck();
+    await expect(previa).toContainText('No me imprime la comanda.');
+    await expect(previa).not.toContainText('Datos técnicos');
+  });
 });

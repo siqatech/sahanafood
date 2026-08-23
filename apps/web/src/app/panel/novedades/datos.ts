@@ -45,6 +45,14 @@ export interface Novedad {
 export const NOVEDADES: Novedad[] = [
   {
     fecha: '2026-08-23',
+    titulo: 'Pídenos ayuda sin tener que explicar quién eres',
+    detalle:
+      'Escribe qué te pasa y te abrimos WhatsApp con el mensaje listo. Antes de mandarlo ves exactamente qué se adjunta —tu negocio, tu local y tu versión del programa— y puedes quitarlo con una casilla. De tus clientes no se adjunta nada.',
+    donde: '/panel/ayuda',
+    dondeRotulo: 'En Configuración → Ayuda',
+  },
+  {
+    fecha: '2026-08-23',
     titulo: 'Practica sin ensuciar tus ventas de verdad',
     detalle:
       'Mientras estés en modo práctica puedes cobrar, anular y cerrar caja con descuadre sin miedo. Cuando estés listo, un botón borra las pruebas y deja tu carta y tu configuración intactas.',

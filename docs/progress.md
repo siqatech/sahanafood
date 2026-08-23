@@ -1913,3 +1913,43 @@ de tipos salió a la luz la imagen de la tienda, que llevaba rota desde que
 `@sahana/ui` entró como dependencia y **nadie lo veía porque el trabajo se
 omitía**. Un rojo tapaba al otro; hasta que el primero no se arregla, no se sabe
 cuántos hay debajo.
+
+## Ayuda: pedir soporte por WhatsApp sin explicar quién eres
+
+Primera de las cuatro piezas de **docs/26 «Soporte como producto»** que faltaba
+entera. Por WhatsApp a propósito: es el mismo canal que le vendemos al cliente
+para atender a los suyos, y si no nos sirve a nosotros, mal se lo estamos
+vendiendo. El botón vive en Configuración → Ayuda.
+
+Adjunta **negocio, local, cliente, versión y fecha**, que es la media hora que
+se pierde en toda incidencia preguntando «¿qué negocio eres?, ¿qué local?, ¿qué
+versión tienes?».
+
+**La confirmación es la parte que no se podía saltar.** La spec dice «previa
+confirmación del usuario» y eso se cumple de una sola manera: enseñando el
+mensaje **entero, tal cual sale**, con una casilla que lo quita. Un adjunto
+automático e invisible es una fuga con buena intención. La prueba de navegador
+comprueba justo eso —que al desmarcar, los datos desaparecen del texto— porque
+si la casilla fuera decorativa nadie lo notaría mirando la pantalla.
+
+**Lo que NUNCA se adjunta:** ni un dato de los clientes del cliente. Ni
+teléfono, ni dirección, ni nombre, ni el contenido de un pedido. Un canal de
+soporte es una puerta hacia fuera del sistema, y el día que alguien pida ayuda
+con «el pedido de la señora que llamó» no debe irse con él la ficha de la
+señora. Está escrito en el módulo y hay una prueba por cada rama.
+
+El texto se compone en un módulo **puro** y aparte de la pantalla: aquí se
+decide qué sale del sistema, y eso merece pruebas propias en vez de comprobarse
+mirando un WhatsApp.
+
+**Sin número configurado no hay botón que engañe.** `enlaceDeWhatsApp` devuelve
+`null` en vez de un enlace sin destinatario, y la pantalla ofrece copiar el
+mensaje. Un botón que abre WhatsApp vacío hace creer que el mensaje salió, y el
+operador espera respuesta a algo que nadie recibió. Se configuran
+`SAHANA_SUPPORT_WHATSAPP` y `SAHANA_VERSION` (docs/34).
+
+**Y lo que no se pudo entregar se anotó en vez de fingirse.** La spec pide
+adjuntar «los últimos errores» y ese registro no existe: la API manda un
+`traceId` en cada error, pero el panel lo descarta al leer el problema. Hay un
+campo para pegar el código y **PA-13** en docs/22 con las tres alternativas.
+Inventar un «últimos errores: ninguno» habría sido peor que la ausencia.

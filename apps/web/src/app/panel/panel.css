@@ -1323,3 +1323,70 @@ input[type='color'] {
 .boton-enlace:hover {
   border-color: var(--panel-acento);
 }
+
+/* ---------------------------------------------------------------- Ayuda
+   La pantalla de soporte (docs/26). La vista previa es un `pre` de verdad:
+   el mensaje lleva saltos de línea y se manda tal cual, así que enseñarlo
+   con el espaciado colapsado sería enseñar otra cosa distinta de la que
+   sale. */
+.ayuda {
+  max-width: 46rem;
+}
+
+.ayuda textarea {
+  width: 100%;
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--panel-borde);
+  border-radius: 6px;
+  background: var(--panel-tarjeta);
+  color: var(--panel-texto);
+  resize: vertical;
+}
+
+/* La casilla y su texto en la misma línea y con el texto pinchable: una
+   casilla de 13 píxeles es un blanco imposible en un móvil. */
+.ayuda__casilla {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 1rem 0;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.ayuda__casilla input {
+  margin-top: 0.15rem;
+  flex: none;
+}
+
+.ayuda__vista {
+  margin: 1rem 0;
+}
+
+.ayuda__vista-titulo {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.ayuda__previa {
+  margin: 0 0 0.35rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--panel-suave);
+  border: 1px solid var(--panel-borde);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  /* `break-word` y no `anywhere`: un identificador largo tiene que partirse,
+     pero partir cada palabra deja el mensaje ilegible. */
+  overflow-wrap: break-word;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.ayuda__acciones {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
