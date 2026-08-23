@@ -1806,3 +1806,57 @@ distingue los dos casos, que no son el mismo: «se ha superado» cuando pesa de
 más, «ha dejado de poder medirse» cuando la ruta ya no encaja. Decir «superado»
 sobre un presupuesto que no midió nada manda a optimizar una página que está
 bien.
+
+## Y tirando de ese hilo: CI llevaba 28 ejecuciones seguidas en rojo
+
+Comprobar el presupuesto llevó a mirar los demás gates, y de ahí a mirar el
+propio CI. **Las 28 últimas ejecuciones habían fallado, sin una sola verde.**
+Cinco de los siete trabajos caían, y como `Build` depende de `static` y
+`domain`, el presupuesto de la sección anterior ni siquiera llegaba a
+ejecutarse: estaba arreglando un gate que no corría.
+
+Cuatro causas, ninguna relacionada con el código de negocio:
+
+**1 · Los paquetes compartidos no se compilaban antes de necesitarlos.** Dos
+trabajos distintos por el mismo motivo. `@sahana/domain` se resuelve por el
+`dist/*.d.ts` que declara su `package.json`, así que sin compilar no existe: el
+typecheck del POS moría con `Cannot find module '@sahana/domain'` —que parece
+un import roto y es un paquete sin construir— y la semilla del trabajo de
+navegador moría **en un segundo** por lo mismo, antes de tocar la base. Ambos
+llevan ya su paso de construcción previo.
+
+**2 · Al trabajo de integración le faltaba pgvector.** `CREATE EXTENSION` es
+cosa de un superusuario, no del migrador, y por eso es un paso de
+infraestructura. El trabajo de navegador lo tenía; el de integración no. Cada
+ejecución moría en `0028_ai_platform.sql` al llegar a la primera columna
+`vector`, y con las migraciones caídas **las 787 pruebas de la API y todos los
+gates de aislamiento quedaban en «omitido»**.
+
+**3 · El gate de dinero estaba en rojo, y tenía razón.** 100 % de ramas en
+`pricing/` es el gate más estricto del proyecto y fallaba por dos líneas de
+`modifiers.ts`: las variantes **en singular** de dos mensajes que lee un
+cliente. Al reescribirlos para que sonaran a persona se creó una bifurcación
+singular/plural y solo se probó la plural. La ironía es que la singular es la
+que más se ve: el grupo típico de una carta —el tamaño de un plato— es
+justamente `min 1 / max 1`. Ahora se comprueba el texto entero, porque el fallo
+que importa no es que no valide, es que valide y enseñe «Elige al menos 1
+opciones».
+
+**4 · Una vulnerabilidad alta nueva**, `nanoid < 3.3.18`, heredada por
+`vite > postcss` en el POS. Saldada con `override`, como las anteriores.
+
+### Lo que esto enseña, que es más importante que los cuatro arreglos
+
+**Verde en local no es verde en CI, y la diferencia no es aleatoria: es que la
+máquina de desarrollo acumula estado.** Aquí el `dist` de los paquetes estaba
+construido de antes, y la base de datos tenía las migraciones de antes. Las dos
+cosas que fallaban en CI eran exactamente las dos que en local venían dadas.
+Reproducirlo requirió una base **recién creada** y quitar el `dist` a mano; con
+la máquina tal cual, los cuatro fallos eran invisibles.
+
+Y hay algo peor que las cuatro causas: **nadie miró.** Este mismo documento dice
+—dos veces, sobre el gate de formato y sobre el de SCA— que «un gate que lleva
+días en rojo deja de leerse, y entonces deja de proteger». Volvió a pasar, y
+esta vez con el pipeline entero. Cada commit se dio por bueno con las pruebas
+corridas a mano en local, que es precisamente el hábito que un CI existe para
+sustituir.

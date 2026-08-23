@@ -211,6 +211,48 @@ describe('Modificadores (RN-CAT-05)', () => {
     ).toThrow(/Elige al menos 2 opciones/);
   });
 
+  /**
+   * Las dos variantes en SINGULAR de esos mismos mensajes.
+   *
+   * Estaban sin cubrir, y son las que más se leen: el grupo típico de una carta
+   * —el tamaño de un plato— es exactamente `min 1 / max 1`, así que el texto que
+   * ve casi todo cliente que se equivoca era el único que ninguna prueba
+   * miraba. Las plurales, más raras, sí estaban. Se comprueba el texto entero y
+   * no solo que lance, porque el fallo que importa aquí no es que no valide: es
+   * que valide y le enseñe al cliente «Elige al menos 1 opciones».
+   */
+  it('en singular no dice «1 opciones», ni por debajo ni por encima', () => {
+    const unoExacto: ModifierGroup = {
+      ...extras,
+      minSelections: 1,
+      maxSelections: 1,
+    };
+
+    expect(() =>
+      calculateOrderTotals({
+        lines: [
+          linea({
+            modifierGroups: [unoExacto],
+            modifierSelections: [{ groupId: 'g-extras', optionIds: [] }],
+          }),
+        ],
+      }),
+    ).toThrow('Elige una opción de "Extras".');
+
+    expect(() =>
+      calculateOrderTotals({
+        lines: [
+          linea({
+            modifierGroups: [unoExacto],
+            modifierSelections: [
+              { groupId: 'g-extras', optionIds: ['queso', 'papas'] },
+            ],
+          }),
+        ],
+      }),
+    ).toThrow('Solo puedes elegir una opción de "Extras".');
+  });
+
   it('rechaza una opción agotada', () => {
     expect(() =>
       calculateOrderTotals({

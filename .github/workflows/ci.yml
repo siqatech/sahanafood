@@ -29,6 +29,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Los paquetes compartidos se compilan ANTES de comprobar tipos, y no es
+      # un detalle de rendimiento: las apps resuelven `@sahana/domain` por el
+      # `dist/*.d.ts` que declara su `package.json`, así que sin compilar no hay
+      # tipos que comprobar. El fallo además ENGAÑA —`tsc` no dice «falta
+      # compilar», dice «Cannot find module '@sahana/domain'»— y en una máquina
+      # de desarrollo no aparece nunca, porque ahí el `dist` ya está de antes.
+      - name: Construir los paquetes compartidos
+        run: pnpm --filter "./packages/**" build
       - name: ESLint (incluye regla anti-number monetario)
         run: pnpm lint
       - name: Typecheck
@@ -109,6 +117,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Crear roles (app/migrator SIN BYPASSRLS)
         run: PGHOST=localhost PGPASSWORD=sahana_dev POSTGRES_USER=sahana POSTGRES_DB=sahana bash infra/docker/init/01-roles.sh
+      # pgvector lo instala un SUPERUSUARIO, no el migrador: `CREATE EXTENSION`
+      # está fuera de lo que puede un rol sin privilegios, y por eso es un paso
+      # de infraestructura y no una migración. Faltaba aquí —el job de navegador
+      # sí lo tenía— y por eso `0028_ai_platform.sql` reventaba en cada
+      # ejecución al llegar a la primera columna `vector`.
+      - name: Extensiones (pgvector, con superusuario)
+        run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/02-extensions.sql
       - name: Migraciones
         run: pnpm --filter @sahana/api migrate
       # Paso PROPIO y a propósito duplicado dentro de la suite completa (T5.31).
@@ -223,6 +238,12 @@ jobs:
         run: PGPASSWORD=sahana_dev psql -h localhost -U sahana -d sahana -v ON_ERROR_STOP=1 -f infra/docker/init/02-extensions.sql
       - name: Migraciones
         run: pnpm --filter @sahana/api migrate
+      # La semilla arranca la aplicación entera con `@swc-node`, así que importa
+      # `@sahana/domain` por su `dist` igual que el typecheck. Sin este paso
+      # moría en un segundo con «Cannot find module '@sahana/domain'», que
+      # parece un fallo de la semilla y es un paquete sin compilar.
+      - name: Construir los paquetes compartidos
+        run: pnpm --filter "./packages/**" build
       # La tienda se SIEMBRA, no se construye clicando: montar el escenario por
       # interfaz multiplica el tiempo y hace que un fallo de la semilla parezca
       # un fallo de la tienda (ADR-0018).
