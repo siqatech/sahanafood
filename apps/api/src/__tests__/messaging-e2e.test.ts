@@ -55,6 +55,8 @@ suite('WhatsApp — notificaciones de estado', () => {
   let handlers: Record<string, unknown>;
 
   const TELEFONO = '+51987654321';
+  /** Host propio del cliente, por donde tiene que salir el seguimiento. */
+  const HOST_TIENDA = 'wa-seguimiento.sahana.test';
   let delivery: DeliveryService;
 
   beforeAll(async () => {
@@ -94,6 +96,24 @@ suite('WhatsApp — notificaciones de estado', () => {
     cat = await withTenant(pool, tenantA, (ctx) =>
       seedDemoCatalog(ctx, { brandId, locationId: org.locationId }),
     );
+
+    // Dominio propio del cliente, verificado y en servicio: es de donde debe
+    // colgar el enlace de seguimiento.
+    //
+    // Se siembra aquí y no dentro de una prueba para que las dos que lo usan no
+    // dependan del orden en que corran. Antes NINGUNA lo sembraba, el enlace
+    // salía por el respaldo de configuración, y eso escondía que la consulta
+    // del dominio propio filtraba por un estado inexistente: la prueba pasaba
+    // en esta máquina solo porque `PUBLIC_TRACKING_BASE_URL` estaba puesta en
+    // el entorno, y en CI —donde no lo está— fallaba.
+    await withTenant(pool, tenantA, async ({ client }) => {
+      await client.query(
+        `INSERT INTO sto_domains (tenant_id, brand_id, host, is_subdomain,
+                                  verified_at, status)
+         VALUES ($1, $2, $3, true, now(), 'active')`,
+        [tenantA, brandId, HOST_TIENDA],
+      );
+    });
 
     const login = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -504,7 +524,11 @@ suite('WhatsApp — notificaciones de estado', () => {
 
     const mandado = wa.sent.at(-1)!;
     const texto = JSON.stringify(mandado);
-    expect(texto).toContain('/seguimiento/');
+    // Del HOST DEL CLIENTE, no de cualquier sitio. Comprobar solo que aparece
+    // «/seguimiento/» daba por bueno el respaldo de configuración y dejaba
+    // pasar que el dominio propio no se consultara nunca — que es exactamente
+    // lo que estaba ocurriendo.
+    expect(texto).toContain(`https://${HOST_TIENDA}/seguimiento/`);
     expect(envio.id).toBeTruthy();
   });
 

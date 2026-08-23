@@ -1860,3 +1860,37 @@ días en rojo deja de leerse, y entonces deja de proteger». Volvió a pasar, y
 esta vez con el pipeline entero. Cada commit se dio por bueno con las pruebas
 corridas a mano en local, que es precisamente el hábito que un CI existe para
 sustituir.
+
+## El enlace de seguimiento nunca salía del dominio del cliente
+
+Con el pipeline ya casi verde, el trabajo de integración llegó por fin a
+ejecutar las 787 pruebas —llevaba semanas sin hacerlo— y dos fallaron. Eran las
+del enlace de seguimiento por WhatsApp, y pasaban en esta máquina.
+
+La diferencia era una **variable de entorno**: `PUBLIC_TRACKING_BASE_URL`, que
+aquí estaba puesta y en CI no. Es el mismo patrón de la sección anterior —el
+entorno de desarrollo acumula estado y tapa el fallo— pero esta vez lo que
+tapaba era peor que una prueba frágil.
+
+`hostDeSeguimiento` busca el dominio propio del cliente y, si no hay, tira de esa
+variable como respaldo. La consulta del dominio propio filtraba por
+`status = 'verified'`, y **ese valor no existe**: la restricción de la tabla solo
+admite `pending`, `active` y `disabled`, y `verifyDomain` marca `active`. Es
+decir, la consulta no encontraba nunca nada y **el dominio del cliente no se
+usaba jamás**. Todo salía por el respaldo.
+
+En producción eso significa dos cosas, las dos malas: si la variable no está
+puesta —y en el despliegue actual no lo está— el aviso sale **sin enlace**; y si
+está puesta, el cliente recibe un enlace del dominio genérico en vez del de la
+tienda a la que compró.
+
+**La prueba tampoco ayudaba, y por una razón que conviene recordar:** comprobaba
+que el texto contuviera `/seguimiento/`. Eso lo cumple igual el respaldo, así
+que daba por bueno el camino equivocado. Ahora se siembra un dominio propio
+verificado y se comprueba el enlace **entero, con su host**; se verificó que la
+prueba falla si se devuelve el error a su sitio.
+
+La lección se repite en tres capas el mismo día: **un gate que no mira lo que
+dice mirar es peor que no tenerlo.** El presupuesto medía trozos comunes en vez
+de rutas, esta prueba medía una subcadena en vez de un host, y el CI entero
+llevaba 28 ejecuciones sin que nadie leyera el rojo.

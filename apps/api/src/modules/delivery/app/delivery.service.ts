@@ -664,8 +664,15 @@ export class DeliveryService {
     brandId: string,
   ): Promise<string | null> {
     const { rows } = await ctx.client.query<{ host: string }>(
+      // `status = 'active'`, no `'verified'`: ese valor NO EXISTE —la
+      // restricción de la tabla solo admite pending/active/disabled— así que la
+      // consulta no encontraba nunca nada y el dominio propio del cliente no se
+      // usaba jamás. Pasaba desapercibido porque abajo hay un respaldo que sí
+      // devolvía algo. `verifyDomain` marca `verified_at` Y pone `active`; se
+      // comprueban las dos cosas porque son dos hechos distintos: que el CNAME
+      // se comprobó y que el dominio está en servicio.
       `SELECT host FROM sto_domains
-        WHERE brand_id = $1 AND status = 'verified' AND verified_at IS NOT NULL
+        WHERE brand_id = $1 AND status = 'active' AND verified_at IS NOT NULL
         ORDER BY is_subdomain, host
         LIMIT 1`,
       [brandId],
