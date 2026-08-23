@@ -1654,3 +1654,51 @@ después**, que es lo que de verdad quiere decir «lo de A no toca a B».
 
 Verde: **776 API · 457 dominio · 5 ui · 35 web · 23 POS · 63 navegador**, 491
 módulos sin violaciones de frontera.
+
+---
+
+## Novedades: qué puedes hacer ahora que antes no (2026-08-23)
+
+`specs/ux/03` la lista en la estructura del panel y `docs/26` la pide «con
+lenguaje de operador, no de developer». Faltaba entera, y sin ella todo lo
+construido estas semanas es invisible: el dueño no tiene forma de enterarse de
+que ya puede pegar su carta desde Excel.
+
+**Un archivo del repositorio, no una tabla.** No es un dato del negocio —es lo
+mismo para todos los clientes— y una tabla obligaría a inventar una pantalla
+para escribirlo y un sitio del plano de control donde guardarlo. En el
+repositorio viaja **con el código que describe**: se revisa en el mismo cambio
+que lo produce y **no puede mentir** — si la línea está en producción, la
+función está en producción.
+
+**Y hay una prueba que comprueba el idioma.** Es la parte que más me gusta de
+esto: un test recorre las entradas buscando jerga —«endpoint», «API», «CSV»,
+«migración», «componente»— y falla si aparece. **Me pilló a mí**: había escrito
+«se bajan en CSV», que para un dueño de pollería no significa nada. Ahora dice
+«se bajan en un archivo que abre Excel». Sin esa prueba, la sección se degrada a
+notas de commit en tres semanas, que es exactamente lo que docs/26 pide evitar.
+
+Cada entrada lleva **dónde se usa**, como enlace. Una novedad que no dice dónde
+está obliga a buscarla por el menú, y a la tercera nadie las lee.
+
+### El aviso de «sin leer»
+
+Un punto con el número dentro en la navegación, con la fecha de la última visita
+en `localStorage`. Tres decisiones:
+
+· **Sin nada guardado no hay aviso.** Quien entra por primera vez ya tiene la
+  portada llena de cosas que aprender; recibirlo con «9 novedades» de funciones
+  que nunca ha echado de menos es ruido — y el ruido del primer día es el que
+  enseña a ignorar el aviso para siempre.
+· **Se marca al ABRIR, no al salir.** «Salir» no siempre ocurre: se cierra la
+  pestaña, se apaga la tablet. Un aviso que no se apaga nunca enseña lo mismo.
+· **Una fecha guardada ilegible se trata como si no hubiera nada.**
+  `localStorage` lo puede tocar cualquiera, y un valor roto no debe convertirse
+  en un aviso permanente que no se puede quitar.
+
+Todo acceso a `localStorage` va dentro de `try`: lanza en pestaña privada y con
+las cookies de sitio bloqueadas, y no poder recordar una visita no puede tumbar
+la navegación entera.
+
+Verde: **776 API · 457 dominio · 5 ui · 45 web · 23 POS · 64 navegador**, 496
+módulos sin violaciones de frontera.

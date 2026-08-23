@@ -1588,6 +1588,45 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page).toHaveURL(/\/panel\/entrar/);
   });
 
+  test('NOVEDADES: se leen, dicen DÓNDE está cada cosa y el aviso se apaga', async ({
+    page,
+  }) => {
+    // specs/ux/03 la lista en la estructura del panel y docs/26 la pide «con
+    // lenguaje de operador, no de developer». Lo que esta prueba vigila es que
+    // no sea una lista muerta: que cada novedad lleve a la pantalla donde se
+    // usa, y que el aviso de «sin leer» se apague al leerlas — un aviso que no
+    // se apaga enseña a ignorarlo.
+    await entrar(page);
+
+    // Se simula a alguien que ya había entrado antes: sin nada guardado no hay
+    // aviso a propósito, porque quien llega por primera vez no ha echado de
+    // menos ninguna de estas funciones.
+    await page.evaluate(() =>
+      window.localStorage.setItem('sahana.novedades.vistas', '2026-01-01'),
+    );
+    await page.reload();
+
+    const enlace = page.getByRole('link', { name: /Novedades/ });
+    await expect(enlace.locator('.panel__punto')).toBeVisible();
+
+    await enlace.click();
+    await expect(
+      page.getByRole('heading', { name: 'Novedades' }),
+    ).toBeVisible();
+
+    // Cada novedad dice qué se puede hacer y adónde ir.
+    const primera = page.locator('.novedad').first();
+    await expect(primera.locator('.novedad__titulo')).toBeVisible();
+    await expect(primera.locator('time')).toBeVisible();
+
+    // El aviso se apaga sin recargar.
+    await expect(page.locator('.panel__punto')).toHaveCount(0);
+
+    // Y sigue apagado al volver.
+    await page.goto('/panel');
+    await expect(page.locator('.panel__punto')).toHaveCount(0);
+  });
+
   test('LA TIENDA sigue siendo la tienda: el panel no le puso su cabecera', async ({
     page,
   }) => {

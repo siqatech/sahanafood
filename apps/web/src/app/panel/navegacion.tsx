@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { NOVEDADES } from './novedades/datos';
+import { CLAVE_ULTIMA_VISITA, sinLeer } from './novedades/reglas';
 
 /**
  * La navegación del panel (specs/ux/03 «Estructura»).
@@ -82,6 +85,7 @@ const GRUPOS: Grupo[] = [
       { href: '/panel/negocio', rotulo: 'Negocio' },
       { href: '/panel/equipo', rotulo: 'Equipo' },
       { href: '/panel/auditoria', rotulo: 'Histórico' },
+      { href: '/panel/novedades', rotulo: 'Novedades' },
     ],
   },
 ];
@@ -99,8 +103,41 @@ function esActual(ruta: string, href: string): boolean {
   return ruta === href || ruta.startsWith(`${href}/`);
 }
 
+/**
+ * Cuántas novedades quedan sin leer en ESTE navegador.
+ *
+ * Empieza en cero y se calcula en `useEffect`: `localStorage` no existe en el
+ * servidor, y pintarlo directo daría discrepancia de hidratación — el punto
+ * parpadearía en cada carga.
+ */
+function useNovedadesSinLeer(): number {
+  const [cuantas, setCuantas] = useState(0);
+
+  useEffect(() => {
+    const recalcular = (): void => {
+      try {
+        setCuantas(
+          sinLeer(NOVEDADES, window.localStorage.getItem(CLAVE_ULTIMA_VISITA)),
+        );
+      } catch {
+        // Sin `localStorage` no hay punto. Preferible a reventar la navegación.
+        setCuantas(0);
+      }
+    };
+    recalcular();
+    // La pantalla de novedades avisa al marcarlas: sin esto el punto seguiría
+    // ahí después de leerlas, que es como se aprende a ignorarlo.
+    window.addEventListener('sahana:novedades-leidas', recalcular);
+    return () =>
+      window.removeEventListener('sahana:novedades-leidas', recalcular);
+  }, []);
+
+  return cuantas;
+}
+
 export function Navegacion() {
   const ruta = usePathname();
+  const novedades = useNovedadesSinLeer();
 
   return (
     <nav className="panel__nav" aria-label="Secciones del panel">
@@ -123,6 +160,18 @@ export function Navegacion() {
                 aria-current={actual ? 'page' : undefined}
               >
                 {e.rotulo}
+                {/* El punto NUNCA va solo: lleva el número dentro y el texto
+                    completo para lector de pantalla (docs/25 §6). */}
+                {e.href === '/panel/novedades' && novedades > 0 ? (
+                  <>
+                    <span className="panel__punto" aria-hidden="true">
+                      {novedades}
+                    </span>
+                    <span className="visualmente-oculto">
+                      , {novedades} sin leer
+                    </span>
+                  </>
+                ) : null}
               </Link>
             );
           })}

@@ -524,6 +524,71 @@ tr:last-child td {
   color: var(--panel-suave);
 }
 
+/* --- Novedades (specs/ux/03) ------------------------------------------- */
+
+.panel__enlace {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* El punto de «sin leer»: lleva el número dentro, nunca es solo un color. */
+.panel__punto {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--sahana-aviso);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel__enlace--actual .panel__punto {
+  background: #fff;
+  color: var(--panel-acento);
+}
+
+.novedades {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.novedad {
+  background: var(--panel-tarjeta);
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.novedad__fecha {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  color: var(--panel-suave);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.novedad__titulo {
+  margin: 0 0 6px;
+  font-size: 1.02rem;
+}
+
+.novedad__detalle {
+  margin: 0;
+  font-size: 0.92rem;
+  /* Ancho de lectura: una línea de 140 caracteres se pierde al saltar. */
+  max-width: 68ch;
+}
+
 /* --- Modo práctica (docs/26 §4) ---------------------------------------- */
 
 .practica {
