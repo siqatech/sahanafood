@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 
 /**
@@ -1719,5 +1720,36 @@ test.describe('Panel de gestión en navegador', () => {
     await page.getByLabel(/Adjuntar los datos de mi negocio/).uncheck();
     await expect(previa).toContainText('No me imprime la comanda.');
     await expect(previa).not.toContainText('Datos técnicos');
+  });
+
+  test('LA CARTA VA Y VUELVE: lo que se exporta se reimporta sin cambiar nada', async ({
+    page,
+  }) => {
+    // Es LA promesa del formato de export, y la única forma honesta de
+    // comprobarla es haciendo el viaje entero: bajar el archivo de verdad y
+    // dárselo al importador de verdad. Que las columnas «coincidan» mirándolas
+    // no demuestra que un precio sobreviva a la ida y la vuelta.
+    await entrar(page);
+    await page.goto('/panel/catalogo');
+
+    const descarga = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('link', { name: 'Exportar CSV' }).click(),
+    ]).then(([d]) => d);
+
+    const ruta = await descarga.path();
+    const csv = readFileSync(ruta, 'utf8');
+    // Sin filas no se demuestra nada: una carta vacía «va y vuelve» siempre.
+    expect(csv.split('\n').length).toBeGreaterThan(2);
+
+    await page.goto('/panel/catalogo/importar');
+    await page.getByLabel('Pega aquí las filas de tu Excel').fill(csv);
+    await page.getByRole('button', { name: 'Ver qué va a pasar' }).click();
+
+    // Ni uno nuevo ni uno que cambie: si el export perdiera un precio, esa
+    // fila saldría como «cambia», y si perdiera el SKU saldría como «nuevo».
+    await expect(page.locator('.efecto--igual').first()).toBeVisible();
+    await expect(page.locator('.efecto--nuevo')).toHaveCount(0);
+    await expect(page.locator('.efecto--actualiza')).toHaveCount(0);
   });
 });

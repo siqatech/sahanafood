@@ -55,6 +55,19 @@ export default async function ClientesPage({
         />
         <button type="submit">Buscar</button>
         {q !== '' ? <Link href="/panel/clientes">Ver todos</Link> : null}
+        {/* El export arrastra la MISMA búsqueda que la pantalla: quien filtró
+            por «Ana» y le da a exportar espera las de Ana. Un archivo que
+            ignora el filtro se parece demasiado al bueno para notarlo. */}
+        {clientes.length > 0 ? (
+          <a
+            className="boton-enlace"
+            href={`/panel/clientes/csv${
+              q !== '' ? `?q=${encodeURIComponent(q)}` : ''
+            }`}
+          >
+            Exportar CSV
+          </a>
+        ) : null}
       </form>
 
       {clientes.length === 0 ? (

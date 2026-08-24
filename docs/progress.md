@@ -1953,3 +1953,51 @@ adjuntar «los últimos errores» y ese registro no existe: la API manda un
 `traceId` en cada error, pero el panel lo descarta al leer el problema. Hay un
 campo para pegar el código y **PA-13** en docs/22 con las tres alternativas.
 Inventar un «últimos errores: ninguno» habría sido peor que la ausencia.
+
+## Exportar la carta y los clientes: se cierra «exportar todo»
+
+Faltaban las dos últimas de la lista de docs/26 —«catálogo, ventas, clientes,
+kardex»—: ventas y kardex ya salían, catálogo y clientes no.
+
+**La carta sale en el MISMO formato que lee el importador.** Es lo que convierte
+un archivo para mirar en una herramienta de trabajo: se baja, se corrigen
+cincuenta precios en Excel y se pega de vuelta, con su vista previa de qué
+cambia. Por eso las cabeceras son `sku`, `nombre`, `categoria`, `precio_base`,
+`precio_<canal>` y no rótulos bonitos en castellano: el archivo lo lee una
+persona, pero también lo lee el importador.
+
+**Y la ida y vuelta se comprueba de verdad, en el navegador.** La prueba baja el
+archivo de verdad desde la pantalla, lo pega en el importador de verdad y exige
+que no salga **ni una fila nueva ni una que cambie**. Decir «las columnas
+coinciden» mirándolas no demuestra que un precio sobreviva al viaje; si el
+export perdiera un precio, esa fila saldría como «cambia», y si perdiera el SKU
+saldría como «nuevo». Es la clase de comprobación que le faltaba al presupuesto
+de JS y a la prueba del enlace de seguimiento esta misma mañana.
+
+Dos decisiones del formato, las dos por el mismo motivo —que el archivo se
+reimporta—: un canal sin precio va **vacío y no en cero**, porque un cero es un
+precio y reimportarlo regalaría el plato; y los **precios inactivos no salen**,
+porque reimportarlos los resucitaría.
+
+**Lo que no cabe, se cuenta.** El formato es plano y no tiene dónde poner «en
+Miraflores cuesta otra cosa», así que los precios por local se quedan fuera y
+`filasDeCarta` los CUENTA para que la pantalla pueda decirlo. Un export que se
+calla lo que dejó fuera es peor que uno que no lo exporta: quien lo reimporta
+cree que está aplicando la carta entera.
+
+**Los clientes** salen por el mismo endpoint que la pantalla, así que heredan su
+permiso (`crm.read`) y su aislamiento; quien no puede ver la lista tampoco puede
+bajársela. Los anonimizados salen igual, marcados: sus pedidos siguen contando
+para la contabilidad, y esconderlos dejaría un total que no cuadra con
+Rentabilidad. Y el export arrastra la búsqueda de la pantalla, porque quien
+filtró por «Ana» espera las de Ana.
+
+### Y la suite de navegador enseñó otra vez lo mismo
+
+Al ejecutarla fallaron diez pruebas que no tenían nada que ver con el cambio. La
+causa: la API estaba sirviendo un `dist` **viejo**, de antes del reinicio del
+contenedor, así que `/catalog/import` respondía 404 —ese endpoint es posterior—
+y con él caían todas las funciones nuevas. No era un fallo del código: era una
+API de otra versión contestando con naturalidad. Se añadió el paso al guion de
+recuperación; el mismo patrón que en CI, donde el `dist` sin construir daba
+«Cannot find module» en vez de «falta compilar».

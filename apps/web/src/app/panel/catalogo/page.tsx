@@ -201,9 +201,20 @@ export default async function CatalogoPage({
         >
           Importar desde Excel
         </Link>{' '}
+        {/* Exportar va JUNTO a importar y no en otra esquina: son el mismo
+            gesto en dos direcciones. El archivo que sale es el que entra, así
+            que bajarlo, corregirlo en Excel y volver a pegarlo es el camino
+            corto para cambiar cincuenta precios. */}
+        <a
+          className="boton-enlace"
+          href={`/panel/catalogo/csv?marca=${marca.id}`}
+        >
+          Exportar CSV
+        </a>{' '}
         <span className="tarjeta__pie">
           Pega la hoja entera: se ve el cambio antes de aplicarlo y volver a
-          importar no duplica nada.
+          importar no duplica nada. Lo que exportas tiene las mismas columnas,
+          así que se puede corregir en Excel y pegar de vuelta.
         </span>
       </p>
 

@@ -45,6 +45,14 @@ export interface Novedad {
 export const NOVEDADES: Novedad[] = [
   {
     fecha: '2026-08-23',
+    titulo: 'Baja tu carta y tus clientes cuando quieras',
+    detalle:
+      'Tu carta se baja en el mismo formato con el que se pega: la corriges en Excel y la vuelves a subir. Tu lista de clientes también se baja, con lo que ha gastado cada uno. Son tuyos y no hay que pedírselo a nadie.',
+    donde: '/panel/catalogo',
+    dondeRotulo: 'En Carta y en Clientes',
+  },
+  {
+    fecha: '2026-08-23',
     titulo: 'Pídenos ayuda sin tener que explicar quién eres',
     detalle:
       'Escribe qué te pasa y te abrimos WhatsApp con el mensaje listo. Antes de mandarlo ves exactamente qué se adjunta —tu negocio, tu local y tu versión del programa— y puedes quitarlo con una casilla. De tus clientes no se adjunta nada.',
