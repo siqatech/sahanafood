@@ -1390,3 +1390,19 @@ input[type='color'] {
   gap: 0.75rem;
   flex-wrap: wrap;
 }
+
+/* Señal de cliente en el pedido (docs/25). Dos tonos distintos porque son dos
+   cosas distintas: al que viene por primera vez hay que ganárselo, y al de
+   siempre no hay que hacerle esperar. Nunca van SOLO en color: el rótulo lo
+   dice con palabras. */
+.etiqueta--primera {
+  color: #1e40af;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.etiqueta--frecuente {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}

@@ -349,3 +349,15 @@ export {
   type FilaDeRentabilidad,
   type TotalesDeRentabilidad,
 } from './analytics/rentabilidad.js';
+
+/**
+ * Señal de cliente en el pedido (docs/25): «primera compra» / «cliente
+ * frecuente». Vive en el dominio para que el panel, el POS y el KDS no la
+ * calculen cada uno con su propio umbral.
+ */
+export {
+  senalDeCliente,
+  rotuloDeSenal,
+  PEDIDOS_PARA_FRECUENTE,
+  type SenalDeCliente,
+} from './crm/senal-cliente.js';

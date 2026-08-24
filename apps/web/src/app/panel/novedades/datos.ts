@@ -45,6 +45,14 @@ export interface Novedad {
 export const NOVEDADES: Novedad[] = [
   {
     fecha: '2026-08-23',
+    titulo: 'Sabes con quién hablas antes de contestar',
+    detalle:
+      'El pedido te dice si es la primera vez que te compra o si es de los de siempre, con cuántos pedidos lleva. Ya no hay que salir a buscar el teléfono en otra pantalla.',
+    donde: '/panel/pedidos',
+    dondeRotulo: 'En cada pedido',
+  },
+  {
+    fecha: '2026-08-23',
     titulo: 'Baja tu carta y tus clientes cuando quieras',
     detalle:
       'Tu carta se baja en el mismo formato con el que se pega: la corriges en Excel y la vuelves a subir. Tu lista de clientes también se baja, con lo que ha gastado cada uno. Son tuyos y no hay que pedírselo a nadie.',

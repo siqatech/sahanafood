@@ -4,6 +4,7 @@ import { cargar } from '../../../../lib/panel-guard';
 import { soles, solesDeTexto } from '../../caja/dinero';
 import { FormularioDevolucion } from './formularios';
 import { Canal } from '../../canal';
+import { SenalCliente } from '../../senal-cliente';
 
 /**
  * Trazabilidad de UN pedido (specs/ux/03: «la misma vista del runbook 1,
@@ -79,6 +80,15 @@ export default async function PedidoPage({
         {ROTULO[pedido.status] ?? pedido.status} · entró el{' '}
         {momento(pedido.createdAt)}
         {pedido.externalRef ? ` · referencia ${pedido.externalRef}` : ''}
+      </p>
+
+      {/* Arriba, junto al número, y no enterrado en «Cliente»: el operador que
+          coge el teléfono decide en el primer vistazo si está hablando con
+          alguien que viene por primera vez o con uno de los de siempre. El dato
+          estaba en el CRM desde F5 y para verlo había que salir del pedido y
+          buscar el teléfono; nadie lo hace con la cocina llena. */}
+      <p>
+        <SenalCliente pedidos={pedido.customerOrders} />
       </p>
 
       {pedido.cancelReason ? (

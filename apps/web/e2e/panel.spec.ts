@@ -1752,4 +1752,47 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.locator('.efecto--nuevo')).toHaveCount(0);
     await expect(page.locator('.efecto--actualiza')).toHaveCount(0);
   });
+
+  test('LA SEÑAL DE CLIENTE sale en el pedido, y se calla cuando no sabe', async ({
+    page,
+  }) => {
+    // docs/25 lo pide como «detalle que compra al operador»: el dato del CRM
+    // existía desde F5 y para verlo había que salir del pedido y buscar el
+    // teléfono en otra pantalla. Nadie lo hace con la cocina llena.
+    await entrar(page);
+
+    // Un cliente con teléfono: se llega por su ficha, que enlaza a sus pedidos.
+    await page.getByRole('link', { name: 'Clientes', exact: true }).click();
+    await page.locator('tbody tr').first().getByRole('link').first().click();
+    await expect(
+      page.getByRole('heading', { name: 'Historial' }),
+    ).toBeVisible();
+    await page.locator('tbody tr').first().getByRole('link').first().click();
+    await expect(
+      page.getByRole('heading', { name: /^Pedido #/ }),
+    ).toBeVisible();
+
+    // Sale una de las dos, y con TEXTO: un color solo no lo lee nadie, y quien
+    // no distingue verde de ámbar se queda sin el dato entero (docs/25 §6).
+    await expect(
+      page.locator('.etiqueta--frecuente, .etiqueta--primera'),
+    ).toHaveCount(1);
+
+    // Y el caso que importa que NO mienta: un pedido sin teléfono —mostrador,
+    // que es la mayoría en un local con caja— no puede salir como «primera
+    // compra». No es que sea nuevo: es que no se sabe quién es.
+    await page.goto('/panel/pedidos');
+    const filas = page.locator('tbody tr');
+    const cuantas = await filas.count();
+    for (let i = 0; i < cuantas; i += 1) {
+      await filas.nth(i).getByRole('link').first().click();
+      const tieneTelefono = await page.getByText(/·\s\+?\d{6,}/).count();
+      if (tieneTelefono === 0) {
+        await expect(page.locator('.etiqueta--primera')).toHaveCount(0);
+        await expect(page.locator('.etiqueta--frecuente')).toHaveCount(0);
+        break;
+      }
+      await page.goBack();
+    }
+  });
 });

@@ -2001,3 +2001,37 @@ y con él caían todas las funciones nuevas. No era un fallo del código: era un
 API de otra versión contestando con naturalidad. Se añadió el paso al guion de
 recuperación; el mismo patrón que en CI, donde el `dist` sin construir daba
 «Cannot find module» en vez de «falta compilar».
+
+## «Primera compra» y «cliente frecuente» en el pedido
+
+Es uno de los «detalles que compran al operador» de docs/25, y era otro caso de
+la familia que se repite en este proyecto: **el dato existía y no lo llamaba
+nadie**. El CRM calcula desde F5 cuántas veces ha pedido cada teléfono; para
+verlo había que salir del pedido, abrir Clientes y buscar el número. Nadie hace
+eso con la cocina llena, así que la información estaba y no servía.
+
+Ahora sale **arriba, junto al número del pedido**, que es donde mira quien coge
+el teléfono.
+
+**La regla vive en `@sahana/domain`, no en la pantalla.** El POS y el KDS van a
+enseñar lo mismo, y tres superficies decidiendo por su cuenta qué es «frecuente»
+es exactamente cómo el mismo cliente sale VIP en una pantalla y anónimo en la de
+al lado. La API devuelve el **hecho** —cuántos pedidos tiene ese teléfono— y el
+dominio decide la **etiqueta**.
+
+**Lo que más importa que haga bien es callarse.** Sin teléfono no dice nada, y
+esa distinción no es un detalle: en mostrador casi nunca hay teléfono, así que
+tratar «no sé quién es» como «primera compra» marcaría mal la mayoría de los
+pedidos de un local con caja. Hay prueba unitaria de cada rama y una de
+navegador que busca un pedido sin teléfono y exige que no lleve etiqueta.
+
+Y no lleva etiqueta **todo el mundo**: entre el segundo y el cuarto pedido no
+dice nada. Si todas las tarjetas llevan distintivo, el distintivo deja de querer
+decir «esta es distinta».
+
+El umbral —cinco— **no lo fija la spec**, así que es una constante con nombre en
+un solo sitio y queda como **PA-14** en docs/22: puede depender del rubro (una
+pollería semanal no es una cafetería diaria) o ser configurable por el dueño.
+
+Se contabilizan también los pedidos **cancelados**: para saber si alguien es de
+los de siempre importa cuántas veces ha pedido, no cuántas terminaron bien.

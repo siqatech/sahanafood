@@ -980,6 +980,13 @@ export class OrderingService {
       cancelReason: string | null;
       acceptedAt: string | null;
       closedAt: string | null;
+      /**
+       * Cuántos pedidos tiene este cliente CONTANDO ESTE, o `null` si no hay
+       * teléfono. Se devuelve el HECHO, no la etiqueta: quién es «frecuente» lo
+       * decide `senalDeCliente` en `@sahana/domain`, para que el panel, el POS
+       * y el KDS no acaben con tres umbrales distintos.
+       */
+      customerOrders: number | null;
       lines: Array<{
         id: string;
         productName: string;
@@ -1007,11 +1014,27 @@ export class OrderingService {
         .where(eq(schema.orderLines.orderId, orderId))
         .orderBy(schema.orderLines.createdAt);
 
+      // Cuántas veces ha comprado este cliente. Se cuenta por TELÉFONO, igual
+      // que el CRM agrupa: el mismo señor pide por la web, por WhatsApp y por
+      // Rappi, y contarlo por canal lo convertiría en tres desconocidos.
+      //
+      // Los cancelados cuentan: para saber si es un cliente de siempre importa
+      // cuántas veces ha pedido, no cuántas terminaron bien.
+      let customerOrders: number | null = null;
+      if (pedido.customerPhone) {
+        const { rows } = await ctx.client.query<{ n: string }>(
+          `SELECT count(*)::text AS n FROM ord_orders WHERE customer_phone = $1`,
+          [pedido.customerPhone],
+        );
+        customerOrders = Number(rows[0]?.n ?? 0);
+      }
+
       return {
         ...resumen,
         externalRef: pedido.externalRef,
         customerName: pedido.customerName,
         customerPhone: pedido.customerPhone,
+        customerOrders,
         deliveryAddress: pedido.deliveryAddress,
         notes: pedido.notes,
         cancelReason: pedido.cancelReason,

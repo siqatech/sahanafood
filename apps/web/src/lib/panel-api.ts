@@ -269,6 +269,8 @@ export interface PedidoConDetalle {
   externalRef: string | null;
   customerName: string | null;
   customerPhone: string | null;
+  /** Pedidos de este cliente contando este; `null` si no dejó teléfono. */
+  customerOrders: number | null;
   deliveryAddress: string | null;
   notes: string | null;
   cancelReason: string | null;
