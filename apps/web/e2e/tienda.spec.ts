@@ -434,4 +434,45 @@ test.describe('Tienda web en navegador', () => {
     // Sin incidentes no se inventa ninguno para rellenar.
     await expect(page.getByText(/No ha habido ninguno todavía/)).toBeVisible();
   });
+
+  test('LOS ALÉRGENOS se ven ANTES de añadir el plato al carrito', async ({
+    page,
+  }) => {
+    // El restaurante los declaraba en su carta desde F4 y no los veía NADIE:
+    // ni el cliente en la tienda ni la cocina en la comanda. El dato estaba
+    // guardado y el cliente con alergia pedía a ciegas.
+    await page.goto('/');
+    await page.getByRole('link', { name: /Pollo a la brasa entero/ }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(
+      'Pollo a la brasa entero',
+    );
+
+    const aviso = page.locator('.ficha__alergenos');
+    await expect(aviso).toBeVisible();
+    await expect(aviso).toContainText('mostaza');
+    await expect(aviso).toContainText('soya');
+    // Con la palabra delante, no solo en rojo: quien no distingue el color
+    // tiene que enterarse igual (docs/25 §6).
+    await expect(aviso).toContainText('Alérgenos');
+
+    // Y ARRIBA del botón de añadir: quien tiene una alergia decide ahí si
+    // sigue, y un aviso debajo del botón llega tarde.
+    const yAviso = (await aviso.boundingBox())!.y;
+    const yBoton = (await page
+      .getByRole('button', { name: /Añadir/ })
+      .first()
+      .boundingBox())!.y;
+    expect(yAviso).toBeLessThan(yBoton);
+  });
+
+  test('un plato SIN alérgenos declarados no dice «no contiene»', async ({
+    page,
+  }) => {
+    // El restaurante no ha hecho esa afirmación: lo único que sabemos es que
+    // no declaró ninguno. Afirmar de más en una alergia es el peor error.
+    await page.goto('/');
+    await page.getByRole('link', { name: /Chicha morada/ }).click();
+    await expect(page.locator('.ficha__alergenos')).toHaveCount(0);
+    await expect(page.getByText(/no contiene/i)).toHaveCount(0);
+  });
 });

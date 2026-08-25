@@ -2201,3 +2201,45 @@ dejado el artefacto vacío:
 La intermitencia **sigue sin reproducirse en local** (dos corridas completas en
 verde) y por tanto sigue abierta. Lo honesto es decirlo así en vez de dar el
 pipeline por sano: está verde en la última, y falla una de cada tres.
+
+## Los alérgenos estaban guardados y no los veía nadie
+
+El peor caso hasta ahora del patrón que se repite en este proyecto —dato que
+existe sin quien lo llame—, porque aquí no es una molestia: **el restaurante
+declaraba los alérgenos de cada plato desde F4** —el panel los guarda, el
+importador de Excel los lee, la API los devuelve en el catálogo de la tienda— y
+**no se pintaban en ninguna pantalla**. Un cliente con alergia pedía a ciegas
+sobre un dato que el negocio ya había escrito.
+
+Ahora salen en la ficha del plato, **antes del botón de añadir**: quien tiene
+una alergia decide ahí si sigue, y un aviso debajo del botón llega tarde. Con la
+palabra «Alérgenos» delante y no solo en rojo, porque quien no distingue el
+color tiene que enterarse igual y aquí el coste de no enterarse no es una
+molestia (docs/25 §6).
+
+**Sin alérgenos declarados NO se dice «no contiene».** Es la decisión que más
+importa de todo esto: el restaurante no ha hecho esa afirmación, y lo único que
+sabemos es que no declaró ninguno. Afirmar de más en una alergia es el peor
+error posible, así que `avisoDeAlergenos` devuelve nulo y la pantalla se calla.
+Hay prueba de navegador que lo vigila.
+
+**La normalización vive en `@sahana/domain` y es defensiva a propósito.** La
+columna es `jsonb`: lo que llega es literalmente desconocido, lo escribe el
+panel o una carta que alguien pegó en Excel, y un `as string[]` haría que
+reventara justo la pantalla que dice si el plato lleva maní. Se descarta lo que
+no es texto útil, se recortan espacios y se quitan duplicados sin distinguir
+mayúsculas —«Maní» y «maní» son el mismo alérgeno escrito por dos personas—,
+pero **nunca se inventa**: si el dato viene roto sale la lista vacía, porque
+media lista de alérgenos es peor que ninguna. La primera se cree.
+
+**La semilla de demostración declara alérgenos en un plato**, y no es adorno:
+sin ellos la pantalla no se ve nunca —ni al probar a mano ni en la prueba de
+navegador— y una función que no se ve es una función que se rompe sin que nadie
+se entere.
+
+**Lo que falta, anotado y no fingido: la cocina sigue sin verlos** (PA-16). La
+comanda del KDS los pide en docs/25 y `ord_order_lines` es un *snapshot* que
+guarda nombre, cantidad y precio pero no alérgenos, así que el ticket no tiene
+de dónde sacarlos. Añadirlos al snapshot es lo correcto —un pedido de hace seis
+meses debe decir qué se declaró ENTONCES— y eso es una migración y una decisión
+sobre los pedidos ya guardados.

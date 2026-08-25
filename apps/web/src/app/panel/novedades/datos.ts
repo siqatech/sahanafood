@@ -44,6 +44,14 @@ export interface Novedad {
  */
 export const NOVEDADES: Novedad[] = [
   {
+    fecha: '2026-08-25',
+    titulo: 'Tus clientes ya ven los alérgenos de cada plato',
+    detalle:
+      'Los que declaras en tu carta salen en la ficha del plato, antes del botón de añadir. Si no declaras ninguno, tu tienda no dice nada: no afirma que el plato no lleve nada.',
+    donde: '/panel/catalogo',
+    dondeRotulo: 'Se declaran en Carta',
+  },
+  {
     fecha: '2026-08-23',
     titulo: 'Comprueba si el problema es nuestro antes de escribirnos',
     detalle:

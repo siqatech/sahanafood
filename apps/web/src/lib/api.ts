@@ -74,6 +74,12 @@ export interface CatalogProduct {
   description: string | null;
   categoryId: string | null;
   imageUrl: string | null;
+  /**
+   * Alérgenos declarados por el restaurante. Llega de una columna `jsonb`, así
+   * que el tipo es `unknown` a propósito: se normaliza con `alergenosDe` de
+   * `@sahana/domain` antes de pintar nada.
+   */
+  allergens: unknown;
   price: { minorUnits: number; currency: string; scale: number };
   modifierGroups: Array<{
     id: string;

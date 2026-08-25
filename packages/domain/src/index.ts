@@ -361,3 +361,10 @@ export {
   PEDIDOS_PARA_FRECUENTE,
   type SenalDeCliente,
 } from './crm/senal-cliente.js';
+
+/**
+ * Alérgenos declarados. La columna es `jsonb` y lo que llega es desconocido:
+ * normalizarlo en un solo sitio evita que la pantalla que dice si un plato
+ * lleva maní se caiga por un dato mal escrito.
+ */
+export { alergenosDe, avisoDeAlergenos } from './catalog/alergenos.js';

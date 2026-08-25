@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { shop, ApiError, type CatalogProduct } from '../../../../lib/api';
 import { formatMoney } from '../../../../lib/money';
 import { FormularioProducto } from './formulario';
+import { alergenosDe, avisoDeAlergenos } from '@sahana/domain';
 
 /**
  * La ficha de un plato: foto, qué lleva, opciones y cuántos.
@@ -55,6 +56,10 @@ export default async function ProductoPage({
     (c) => c.id === producto.categoryId,
   );
 
+  // Ojo con la redacción: sin alérgenos NO se dice «no contiene». El
+  // restaurante no ha hecho esa afirmación; lo único que sabemos es que no
+  // declaró ninguno, y afirmar de más en una alergia es el peor error posible.
+  const aviso = avisoDeAlergenos(alergenosDe(producto.allergens));
   return (
     <article className="ficha">
       <nav className="ficha__volver">
@@ -79,6 +84,15 @@ export default async function ProductoPage({
         <p className="ficha__precio">{formatMoney(producto.price)}</p>
         {producto.description ? (
           <p className="ficha__descripcion">{producto.description}</p>
+        ) : null}
+        {/* Los alérgenos, ANTES del formulario: quien tiene una alergia decide
+            aquí si sigue, y un aviso debajo del botón de añadir llega tarde.
+            El dato lo declara el restaurante en su carta y hasta ahora se
+            guardaba sin que nadie llegara a verlo. */}
+        {aviso ? (
+          <p className="ficha__alergenos" role="note">
+            <strong>Alérgenos:</strong> {aviso}
+          </p>
         ) : null}
       </header>
 

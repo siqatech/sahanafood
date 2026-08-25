@@ -1044,3 +1044,17 @@ pre.codigo code {
 .estado__marca--resuelto {
   color: #166534;
 }
+
+/* Alérgenos en la ficha del plato (docs/25: «alérgenos declarados: banda
+   roja»). Rojo y con la palabra «Alérgenos» delante: quien no distingue el
+   rojo tiene que enterarse igual, y aquí el coste de no enterarse no es una
+   molestia. */
+.ficha__alergenos {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-left: 4px solid #b91c1c;
+  background: #fef2f2;
+  color: #7f1d1d;
+  border-radius: 0 6px 6px 0;
+  line-height: 1.5;
+}

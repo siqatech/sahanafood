@@ -127,6 +127,12 @@ export async function seedDemoCatalog(
       sku: 'POLLO-1',
       name: 'Pollo a la brasa entero',
       description: 'Con papas y ensalada',
+      // La demo declara alérgenos en UN plato a propósito: sin ellos, la
+      // pantalla que los enseña no se ve nunca —ni al probar a mano, ni en la
+      // prueba de navegador— y una función que no se ve es una función que se
+      // rompe sin que nadie se entere. La salsa de la casa lleva mostaza y la
+      // marinada, soya: es lo típico de una pollería de verdad.
+      allergens: ['mostaza', 'soya'],
       prepMinutes: 25,
     })
     .returning({ id: schema.products.id });
