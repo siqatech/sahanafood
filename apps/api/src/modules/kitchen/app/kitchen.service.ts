@@ -9,6 +9,7 @@ import {
   NotFoundError,
   ValidationError,
 } from '../../../common/errors.js';
+import { alergenosDe } from '@sahana/domain';
 import { enqueueEvent } from '../../../events/outbox.js';
 import { recordAudit } from '../../audit/index.js';
 
@@ -36,6 +37,14 @@ export interface TicketLine {
   quantity: number;
   modifiersText: string | null;
   notes: string | null;
+  /**
+   * Alérgenos declarados cuando se hizo el pedido (docs/25: «banda roja»).
+   *
+   * `null` significa **no se registró** —pedidos anteriores a la migración
+   * 0037— y NO «no lleva ninguno», que es `[]`. La cocina tiene que poder
+   * distinguirlo: una comanda antigua sin dato no es una comanda inocua.
+   */
+  allergens: string[] | null;
 }
 
 export interface TicketView {
@@ -815,9 +824,25 @@ export class KitchenService {
     if (filas.length === 0) return [];
 
     const ids = filas.map((f) => f.id);
+    // Los alérgenos se leen de `ord_order_lines` y NO se copian otra vez aquí:
+    // esa fila ya es un snapshot inmutable del momento del pedido, así que
+    // duplicarla solo abriría la puerta a que las dos copias discrepen. Una
+    // unión por lote, no una consulta por línea.
     const lineas = await ctx.db
-      .select()
+      .select({
+        id: schema.kitchenTicketLines.id,
+        ticketId: schema.kitchenTicketLines.ticketId,
+        productName: schema.kitchenTicketLines.productName,
+        quantity: schema.kitchenTicketLines.quantity,
+        modifiersText: schema.kitchenTicketLines.modifiersText,
+        notes: schema.kitchenTicketLines.notes,
+        allergens: schema.orderLines.allergens,
+      })
       .from(schema.kitchenTicketLines)
+      .leftJoin(
+        schema.orderLines,
+        eq(schema.kitchenTicketLines.orderLineId, schema.orderLines.id),
+      )
       .where(inArray(schema.kitchenTicketLines.ticketId, ids));
 
     const estaciones = await ctx.db
@@ -858,6 +883,9 @@ export class KitchenService {
         quantity: l.quantity,
         modifiersText: l.modifiersText,
         notes: l.notes,
+        // `null` se conserva tal cual: es «no se registró». Solo se normaliza
+        // lo que sí hay, porque el `jsonb` puede traer cualquier cosa.
+        allergens: l.allergens === null ? null : alergenosDe(l.allergens),
       });
       porTicket.set(l.ticketId, acumulado);
     }

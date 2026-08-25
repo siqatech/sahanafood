@@ -188,6 +188,18 @@ export function Cocina({
                         {l.notes ? (
                           <div className="comanda__nota">{l.notes}</div>
                         ) : null}
+                        {/* Banda ROJA de alérgenos (docs/25). Solo cuando hay
+                            alguno: una banda en cada línea se deja de ver, y
+                            entonces no se ve la que importa.
+
+                            Un `null` —comanda vieja, sin dato— NO pinta nada:
+                            decir «sin alérgenos» sobre algo que no se registró
+                            sería inventar una inocuidad que nadie afirmó. */}
+                        {l.allergens && l.allergens.length > 0 ? (
+                          <div className="comanda__alergenos">
+                            ⚠ {l.allergens.join(', ')}
+                          </div>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

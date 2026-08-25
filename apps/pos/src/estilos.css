@@ -660,3 +660,19 @@ label {
     grid-template-columns: 1fr;
   }
 }
+
+/* Banda de alérgenos en la comanda (docs/25: «alérgenos declarados: banda
+   roja»). Más marcada que la nota amarilla a propósito: una nota mal leída
+   arruina un plato, un alérgeno mal leído manda a alguien al hospital.
+   Lleva símbolo y texto además del color, porque en una cocina con vapor y luz
+   de sodio el rojo y el ámbar se confunden (docs/25 §6). */
+.comanda__alergenos {
+  background: #7f1d1d;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+  border-radius: 8px;
+  padding: 5px 9px;
+  margin-top: 4px;
+}

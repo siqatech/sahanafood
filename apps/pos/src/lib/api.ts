@@ -182,6 +182,12 @@ export interface TicketDeCocina {
     productName: string;
     quantity: number;
     modifiersText: string | null;
+    /**
+     * Alérgenos declarados al hacer el pedido. `null` es **no se registró**
+     * —comandas anteriores a la migración 0037— y NO «no lleva ninguno», que
+     * es `[]`. La cocina tiene que poder distinguirlo.
+     */
+    allergens?: string[] | null;
     notes: string | null;
   }>;
 }

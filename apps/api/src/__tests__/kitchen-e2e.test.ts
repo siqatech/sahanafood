@@ -772,4 +772,63 @@ suite('Cocina / KDS', () => {
       to: 'pending',
     });
   });
+
+  it('LOS ALÉRGENOS llegan a la comanda, y el pasado NO se reescribe', async () => {
+    // docs/25 pide banda roja en la comanda, y hasta ahora la cocina no tenía
+    // de dónde sacar el dato: la línea del pedido guardaba nombre, cantidad y
+    // precio, no alérgenos.
+    //
+    // La segunda mitad es la que justifica guardarlos en la línea en vez de
+    // leerlos del catálogo al pintar: si el dueño corrige la carta el martes,
+    // la comanda del lunes tiene que seguir diciendo lo que se declaró el
+    // lunes. Un snapshot que se reescribe no es un snapshot.
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(`UPDATE cat_products SET allergens = $1 WHERE id = $2`, [
+        JSON.stringify(['maní', 'lácteos']),
+        cat.polloId,
+      ]),
+    );
+
+    const pedido = await pedidoUnaEstacion();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const conAlergenos = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    const linea = conAlergenos
+      .flatMap((t) => t.lines)
+      .find((l) => (l.allergens ?? []).length > 0);
+    expect(linea?.allergens).toEqual(['maní', 'lácteos']);
+
+    // Ahora el dueño cambia la carta. La comanda YA EMITIDA no se entera.
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(`UPDATE cat_products SET allergens = $1 WHERE id = $2`, [
+        JSON.stringify(['soya']),
+        cat.polloId,
+      ]),
+    );
+
+    const despues = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    const mismaLinea = despues
+      .flatMap((t) => t.lines)
+      .find((l) => l.id === linea!.id);
+    expect(mismaLinea?.allergens).toEqual(['maní', 'lácteos']);
+  });
+
+  it('un plato SIN alérgenos declarados da lista vacía, no nulo', async () => {
+    // `[]` es «el restaurante no declaró ninguno» y `null` es «no se
+    // registró». La cocina las pinta distinto, así que la API no puede
+    // confundirlas: con catálogo resuelto siempre hay respuesta.
+    await withTenant(pool, tenantA, ({ client }) =>
+      client.query(`UPDATE cat_products SET allergens = '[]'::jsonb`),
+    );
+
+    const pedido = await pedidoUnaEstacion();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const tickets = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    const lineas = tickets.flatMap((t) => t.lines);
+    expect(lineas.length).toBeGreaterThan(0);
+    for (const l of lineas) expect(l.allergens).not.toBeNull();
+  });
 });

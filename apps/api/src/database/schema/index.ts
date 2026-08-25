@@ -676,6 +676,16 @@ export const orderLines = pgTable(
       .default('0'),
     lineTotal: numeric('line_total', { precision: 14, scale: 4 }).notNull(),
     modifiers: jsonb('modifiers').notNull().default([]),
+    /**
+     * Alérgenos declarados EN EL MOMENTO del pedido.
+     *
+     * Admite nulos a propósito y sin valor por defecto: `NULL` significa «no se
+     * registró» —pedidos anteriores a la migración 0037, o líneas que entran
+     * por un camino sin catálogo que consultar— y `[]` significa «el
+     * restaurante no declaró ninguno». Un `DEFAULT '[]'` convertiría «no lo sé»
+     * en «no lleva nada», que es la afirmación que nadie ha hecho.
+     */
+    allergens: jsonb('allergens'),
     isAdjustment: boolean('is_adjustment').notNull().default(false),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true })

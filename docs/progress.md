@@ -2243,3 +2243,46 @@ guarda nombre, cantidad y precio pero no alérgenos, así que el ticket no tiene
 de dónde sacarlos. Añadirlos al snapshot es lo correcto —un pedido de hace seis
 meses debe decir qué se declaró ENTONCES— y eso es una migración y una decisión
 sobre los pedidos ya guardados.
+
+## Los alérgenos llegan a la cocina, y el pasado no se reescribe
+
+Cierra la mitad que quedaba abierta como PA-16: la comanda del KDS ya los
+enseña, con la banda roja que pide docs/25.
+
+**El dato se copia en la línea del pedido, no se consulta al pintar.** Leerlo
+del catálogo actual habría sido más barato y estaba mal: si el dueño corrige la
+carta el martes, la comanda del lunes empezaría a decir otra cosa sobre lo que
+ya se sirvió. Hay una prueba que hace exactamente eso —pide, cambia la carta,
+vuelve a mirar la comanda— y exige que siga diciendo lo del lunes. Un snapshot
+que se reescribe no es un snapshot.
+
+**`NULL` y `[]` no son lo mismo, y la migración lo respeta.** La columna admite
+nulos y **no** lleva `DEFAULT '[]'`: nulo es «no se registró» —los pedidos
+anteriores a 0037— y `[]` es «el restaurante no declaró ninguno». Un valor por
+defecto habría convertido de golpe toda la historia anterior en «no lleva
+nada», que es la afirmación que nadie ha hecho. La cocina las pinta distinto:
+con nulo no aparece banda, porque decir «sin alérgenos» sobre algo que no se
+registró sería inventar una inocuidad.
+
+**Sin columna nueva en la cocina.** El ticket lee los alérgenos de
+`ord_order_lines` con una unión, en vez de copiarlos otra vez en
+`kit_ticket_lines`: esa fila ya es un snapshot inmutable, y una segunda copia
+solo abre la puerta a que las dos discrepen.
+
+La banda es más marcada que la nota amarilla a propósito, y lleva símbolo y
+texto además del color: una nota mal leída arruina un plato; un alérgeno mal
+leído manda a alguien al hospital, y en una cocina con vapor y luz de sodio el
+rojo y el ámbar se parecen.
+
+### Lo que NO está hecho, dicho con precisión
+
+· **La comanda impresa no los lleva.** `impresion.comanda()` se compone desde la
+  venta local del POS, que sale de su propio catálogo, y ahí el campo no existe.
+  En muchas cocinas el papel es lo que el cocinero tiene en la mano. Queda como
+  PA-16, ahora acotado a eso.
+
+· **La banda del KDS no tiene prueba que la renderice.** `apps/pos` no tiene
+  entorno de pruebas de componentes y añadir jsdom y testing-library es una
+  dependencia nueva que no se mete de paso. Lo que sí está probado es todo lo
+  que hay debajo: que el dato se guarda, que sobrevive a un cambio de carta y
+  que llega a la vista del ticket.

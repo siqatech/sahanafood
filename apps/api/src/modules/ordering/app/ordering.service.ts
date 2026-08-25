@@ -4,6 +4,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import {
   Money,
+  alergenosDe,
   calculateOrderTotals,
   extractInclusiveTax,
   compareTotals,
@@ -263,6 +264,21 @@ function hashPayload(input: unknown): string {
   return createHash('sha256').update(JSON.stringify(input)).digest('hex');
 }
 
+/**
+ * Los alérgenos que se guardan en la línea, o `null` si no se sabe.
+ *
+ * La distinción es el punto entero: `[]` es «el restaurante no declaró
+ * ninguno» y `null` es «no se registró». Devolver `[]` sin producto resuelto
+ * convertiría una ignorancia en una afirmación de inocuidad, que es el error
+ * caro de una alergia.
+ */
+function alergenosSnapshot(
+  producto: { allergens?: unknown } | undefined,
+): string[] | null {
+  if (!producto) return null;
+  return alergenosDe(producto.allergens);
+}
+
 @Injectable()
 export class OrderingService {
   constructor(
@@ -464,6 +480,11 @@ export class OrderingService {
             domainLines[i]!,
             porId.get(line.productId),
           ),
+          // Se copian, no se referencian (RN-ORD-02): si el dueño corrige la
+          // carta el martes, la comanda del lunes tiene que seguir diciendo lo
+          // que se declaró el lunes. `null` si el producto no se pudo resolver,
+          // porque «no se registró» NO es «no lleva nada».
+          allergens: alergenosSnapshot(porId.get(line.productId)),
           notes: input.lines[i]?.notes ?? null,
         })),
       );
@@ -1550,6 +1571,11 @@ export class OrderingService {
             domainLines[i]!,
             porId.get(line.productId),
           ),
+          // Se copian, no se referencian (RN-ORD-02): si el dueño corrige la
+          // carta el martes, la comanda del lunes tiene que seguir diciendo lo
+          // que se declaró el lunes. `null` si el producto no se pudo resolver,
+          // porque «no se registró» NO es «no lleva nada».
+          allergens: alergenosSnapshot(porId.get(line.productId)),
           notes: input.lines[i]?.notes ?? null,
         })),
       );
@@ -1707,6 +1733,11 @@ export class OrderingService {
             domainLines[i]!,
             porId.get(line.productId),
           ),
+          // Se copian, no se referencian (RN-ORD-02): si el dueño corrige la
+          // carta el martes, la comanda del lunes tiene que seguir diciendo lo
+          // que se declaró el lunes. `null` si el producto no se pudo resolver,
+          // porque «no se registró» NO es «no lleva nada».
+          allergens: alergenosSnapshot(porId.get(line.productId)),
           notes: input.lines[i]?.notes ?? null,
         })),
       );
