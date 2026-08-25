@@ -7,6 +7,7 @@ import { Canal } from './canal';
 import { ChecklistDeArranque } from './checklist';
 import { ModoPractica } from './practica';
 import type { ChecklistDeSalida } from '../../lib/panel-api';
+import { NecesitaAtencion } from './atencion';
 
 /**
  * Portada del panel: **«¿cómo vamos hoy?»** (specs/ux/03).
@@ -58,6 +59,39 @@ export default async function PanelHome({
     .checklist()
     .catch((): ChecklistDeSalida | null => null);
 
+  // Los cuatro contadores de «necesita tu atención», en paralelo y cada uno
+  // degradándose por su cuenta: si el inventario falla, los otros tres siguen
+  // avisando. Un bloque de pendientes que desaparece entero porque una lista
+  // dio error es peor que no tenerlo, porque el hueco se lee como «no hay
+  // nada».
+  const [apartados, rechazados, turnos, existencias] = await Promise.all([
+    panel.excepciones().catch(() => []),
+    panel.documentos('rejected').catch(() => []),
+    panel.turnos().catch(() => []),
+    panel.existencias().catch(() => []),
+  ]);
+
+  // «Sin cerrar» es un turno abierto que NO empezó hoy: el de hoy está abierto
+  // porque se está vendiendo, y avisar de ese sería avisar de que el negocio
+  // funciona.
+  const hoyLima = new Date().toLocaleDateString('en-CA', {
+    timeZone: 'America/Lima',
+  });
+  const cajasSinCerrar = turnos.filter(
+    (t) =>
+      t.status !== 'closed' &&
+      new Date(t.openedAt).toLocaleDateString('en-CA', {
+        timeZone: 'America/Lima',
+      }) !== hoyLima,
+  ).length;
+
+  const atencion = {
+    pedidosApartados: apartados.length,
+    comprobantesRechazados: rechazados.length,
+    cajasSinCerrar,
+    insumosBajoMinimo: existencias.filter((e) => e.belowMinimum).length,
+  };
+
   return (
     <>
       <h1>Hoy</h1>
@@ -69,6 +103,12 @@ export default async function PanelHome({
           que hay que ver. Después desaparece sola y la portada vuelve a ser
           solo «¿cómo vamos hoy?». */}
       {arranque ? <ChecklistDeArranque datos={arranque} /> : null}
+
+      {/* Justo después de la checklist y ANTES de las cifras: quien abre el
+          panel por la mañana no necesita saber cuánto vendió ayer —eso está
+          más abajo y ya no se puede cambiar—, necesita saber qué hay que
+          arreglar hoy. Desaparece solo cuando no hay nada. */}
+      <NecesitaAtencion datos={atencion} />
 
       {/* Después de la checklist: primero se termina de montar, y solo cuando
           está montado tiene sentido ofrecer estrenar. Desaparece para siempre

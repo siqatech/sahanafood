@@ -1429,3 +1429,48 @@ input[type='color'] {
   font-variant-numeric: tabular-nums;
   font-size: 0.85em;
 }
+
+/* «Necesita tu atención» (portada).
+   Un solo bloque para «haz esto ahora»: la checklist de arranque y este viven
+   en la misma pantalla y en el mismo orden de lectura, en vez de competir
+   desde dos sitios distintos. */
+.atencion {
+  border: 1px solid var(--panel-borde);
+  border-left: 4px solid var(--panel-acento);
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+  margin: 1rem 0 1.5rem;
+  background: var(--panel-tarjeta);
+}
+
+.atencion__titulo {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+
+.atencion__lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.atencion__item--urgente {
+  /* La franja roja se suma al texto, nunca lo sustituye: el rótulo ya dice que
+     hay un cliente esperando (docs/25 §6). */
+  border-left: 3px solid var(--panel-baja);
+  padding-left: 0.6rem;
+  margin-left: -0.6rem;
+}
+
+.atencion__enlace {
+  font-weight: 600;
+}
+
+.atencion__consecuencia {
+  margin: 0.15rem 0 0;
+  color: var(--panel-texto-suave, #57534e);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}

@@ -470,6 +470,39 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
   });
 
+  test('LA PORTADA dice qué hay que arreglar, no solo cuánto se vendió', async ({
+    page,
+  }) => {
+    // El trabajo pendiente estaba repartido en cinco pantallas y ninguna se
+    // abre sola: a Excepciones se entra cuando YA sospechas que hay algo. Quien
+    // abre el panel por la mañana necesita saber qué arreglar, no cuánto vendió
+    // ayer.
+    //
+    // Va ANTES que la prueba de la bandeja a propósito: esa RESUELVE las
+    // excepciones que trae la semilla, y después de ella no quedaría nada
+    // pendiente que enseñar. Una prueba que se salta sola cuando no hay datos
+    // pasa en verde sin comprobar nada, que es peor que no tenerla.
+    await entrar(page);
+
+    const bloque = page.locator('.atencion');
+    await expect(bloque).toBeVisible();
+
+    // Los pedidos apartados van PRIMEROS aunque haya más de otras cosas: es el
+    // único asunto con una persona esperando ahora mismo.
+    const primero = bloque.locator('.atencion__item').first();
+    await expect(primero).toContainText(/pedidos? esperando/);
+    await expect(primero).toHaveClass(/atencion__item--urgente/);
+
+    // Cada asunto dice su CONSECUENCIA: un contador suelto no mueve a nadie.
+    await expect(primero.locator('.atencion__consecuencia')).toContainText(
+      /cliente sigue esperando/,
+    );
+
+    // Y lleva a donde se arregla.
+    await primero.locator('a').first().click();
+    await expect(page).toHaveURL(/\/panel\/excepciones/);
+  });
+
   test('LA BANDEJA DE EXCEPCIONES enseña lo que llegó y deja resolverlo (DT-04)', async ({
     page,
   }) => {

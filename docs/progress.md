@@ -2115,3 +2115,48 @@ independiente que sondee desde fuera.
 
 Se enlaza desde Ayuda, encima del formulario: quien comprueba primero si el
 problema es nuestro se ahorra el mensaje y la espera.
+
+## La portada dice qué hay que arreglar, no solo cuánto se vendió
+
+Es la respuesta a la referencia que mandó el propietario —una banda de aviso con
+una acción— pero **sin añadir un patrón nuevo**, que era el riesgo. Dos sitios
+distintos diciendo «haz esto ahora» compiten entre ellos y al tercer día se
+ignoran los dos. Así que va en la portada, donde ya vive la checklist de
+arranque: uno, y en el sitio al que se entra primero.
+
+El trabajo pendiente estaba repartido en cuatro pantallas —Excepciones,
+Comprobantes, Caja, Inventario— y **ninguna se abre sola**. A Excepciones se
+entra cuando ya sospechas que hay algo. La portada contaba cuánto se vendió, que
+es mirar hacia atrás y ya no se puede cambiar; ahora dice primero qué hay que
+hacer hoy.
+
+**El orden no es alfabético ni por cantidad: es por quién está esperando.** Un
+solo pedido apartado va por delante de cuarenta insumos bajo mínimo, porque en
+el pedido hay una persona con hambre esperando una respuesta que nadie le ha
+dado, y en el inventario todavía no ha pasado nada. Y **solo el pedido apartado
+se marca urgente**: marcar todo como urgente es no marcar nada.
+
+**Cada asunto dice la consecuencia, no solo el contador.** «3 comprobantes
+rechazados» no mueve a nadie hasta que dice que son ventas que SUNAT no ha
+aceptado y que hasta corregirlas no están declaradas.
+
+**Desaparece cuando no hay nada**, sin dejar un «todo en orden» de consuelo: un
+bloque que aparece siempre se deja de leer, y entonces tampoco se lee el día que
+sí trae algo.
+
+Los cuatro contadores se piden en paralelo y **cada uno se degrada por su
+cuenta**: si el inventario falla, los otros tres siguen avisando. Un bloque de
+pendientes que desaparece entero porque una lista dio error es peor que no
+tenerlo, porque el hueco se lee como «no hay nada». Y «caja sin cerrar» es un
+turno abierto que NO empezó hoy: el de hoy está abierto porque se está
+vendiendo, y avisar de eso sería avisar de que el negocio funciona.
+
+### La prueba de navegador se estaba saltando sola
+
+Escrita al final del archivo, pasaba en verde **sin comprobar nada**: la prueba
+de la bandeja de excepciones, que va antes, RESUELVE las que trae la semilla, así
+que al llegar mi prueba no quedaba nada pendiente y su rama condicional se daba
+por buena. Es el mismo fallo que el presupuesto de JS y el enlace de seguimiento
+de esta misma jornada, esta vez cometido por mí y detectado al mirar la pantalla
+de verdad en vez de fiarme del verde. Ahora va **antes** que la bandeja y sin
+condicional: si no hay nada que atender, falla.
