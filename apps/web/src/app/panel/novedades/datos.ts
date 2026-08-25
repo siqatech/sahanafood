@@ -45,6 +45,14 @@ export interface Novedad {
 export const NOVEDADES: Novedad[] = [
   {
     fecha: '2026-08-23',
+    titulo: 'Comprueba si el problema es nuestro antes de escribirnos',
+    detalle:
+      'Hay una página pública que dice si somos nosotros los que estamos fallando. Cuando algo se cae, ahí lo contamos: qué dejó de funcionar y qué hicimos para que no vuelva a pasar.',
+    donde: '/panel/ayuda',
+    dondeRotulo: 'Enlazada desde Ayuda',
+  },
+  {
+    fecha: '2026-08-23',
     titulo: 'Sabes con quién hablas antes de contestar',
     detalle:
       'El pedido te dice si es la primera vez que te compra o si es de los de siempre, con cuántos pedidos lleva. Ya no hay que salir a buscar el teléfono en otra pantalla.',

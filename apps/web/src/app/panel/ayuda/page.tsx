@@ -70,6 +70,17 @@ export default async function AyudaPage() {
         exactamente qué se adjunta.
       </p>
 
+      {/* Antes de escribirnos: si el problema es nuestro, ya lo dice la página
+          de estado, y quien lo comprueba se ahorra el mensaje y la espera. Va
+          arriba del formulario por eso mismo. */}
+      <p className="tarjeta__pie">
+        ¿Crees que el problema es nuestro?{' '}
+        <a href="/estado" target="_blank" rel="noopener noreferrer">
+          Mira el estado del servicio
+        </a>
+        : si algo está caído, ahí lo decimos.
+      </p>
+
       <FormularioDeAyuda
         contexto={contexto}
         numeroDeSoporte={process.env['SAHANA_SUPPORT_WHATSAPP']}

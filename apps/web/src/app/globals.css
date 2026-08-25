@@ -956,3 +956,91 @@ pre.codigo code {
   background: none;
   padding: 0;
 }
+
+/* ---------------------------------------------------------------------------
+ * Página pública de estado (`/estado`, docs/26).
+ *
+ * La lee alguien con prisa —a veces desde un móvil al sol, intentando entender
+ * por qué no puede cobrar—, así que el titular es grande y el estado va SIEMPRE
+ * con palabras además de color.
+ * ------------------------------------------------------------------------- */
+.estado {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: var(--espacio);
+  line-height: 1.6;
+}
+
+.estado__titular {
+  border: 1px solid;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+
+.estado__titular h2 {
+  margin: 0 0 0.35rem;
+}
+
+.estado__titular p {
+  margin: 0;
+}
+
+.estado__titular--ok {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #14532d;
+}
+
+.estado__titular--degradado {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #78350f;
+}
+
+.estado__titular--caido {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #7f1d1d;
+}
+
+/* El límite de esta página, dicho en voz alta y no en letra pequeña. */
+.estado__aviso {
+  font-size: 0.9rem;
+  color: #57534e;
+  border-left: 3px solid #d6d3d1;
+  padding-left: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.estado__incidente {
+  border-top: 1px solid #e7e5e4;
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+
+.estado__incidente h3 {
+  margin: 0 0 0.25rem;
+}
+
+.estado__meta {
+  color: #57534e;
+  font-size: 0.9rem;
+}
+
+.estado__abiertos {
+  color: #7f1d1d;
+}
+
+.estado__marca {
+  font-weight: 600;
+}
+
+.estado__marca--investigando,
+.estado__marca--vigilando {
+  color: #92400e;
+}
+
+.estado__marca--resuelto {
+  color: #166534;
+}

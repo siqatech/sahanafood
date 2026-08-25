@@ -2073,3 +2073,45 @@ Dos cosas que las pruebas fijan y conviene no perder:
 
 Las pruebas fijan «ahora» a propósito: una que dependa del reloj de la máquina
 pasa hoy y falla en Nochevieja, que es justo el día en que nadie está mirando.
+
+## Página pública de estado: la última pieza de «Soporte como producto»
+
+Cierra docs/26 §Soporte: quedaba esta y las otras tres ya estaban (Ayuda,
+exportar todo, Novedades). Vive en `/estado`, **pública y sin sesión**, fuera de
+`(tienda)` y fuera de `/panel`: no es de ningún restaurante, y quien la mira
+puede ser justo el que no consigue entrar.
+
+**El titular sale de una sonda de verdad**, no de un texto fijo: se le pregunta
+a la API por su readiness con un tiempo máximo corto y a propósito —si tarda
+ocho segundos, para quien está intentando cobrar ya está caída, y una página de
+estado que se queda pensando junto con ella no informa de nada—. Se comprobó
+apagando la API: dice «No estamos pudiendo responder» y añade lo único
+accionable en ese momento, que el POS sigue tomando pedidos sin conexión.
+
+**Los incidentes viven en el repositorio, como Novedades, y por un motivo más
+fuerte: no pueden mentir.** Se escriben en el mismo cambio que los resuelve y
+pasan por revisión. Una tabla editable en caliente permite lo contrario
+—maquillar la duración cuando ya nadie mira— y una página de estado que se puede
+maquillar no construye confianza: la simula.
+
+**La lista está vacía, y eso es un dato, no un olvido.** No ha habido ningún
+incidente en producción porque todavía no hay clientes en producción. Inventar
+uno para que la página «se vea completa» sería exactamente la mentira que esta
+página existe para no contar. La prueba que lo vigila NO exige que siga vacía
+—eso fallaría el día del primer incidente real, que es justo cuando hay prisa—:
+exige que **todo incidente diga qué se hizo para que no se repita**. Sin esa
+línea es una disculpa, no un postmortem.
+
+Dos detalles que las pruebas fijan: con un incidente **abierto** no se enseña
+«N días sin incidentes» —presumir tranquilidad mientras algo está roto es como
+se pierde la credibilidad de la página— y **sin historial** se devuelve nulo y
+no cero, porque «0 días sin incidentes» y «nunca ha habido uno» son cosas
+distintas y decir la primera por la segunda asusta sin motivo.
+
+**Y la página admite su propio límite.** La sirve la misma infraestructura que
+el producto, así que si se cae todo se cae ella. Está dicho en la página, no en
+letra pequeña, y anotado como **PA-15**: lo correcto es un alojamiento
+independiente que sondee desde fuera.
+
+Se enlaza desde Ayuda, encima del formulario: quien comprueba primero si el
+problema es nuestro se ahorra el mensaje y la espera.

@@ -407,4 +407,31 @@ test.describe('Tienda web en navegador', () => {
       await contexto.close();
     }
   });
+
+  test('LA PÁGINA DE ESTADO dice cómo va, y admite su propio límite', async ({
+    page,
+  }) => {
+    // docs/26: «la confianza se construye antes del primer incidente». Es
+    // pública y sin sesión a propósito: quien la mira puede ser justo el que
+    // no consigue entrar.
+    await page.goto('/estado');
+    await expect(
+      page.getByRole('heading', { name: 'Estado del servicio' }),
+    ).toBeVisible();
+
+    // Con la API arriba, el titular lo dice con PALABRAS y no solo en color:
+    // esto se lee con prisa y a veces desde un móvil al sol (docs/25 §6).
+    await expect(
+      page.getByRole('heading', { name: 'Todo funciona' }),
+    ).toBeVisible();
+
+    // Y el límite de la página, en voz alta y no en letra pequeña: si se cae
+    // todo, se cae ella, y su silencio entonces no significa «todo bien».
+    await expect(
+      page.getByText(/misma infraestructura que el producto/),
+    ).toBeVisible();
+
+    // Sin incidentes no se inventa ninguno para rellenar.
+    await expect(page.getByText(/No ha habido ninguno todavía/)).toBeVisible();
+  });
 });
