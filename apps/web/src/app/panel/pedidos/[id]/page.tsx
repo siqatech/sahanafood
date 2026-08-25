@@ -5,6 +5,7 @@ import { soles, solesDeTexto } from '../../caja/dinero';
 import { FormularioDevolucion } from './formularios';
 import { Canal } from '../../canal';
 import { SenalCliente } from '../../senal-cliente';
+import { momento } from '../../fechas';
 
 /**
  * Trazabilidad de UN pedido (specs/ux/03: «la misma vista del runbook 1,
@@ -34,10 +35,6 @@ const ROTULO: Record<string, string> = {
   cancelled: 'Cancelado',
   rejected: 'Rechazado',
 };
-
-function momento(iso: string): string {
-  return new Date(iso).toLocaleString('es-PE', { timeZone: 'America/Lima' });
-}
 
 export default async function PedidoPage({
   params,

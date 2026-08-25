@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { panel } from '../../../../lib/panel-api';
 import { cargar } from '../../../../lib/panel-guard';
 import { soles, hayDiferencia } from '../dinero';
+import { momento } from '../../fechas';
 
 /**
  * El arqueo de UN turno (specs/ux/03).
@@ -56,14 +57,9 @@ export default async function ArqueoPage({
       <h1>Arqueo del turno</h1>
       <p className="panel__subtitulo">
         {turno
-          ? `Abierto el ${new Date(turno.openedAt).toLocaleString('es-PE', {
-              timeZone: 'America/Lima',
-            })}${
+          ? `Abierto el ${momento(turno.openedAt)}${
               turno.closedAt
-                ? ` · cerrado el ${new Date(turno.closedAt).toLocaleString(
-                    'es-PE',
-                    { timeZone: 'America/Lima' },
-                  )}`
+                ? ` · cerrado el ${momento(turno.closedAt)}`
                 : ' · sigue abierto'
             }`
           : 'Turno no encontrado en la lista reciente.'}

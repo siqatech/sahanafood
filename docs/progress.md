@@ -2035,3 +2035,41 @@ pollería semanal no es una cafetería diaria) o ser configurable por el dueño.
 
 Se contabilizan también los pedidos **cancelados**: para saber si alguien es de
 los de siempre importa cuántas veces ha pedido, no cuántas terminaron bien.
+
+## Las fechas del panel, en un solo sitio y con el día de la semana
+
+Al ir a añadir la píldora de fecha que sugería la referencia del propietario
+apareció el problema de debajo: había **seis formateadores de fecha distintos**
+repartidos por las pantallas —dos llamados `momento`, dos llamados `fecha` y un
+par sueltos dentro del JSX—, cada uno con sus opciones. El mismo instante salía
+escrito de cuatro formas según la pantalla, y quien compara el histórico con la
+caja tenía que traducir mentalmente entre dos formatos por gusto de nadie.
+
+Ahora hay **un módulo** (`panel/fechas.ts`) con `diaConSemana`, `horaSola`,
+`momento` y `esHoy`, y las seis copias han desaparecido.
+
+**El día de la semana no es decoración.** Un operador no piensa en «22/08»,
+piensa en «el sábado»: los picos de un negocio de comida son semanales, así que
+al recorrer un listado la pregunta real es «¿esto fue un día fuerte o un
+martes?», y la fecha sola obliga a hacer ese cálculo de cabeza en cada fila. En
+los listados va como píldora de dos líneas —día arriba, hora debajo— para que la
+columna no se ensanche y el ojo pueda recorrer los días sin leer la hora de cada
+fila.
+
+**El año se omite cuando es el año en curso.** Ocupa sitio y no informa: nadie
+duda de en qué año está el pedido de anteayer.
+
+Dos cosas que las pruebas fijan y conviene no perder:
+
+· **Todo en hora de Lima, comparando el calendario y no restando horas.** Una
+  venta de las 22:30 del sábado es del sábado aunque para UTC ya sea domingo. Y
+  `esHoy` compara el día de Lima: a las 00:30, «hace menos de 24 horas» y «hoy»
+  no son lo mismo, y esa diferencia es la que hace que un pedido de anoche
+  aparezca como de hoy en el cierre del día.
+
+· **Una fecha vacía devuelve una raya, no «Invalid Date».** Es la mitad del
+  trabajo: los campos opcionales —aceptado, cerrado, entregado— están vacíos casi
+  siempre al principio.
+
+Las pruebas fijan «ahora» a propósito: una que dependa del reloj de la máquina
+pasa hoy y falla en Nochevieja, que es justo el día en que nadie está mirando.

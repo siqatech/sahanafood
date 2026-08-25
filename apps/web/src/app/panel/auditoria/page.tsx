@@ -3,6 +3,7 @@ import { panel, type LineaDeAuditoria } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { Chips, type Chip } from '../chips';
 import { Vacio } from '../vacio';
+import { momento } from '../fechas';
 
 /**
  * El histórico: quién hizo qué (spec 17, docs/14#auditoria).
@@ -72,10 +73,6 @@ const ATAJOS = [
   { action: 'payment.refund_requested', texto: 'Devoluciones' },
   { action: 'identity.role_changed', texto: 'Cambios de rol' },
 ];
-
-function momento(iso: string): string {
-  return new Date(iso).toLocaleString('es-PE', { timeZone: 'America/Lima' });
-}
 
 function Quien({ linea }: { linea: LineaDeAuditoria }) {
   if (linea.actorType === 'system') {

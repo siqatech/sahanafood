@@ -1406,3 +1406,26 @@ input[type='color'] {
   background: #f0fdf4;
   border-color: #bbf7d0;
 }
+
+/* Píldora de fecha en los listados: el día de la semana arriba y la hora
+   debajo, en dos líneas, para que la columna no se ensanche y el ojo pueda
+   recorrer los días sin leer la hora de cada fila. */
+.pildora-fecha {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.pildora-fecha__dia {
+  /* Sin `text-transform`: `es-PE` ya devuelve «sáb», y forzar mayúsculas
+     rompería la tilde en algunos tipos de letra. */
+  font-weight: 600;
+}
+
+.pildora-fecha__hora {
+  color: var(--panel-texto-suave, #6b7280);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85em;
+}

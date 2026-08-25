@@ -5,6 +5,7 @@ import { soles } from '../caja/dinero';
 import { Canal } from '../canal';
 import { Chips } from '../chips';
 import { Vacio } from '../vacio';
+import { diaConSemana, horaSola } from '../fechas';
 
 /**
  * Pedidos: buscador y estado (specs/ux/03, «Pedidos»).
@@ -176,13 +177,20 @@ export default async function PedidosPage({
                   <td>{ROTULO[p.status] ?? p.status}</td>
                   <td className="dinero">S/ {soles(p.total)}</td>
                   <td>
-                    {new Date(p.createdAt).toLocaleString('es-PE', {
-                      timeZone: 'America/Lima',
-                      day: '2-digit',
-                      month: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {/* Píldora con el DÍA DE LA SEMANA: un operador no piensa
+                        en «22/08», piensa en «el sábado». Los picos de un
+                        negocio de comida son semanales, así que al recorrer el
+                        listado la pregunta es «¿fue un día fuerte o un
+                        martes?», y la fecha sola obliga a calcularlo de cabeza
+                        en cada fila. */}
+                    <span className="pildora-fecha">
+                      <span className="pildora-fecha__dia">
+                        {diaConSemana(p.createdAt)}
+                      </span>
+                      <span className="pildora-fecha__hora">
+                        {horaSola(p.createdAt)}
+                      </span>
+                    </span>
                   </td>
                   <td>
                     <Link href={`/panel/pedidos/${p.id}`}>Ver</Link>

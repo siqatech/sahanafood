@@ -1,6 +1,7 @@
 import { panel, type ClaveDeTienda } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { FormularioClave, BotonRevocar } from './formularios';
+import { diaConSemana } from '../fechas';
 
 /**
  * Conectar tu propia web (ADR-0020).
@@ -17,12 +18,6 @@ import { FormularioClave, BotonRevocar } from './formularios';
  */
 
 export const dynamic = 'force-dynamic';
-
-function fecha(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-PE', {
-    timeZone: 'America/Lima',
-  });
-}
 
 export default async function IntegracionPage({
   searchParams,
@@ -76,12 +71,12 @@ export default async function IntegracionPage({
                       <>
                         <br />
                         <span className="baja">
-                          Revocada el {fecha(c.revokedAt)}
+                          Revocada el {diaConSemana(c.revokedAt)}
                         </span>
                       </>
                     ) : null}
                   </td>
-                  <td>{fecha(c.createdAt)}</td>
+                  <td>{diaConSemana(c.createdAt)}</td>
                   <td>{c.revokedAt ? null : <BotonRevocar id={c.id} />}</td>
                 </tr>
               ))}

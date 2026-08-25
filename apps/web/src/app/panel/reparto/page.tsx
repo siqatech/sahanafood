@@ -8,6 +8,7 @@ import {
 } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { soles, solesDeTexto } from '../caja/dinero';
+import { momento } from '../fechas';
 import {
   FormularioRepartidor,
   BotonEstadoRepartidor,
@@ -51,17 +52,6 @@ const ROTULO_REPARTIDOR: Record<string, string> = {
 
 /** Estados de pedido que ya salieron de cocina y esperan a alguien que lleve. */
 const LISTOS_PARA_SALIR = ['ready', 'packed'];
-
-function momento(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('es-PE', {
-    timeZone: 'America/Lima',
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export default async function RepartoPage({
   searchParams,

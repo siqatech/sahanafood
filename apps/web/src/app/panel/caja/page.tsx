@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { panel, type DocumentoDelPanel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { soles, solesDeTexto, hayDiferencia } from './dinero';
+import { momento } from '../fechas';
 
 /**
  * Caja y comprobantes (specs/ux/03).
@@ -35,16 +36,6 @@ const FILTROS_DOC = [
   { id: 'pending', rotulo: 'En cola' },
   { id: 'accepted', rotulo: 'Aceptados' },
 ] as const;
-
-function fecha(iso: string): string {
-  return new Date(iso).toLocaleString('es-PE', {
-    timeZone: 'America/Lima',
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export default async function CajaPage({
   searchParams,
@@ -104,7 +95,7 @@ export default async function CajaPage({
             <tbody>
               {turnos.map((t) => (
                 <tr key={t.id}>
-                  <td>{fecha(t.openedAt)}</td>
+                  <td>{momento(t.openedAt)}</td>
                   <td>{ESTADO_TURNO[t.status] ?? t.status}</td>
                   <td className="dinero">S/ {soles(t.openingFloat)}</td>
                   <td className="dinero">
@@ -198,7 +189,7 @@ export default async function CajaPage({
                     ) : null}
                   </td>
                   <td className="dinero">S/ {solesDeTexto(d.total)}</td>
-                  <td>{fecha(d.issuedAt)}</td>
+                  <td>{momento(d.issuedAt)}</td>
                 </tr>
               ))}
             </tbody>
