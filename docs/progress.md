@@ -2160,3 +2160,44 @@ por buena. Es el mismo fallo que el presupuesto de JS y el enlace de seguimiento
 de esta misma jornada, esta vez cometido por mí y detectado al mirar la pantalla
 de verdad en vez de fiarme del verde. Ahora va **antes** que la bandeja y sin
 condicional: si no hay nada que atender, falla.
+
+## Un gate intermitente es un gate roto, y este no se podía diagnosticar
+
+Al comprobar el historial de CI —no la última ejecución, el historial— resultó
+que **dos de las seis últimas habían fallado**: la 132 y la 136, las dos en el
+trabajo de integración, y las dos seguidas de una verde en el commit siguiente.
+Es el patrón exacto de un fallo intermitente. Y yo había dado por buenos esos
+dos commits sin mirar.
+
+Al ir a diagnosticarlo apareció el problema de fondo: **de aquel trabajo no se
+puede recuperar qué prueba falló.** Lo único que queda en el historial son los
+registros del contenedor de Postgres, y están llenos de errores que son
+CORRECTOS: las pruebas de aislamiento comprueban justo que un `INSERT` de otro
+tenant se rechaza, que un `UPDATE` sobre `audit_log` no se concede, que una
+clave ajena revienta. Leerlos buscando el fallo es leer cien aciertos esperando
+encontrar un error que no se distingue de ellos.
+
+Así que ahora la suite emite también un informe **JUnit** y CI lo sube como
+artefacto **si falla**. No arregla la intermitencia; hace que la próxima vez se
+pueda saber qué fue. Un gate que no se puede diagnosticar se acaba reintentando
+a ciegas, y reintentar a ciegas es exactamente cómo un fallo real pasa por
+intermitente.
+
+**Dos cosas que se comprobaron antes de darlo por hecho**, y las dos habrían
+dejado el artefacto vacío:
+
+· El informe va en `vitest.config.ts` y **no** en la línea de órdenes. Pasado
+  como `--outputFile.junit=…` a través de `pnpm --filter … test --`, el archivo
+  aparecía en la RAÍZ del repositorio y no en `apps/api`, que es donde el paso
+  que lo sube lo busca. Se vio ejecutándolo, no leyéndolo.
+
+· La primera versión de ese paso **rompía el build**: la combinación de
+  banderas devolvía código 1 con las 787 pruebas en verde. Se detectó al
+  comprobar el código de salida de verdad —y de paso salió que mis propias
+  comprobaciones anteriores lo estaban leyendo mal, porque canalizaba la salida
+  por `grep` y miraba el estado de `grep`, no el de vitest—. Con la ejecución
+  limpia: **787 en verde y salida 0**.
+
+La intermitencia **sigue sin reproducirse en local** (dos corridas completas en
+verde) y por tanto sigue abierta. Lo honesto es decirlo así en vez de dar el
+pipeline por sano: está verde en la última, y falla una de cada tres.

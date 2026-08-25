@@ -142,8 +142,16 @@ jobs:
       # cuesta la confianza del dueño en su agente.
       - name: Suite dorada del agente (bloqueante)
         run: pnpm --filter @sahana/api test:golden
+      # El informe JUnit lo activa `CI=true` desde el config de vitest (ver el
+      # comentario de `apps/api/vitest.config.ts`); aquí solo se sube si falla.
       - name: Pruebas de integración (incluye gates de aislamiento)
         run: pnpm --filter @sahana/api test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: integracion-junit
+          path: apps/api/integracion.xml
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # Build de paquetes y apps.
