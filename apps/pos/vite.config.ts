@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite';
+// `vitest/config` y no `vite`: es el mismo `defineConfig` con el bloque `test`
+// tipado. Importado desde `vite`, la configuración de pruebas no compila.
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 /**
@@ -31,4 +33,21 @@ export default defineConfig({
   },
   server: { port: 3002 },
   preview: { port: 3002 },
+  /**
+   * Pruebas (ADR-0021).
+   *
+   * El entorno por defecto sigue siendo **node**, no jsdom, y es a propósito:
+   * las pruebas de `src/lib` —la cola offline contra `fake-indexeddb`, el
+   * cálculo del ticket, el arqueo— no tocan el DOM, y montarles un navegador
+   * simulado solo las haría más lentas y les daría globales que no deberían
+   * usar. Las pruebas de componente piden jsdom en su propia cabecera:
+   *
+   *     // @vitest-environment jsdom
+   *
+   * Así el coste del DOM lo paga el archivo que lo necesita.
+   */
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+  },
 });

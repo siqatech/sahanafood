@@ -2320,3 +2320,45 @@ Se cambió a comprobar lo que de verdad defiende —que no aparezca ninguna clav
 de importe— en vez de la forma exacta del objeto. Una prueba que falla por algo
 que no es lo suyo enseña a «arreglarla» sin leerla, y la próxima vez que se
 rompa de verdad recibirá el mismo trato.
+
+## Y una prueba que MIRA la pantalla del KDS (ADR-0021)
+
+Cierra PA-16. Quedaba el trozo incómodo: el dato estaba probado en las cuatro
+capas de abajo —se guarda, sobrevive a un cambio de carta, llega a la vista del
+ticket, sale en el papel— y **el `if` que pinta la banda en la tablet no lo
+comprobaba nadie**. Es exactamente la clase de fallo que este proyecto ya ha
+tenido varias veces: el enlace de seguimiento que se emitía y no se enseñaba,
+los medios de pago sin pantalla, la foto sin formulario. Todos tenían la lógica
+probada.
+
+**Por qué no valía extraer la decisión a una función.** Es lo que se venía
+haciendo, y `alergenosDe` ya vive en `@sahana/domain` con sus pruebas. Pero una
+función que devuelve `['maní']` y que no llama nadie pasa todas sus pruebas: lo
+que había que comprobar no es la regla, es que llegue a la pantalla.
+
+**jsdom + testing-library, acotado.** ADR-0021, en la línea del ADR-0018 para
+Playwright. Se prueban componentes de presentación —props entran, se ve lo que
+sale—, no pantallas enteras con la API simulada: una prueba que simula
+`api.cola()` para llegar a una aserción sobre un `div` acaba probando el
+simulador. El entorno por defecto sigue siendo `node`; jsdom se pide por archivo
+con `// @vitest-environment jsdom`, así que las pruebas de `src/lib` no pagan su
+coste ni reciben globales de navegador.
+
+**La tarjeta sale de `cocina.tsx` a `pantallas/comanda.tsx`.** No es un efecto
+colateral: una pantalla que pide la cola cada cinco segundos, mantiene el
+deshacer y además pinta cada detalle no se puede probar sin simular medio mundo,
+y la parte que interesa no necesita nada de eso.
+
+**Once pruebas, y las tres ramas del alérgeno son tres significados.** Con
+alérgenos se pinta y se buscan los nombres, no la clase CSS —lo que salva a
+alguien es leer «maní»—; `null` (comanda anterior a la migración 0037, no se
+registró) y `[]` (se registró que no lleva ninguno) no pintan nada, por la misma
+razón y sin confundirlas. Van también el canal escrito, «origen desconocido»
+antes que un canal en blanco, y el semáforo en rojo cuando lo dice el servidor.
+
+**Comprobado por mutación**, que es lo mínimo que se le puede pedir a una prueba
+que se escribe para vigilar un `if`: sustituirlo por `false` deja en rojo la
+primera y solo la primera.
+
+Verde: **789 API · 471 dominio · 5 ui · 84 web · 36 POS · 119 print-agent · 73
+navegador**. El POS pasa de 25 a 36.

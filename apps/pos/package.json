@@ -13,16 +13,18 @@
   },
   "dependencies": {
     "@sahana/domain": "workspace:*",
+    "@sahana/ui": "workspace:*",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "ulid": "^2.3.0",
-    "@sahana/ui": "workspace:*"
+    "ulid": "^2.3.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^4.3.4",
     "fake-indexeddb": "^6.0.0",
+    "jsdom": "^30.0.1",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
     "vitest": "^3.2.7"
