@@ -201,4 +201,37 @@ describe('buildPrecheck', () => {
     expect(ticket.subarray(0, 2)).toEqual(Buffer.from([0x1b, 0x40]));
     expect(contieneBytes(ticket, [0x1d, 0x56, 0x42, 0x00])).toBe(true);
   });
+
+  it('LOS ALÉRGENOS salen en el papel, y a doble alto', () => {
+    // En pantalla docs/25 pide banda roja; en papel no hay color, así que el
+    // énfasis se hace con lo único que tiene una térmica. Un alérgeno impreso
+    // igual que el resto de la línea es un alérgeno que no se ve.
+    const ticket = buildKitchenTicket({
+      ...COMANDA,
+      lines: [
+        {
+          quantity: 1,
+          productName: 'Pollo a la brasa',
+          allergens: ['mostaza', 'soya'],
+        },
+      ],
+    });
+    const texto = textoDe(ticket);
+
+    expect(texto).toContain('ALERGENOS');
+    expect(texto).toContain('mostaza, soya');
+    // GS ! 0x01 = alto doble, ancho normal. Sin esto la advertencia se lee
+    // igual que «extra queso», que es justo lo que no puede pasar.
+    expect(contieneBytes(ticket, [0x1d, 0x21, 0x01])).toBe(true);
+  });
+
+  it('sin alérgenos NO se imprime la advertencia', () => {
+    // Una advertencia en cada línea se deja de leer, y entonces no se lee la
+    // que importa.
+    const ticket = buildKitchenTicket({
+      ...COMANDA,
+      lines: [{ quantity: 1, productName: 'Papas' }],
+    });
+    expect(textoDe(ticket)).not.toContain('ALERGENOS');
+  });
 });

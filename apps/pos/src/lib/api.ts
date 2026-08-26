@@ -112,6 +112,12 @@ export interface ProductoDeCarta {
   id: string;
   name: string;
   categoryId: string | null;
+  /**
+   * Alérgenos declarados. Llega de una columna `jsonb`, así que el tipo es
+   * `unknown` a propósito: se normaliza con `alergenosDe` de `@sahana/domain`
+   * antes de usarlo.
+   */
+  allergens?: unknown;
   price: { minorUnits: number; currency: string; scale: number };
   modifierGroups: GrupoDeModificadores[];
 }

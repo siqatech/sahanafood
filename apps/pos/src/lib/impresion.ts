@@ -154,6 +154,10 @@ export const impresion = {
           ...(l.modifiers.length > 0
             ? { modifiersText: l.modifiers.map((m) => m.name).join(', ') }
             : {}),
+          // Solo si hay alguno: mandar una lista vacía haría que el agente
+          // imprimiera una advertencia en blanco, y una advertencia que sale
+          // en cada línea se deja de leer.
+          ...(l.allergens.length > 0 ? { allergens: l.allergens } : {}),
         })),
         ...(datos.notes ? { notes: datos.notes } : {}),
       }),

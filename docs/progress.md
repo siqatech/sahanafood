@@ -2286,3 +2286,37 @@ rojo y el ámbar se parecen.
   dependencia nueva que no se mete de paso. Lo que sí está probado es todo lo
   que hay debajo: que el dato se guarda, que sobrevive a un cambio de carta y
   que llega a la vista del ticket.
+
+## Y el papel también: la comanda impresa lleva los alérgenos
+
+Cierra lo que quedaba de PA-16 salvo la prueba de render. En la mayoría de las
+cocinas **el papel es lo que el cocinero tiene en la mano**, así que enseñar los
+alérgenos en la pantalla del KDS y no en la comanda dejaba la mitad del aviso
+donde nadie mira mientras se cocina.
+
+Recorre las tres capas que hacían falta: el catálogo del POS los trae, la línea
+de venta **los copia al añadir el plato** —igual que el nombre y el precio, para
+que el papel diga lo que se vendió y no lo que diga la carta cuando salga la
+impresión— y el agente de impresión los compone.
+
+**En papel no hay banda roja: la térmica es monocroma.** El énfasis se hace con
+lo único que tiene una impresora de tickets —doble alto, negrita y línea
+propia— y va **después** del producto y de la nota, que es lo último que se lee
+antes de empezar a cocinar. Hay prueba que comprueba los bytes: `GS ! 0x01`, el
+comando de alto doble. Un alérgeno impreso igual que «extra queso» es un
+alérgeno que no se ve.
+
+**El validador del agente filtra en vez de rechazar**, y es la única excepción
+a su propia regla. El motivo está escrito ahí: una comanda que NO SE IMPRIME
+deja a la cocina sin nada, mientras que una que imprime tres alérgenos de los
+cuatro que venían deja al cocinero con tres advertencias más que ninguna.
+Rechazar la comanda entera por un dato sucio sería elegir la peor de las dos.
+
+### Una prueba que se rompía por lo que no vigilaba
+
+«La comanda no lleva precios» comparaba la línea entera con `toEqual`, así que
+añadir un campo legítimo la ponía en rojo sin que hubiera entrado ni un precio.
+Se cambió a comprobar lo que de verdad defiende —que no aparezca ninguna clave
+de importe— en vez de la forma exacta del objeto. Una prueba que falla por algo
+que no es lo suyo enseña a «arreglarla» sin leerla, y la próxima vez que se
+rompa de verdad recibirá el mismo trato.

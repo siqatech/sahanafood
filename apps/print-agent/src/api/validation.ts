@@ -57,6 +57,30 @@ class Validador {
     return v;
   }
 
+  /**
+   * Lista de textos opcional, filtrando lo que no lo sea.
+   *
+   * A diferencia de los demás validadores, este **no rechaza** la petición si
+   * llega un elemento raro: se queda con los textos y sigue. El motivo es el
+   * caso de uso —los alérgenos— y es deliberado: una comanda que NO SE IMPRIME
+   * deja a la cocina sin nada, mientras que una que imprime tres alérgenos de
+   * los cuatro que venían deja al cocinero con tres advertencias más que
+   * ninguna. Rechazar entera la comanda por un dato sucio sería elegir la peor
+   * de las dos.
+   */
+  listaDeTextosOpcional(campo: string): string[] | undefined {
+    const v = this.valor(campo);
+    if (v === undefined || v === null) return undefined;
+    if (!Array.isArray(v)) {
+      this.issues.push(`"${campo}", si viene, debe ser una lista`);
+      return undefined;
+    }
+    const textos = v.filter(
+      (x): x is string => typeof x === 'string' && x.trim().length > 0,
+    );
+    return textos.length > 0 ? textos : undefined;
+  }
+
   enteroPositivo(campo: string): number {
     const v = this.valor(campo);
     if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) {
@@ -107,6 +131,7 @@ export interface ComandaDto {
     productName: string;
     modifiersText?: string | undefined;
     notes?: string | undefined;
+    allergens?: string[] | undefined;
   }>;
   notes?: string | undefined;
 }
@@ -127,6 +152,9 @@ export function parseComanda(cuerpo: unknown): ComandaDto {
       productName: l.texto('productName'),
       modifiersText: l.textoOpcional('modifiersText'),
       notes: l.textoOpcional('notes'),
+      // Se filtra a textos: lo que llega es JSON de fuera y una comanda no
+      // puede caerse por un número donde debía ir un alérgeno.
+      allergens: l.listaDeTextosOpcional('allergens'),
     })),
     notes: v.textoOpcional('notes'),
   };

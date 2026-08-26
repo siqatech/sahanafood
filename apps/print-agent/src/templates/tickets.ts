@@ -28,6 +28,11 @@ export interface KitchenTicketData {
     productName: string;
     modifiersText?: string | undefined;
     notes?: string | undefined;
+    /**
+     * Alérgenos declarados. En papel no hay banda roja que valga —la térmica
+     * es monocroma— así que el énfasis se hace con tamaño y negrita.
+     */
+    allergens?: string[] | undefined;
   }>;
   notes?: string | undefined;
   printedAt: string;
@@ -90,6 +95,22 @@ export function buildKitchenTicket(
       t.bold(true).wrapped(`> ${linea.modifiersText}`, '   ').bold(false);
     }
     if (linea.notes) t.wrapped(`* ${linea.notes}`, '   ');
+
+    // ALÉRGENOS: lo último de la línea y lo más marcado de la comanda.
+    //
+    // En pantalla docs/25 pide banda roja; en papel no hay color, así que el
+    // énfasis se hace con lo único que tiene una térmica: doble alto, negrita y
+    // una línea propia. Va DESPUÉS del producto y de la nota a propósito —es lo
+    // último que se lee antes de empezar a cocinar— y solo cuando hay alguno:
+    // una advertencia en cada línea se deja de ver, y entonces no se ve la que
+    // importa.
+    if (linea.allergens && linea.allergens.length > 0) {
+      t.size(1, 2)
+        .bold(true)
+        .wrapped(`! ALERGENOS: ${linea.allergens.join(', ')}`, '   ')
+        .bold(false)
+        .size(1, 1);
+    }
     t.line();
   }
 

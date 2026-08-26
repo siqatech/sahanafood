@@ -25,6 +25,7 @@ const LINEA: LineaDeTicket = {
   quantity: 2,
   unitPriceMinor: 550_000,
   modifiers: [{ id: 'o-1', name: 'Ensalada', priceDeltaMinor: 30_000 }],
+  allergens: ['mostaza', 'soya'],
 };
 
 function fingirAgente(): ReturnType<typeof vi.fn> {
@@ -67,11 +68,20 @@ describe('Impresión desde el POS', () => {
 
     const cuerpo = cuerpoDe(espia);
     const lineas = cuerpo['lines'] as Array<Record<string, unknown>>;
-    expect(lineas[0]).toEqual({
+    expect(lineas[0]).toMatchObject({
       quantity: 2,
       productName: 'Pollo a la brasa',
       modifiersText: 'Ensalada',
     });
+
+    // Lo que esta prueba defiende es que NO VAN IMPORTES, así que se comprueba
+    // eso y no la forma exacta del objeto. Con un `toEqual` cerrado, añadir un
+    // campo legítimo —los alérgenos— la ponía en rojo sin que hubiera entrado
+    // ni un precio, y una prueba que se rompe por lo que no vigila enseña a
+    // «arreglarla» sin leerla.
+    for (const clave of ['unitPrice', 'unitPriceMinor', 'lineTotal', 'total']) {
+      expect(lineas[0]).not.toHaveProperty(clave);
+    }
     expect(JSON.stringify(cuerpo)).not.toContain('S/');
   });
 
@@ -146,5 +156,42 @@ describe('Impresión desde el POS', () => {
     await expect(impresion.salud(CFG)).rejects.toThrow(
       /computadora de la caja/i,
     );
+  });
+
+  it('LA COMANDA LLEVA LOS ALÉRGENOS al agente de impresión', async () => {
+    // El papel es lo que el cocinero tiene en la mano en la mayoría de las
+    // cocinas: que la pantalla del KDS los enseñe y el papel no, deja la mitad
+    // del aviso donde nadie mira mientras se cocina.
+    const agente = fingirAgente();
+    await impresion.comanda(CFG, {
+      ventaId: 'v-1',
+      orderNumber: 47,
+      brandName: 'Pollería',
+      stationName: 'Parrilla',
+      lines: [LINEA],
+    });
+
+    const cuerpo = JSON.parse(agente.mock.calls[0]![1].body as string) as {
+      lines: Array<{ allergens?: string[] }>;
+    };
+    expect(cuerpo.lines[0]!.allergens).toEqual(['mostaza', 'soya']);
+  });
+
+  it('un plato SIN alérgenos no manda el campo vacío', async () => {
+    // Una lista vacía haría que el agente imprimiera una advertencia en
+    // blanco, y una advertencia que sale en cada línea se deja de leer.
+    const agente = fingirAgente();
+    await impresion.comanda(CFG, {
+      ventaId: 'v-2',
+      orderNumber: 48,
+      brandName: 'Pollería',
+      stationName: 'Parrilla',
+      lines: [{ ...LINEA, allergens: [] }],
+    });
+
+    const cuerpo = JSON.parse(agente.mock.calls[0]![1].body as string) as {
+      lines: Array<{ allergens?: string[] }>;
+    };
+    expect(cuerpo.lines[0]).not.toHaveProperty('allergens');
   });
 });

@@ -1,5 +1,5 @@
 import { ulid } from 'ulid';
-import { Money } from '@sahana/domain';
+import { Money, alergenosDe } from '@sahana/domain';
 import type {
   GrupoDeModificadores,
   LineaOffline,
@@ -36,6 +36,13 @@ export interface LineaDeTicket {
   quantity: number;
   unitPriceMinor: number;
   modifiers: SeleccionDeModificador[];
+  /**
+   * Alérgenos declarados EN EL MOMENTO de añadir el plato.
+   *
+   * Se copian igual que el nombre y el precio: la comanda se imprime con lo que
+   * se vendió, no con lo que diga la carta cuando salga el papel.
+   */
+  allergens: string[];
 }
 
 /** Suma de un modificador por unidad. Puede ser negativa («sin papas» descuenta). */
@@ -94,6 +101,7 @@ export function nuevaLinea(
     key: ulid(),
     productId: producto.id,
     productName: producto.name,
+    allergens: alergenosDe(producto.allergens),
     quantity: 1,
     unitPriceMinor: producto.price.minorUnits,
     modifiers: [...opciones],
