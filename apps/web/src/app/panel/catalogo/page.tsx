@@ -1,12 +1,20 @@
 import Link from 'next/link';
-import { panel, type ProductoDelPanel } from '../../../lib/panel-api';
+import {
+  panel,
+  type ProductoDelPanel,
+  type GrupoDeModificadores,
+} from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
 import { Vacio } from '../vacio';
+import { solesDeTexto } from '../caja/dinero';
 import {
   FormularioFoto,
   FormularioNuevoProducto,
   FormularioPausa,
   FormularioPrecio,
+  FormularioGrupoDeModificadores,
+  FormularioOpcionDeModificador,
+  BotonGrupoDelProducto,
 } from './formularios';
 
 /**
@@ -40,6 +48,18 @@ function precioDe(p: ProductoDelPanel, canal: string): string {
   if (!fila) return '';
   const [entero = '0', decimales = ''] = fila.price.split('.');
   return `${entero}.${(decimales + '00').slice(0, 2)}`;
+}
+
+/** «Obligatoria, una sola» y no «min 1 / max 1»: es lo que se decidió al crearla. */
+function formaDe(g: GrupoDeModificadores): string {
+  const obligatoria = g.minSelections > 0;
+  if (g.minSelections === g.maxSelections && g.minSelections > 1) {
+    return `Obligatoria, exactamente ${g.minSelections}`;
+  }
+  if (g.maxSelections === 1) {
+    return obligatoria ? 'Obligatoria, una sola' : 'Opcional, una sola';
+  }
+  return obligatoria ? 'Obligatoria, varias' : 'Opcional, varias';
 }
 
 export default async function CatalogoPage({
@@ -78,6 +98,10 @@ export default async function CatalogoPage({
   const productos = await cargar('/panel/catalogo', yaSeIntento, () =>
     panel.productos(marca.id),
   );
+  // Se degrada solo: los modificadores exigen `catalog.read` igual que la
+  // carta, pero si algún día se separan, quedarse sin ellos no puede dejar sin
+  // precios a quien vino a cambiar un precio.
+  const grupos = await panel.gruposDeModificadores(marca.id).catch(() => []);
 
   return (
     <>
@@ -128,6 +152,7 @@ export default async function CatalogoPage({
                     {c.rotulo}
                   </th>
                 ))}
+                {grupos.length > 0 ? <th>Preguntas</th> : null}
                 <th>Estado</th>
               </tr>
             </thead>
@@ -168,6 +193,25 @@ export default async function CatalogoPage({
                         />
                       </td>
                     ))}
+                    {grupos.length > 0 ? (
+                      <td>
+                        {/* Todas las preguntas de la marca, y la del plato
+                            marcada. Enseñar solo las unidas obligaría a irse a
+                            otra pantalla para añadir una, que es justo cuando
+                            se decide. */}
+                        <div className="preguntas">
+                          {grupos.map((g) => (
+                            <BotonGrupoDelProducto
+                              key={g.id}
+                              productId={p.id}
+                              groupId={g.id}
+                              nombre={g.name}
+                              unido={p.modifierGroupIds.includes(g.id)}
+                            />
+                          ))}
+                        </div>
+                      </td>
+                    ) : null}
                     <td>
                       {sinNingunPrecio ? (
                         <span className="etiqueta etiqueta--sin-precio">
@@ -220,6 +264,59 @@ export default async function CatalogoPage({
 
       <h2 id="anadir">Añadir</h2>
       <FormularioNuevoProducto brandId={marca.id} />
+
+      <h2>Preguntas al pedir</h2>
+      <p className="panel__subtitulo">
+        «¿Con qué guarnición?», «¿Término de la carne?», «¿Algún extra?». Se
+        crean una vez para la marca y se marcan en cada plato que las use — la
+        misma pregunta no se escribe dos veces, y así no acaban diciendo cosas
+        distintas en dos platos.
+      </p>
+
+      {grupos.length === 0 ? (
+        <Vacio titulo="Todavía no hay ninguna pregunta">
+          <p>
+            Sin preguntas, cada variante necesita su propio plato en la carta:
+            «Pollo con papas» y «Pollo con ensalada» como dos platos distintos,
+            con dos precios que mantener.
+          </p>
+        </Vacio>
+      ) : (
+        <div className="tarjetas">
+          {grupos.map((g) => (
+            <article key={g.id} className="tarjeta">
+              <p className="tarjeta__rotulo">{formaDe(g)}</p>
+              <p>
+                <strong>{g.name}</strong>
+              </p>
+              {g.options.length === 0 ? (
+                <p className="panel__error">
+                  Sin opciones no se puede responder, así que ningún plato con
+                  esta pregunta se podrá pedir. Añade la primera.
+                </p>
+              ) : (
+                <ul className="opciones">
+                  {g.options.map((o) => (
+                    <li key={o.id}>
+                      {o.name}
+                      {Number(o.priceDelta) !== 0 ? (
+                        <span className="tarjeta__pie">
+                          {' '}
+                          {Number(o.priceDelta) > 0 ? '+' : '−'} S/{' '}
+                          {solesDeTexto(o.priceDelta.replace('-', ''))}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <FormularioOpcionDeModificador groupId={g.id} />
+            </article>
+          ))}
+        </div>
+      )}
+
+      <FormularioGrupoDeModificadores brandId={marca.id} />
 
       <p className="tarjeta__pie">
         {productos.length === 1 ? '1 plato' : `${productos.length} platos`} ·{' '}

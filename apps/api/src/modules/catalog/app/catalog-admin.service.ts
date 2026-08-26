@@ -114,6 +114,19 @@ export interface AdminProductView {
     active: boolean;
   }>;
   pauses: Array<{ channel: string; until: string | null }>;
+  /**
+   * Grupos de modificadores unidos a este producto.
+   *
+   * Va aquí y no en una consulta aparte porque la pregunta que se hace quien
+   * edita la carta es «¿a este pollo se le puede elegir guarnición?», y esa se
+   * responde mirando el producto.
+   */
+  modifierGroupIds: string[];
+}
+
+/** Un grupo con sus opciones: es como se usa siempre, nunca por separado. */
+export interface ModifierGroupWithOptions extends ModifierGroupView {
+  options: ModifierOptionView[];
 }
 
 export interface PriceView {
@@ -806,6 +819,16 @@ export class CatalogAdminService {
            FROM cat_product_pauses WHERE product_id = ANY($1::uuid[])`,
         [ids],
       );
+      const { rows: grupos } = await ctx.client.query<{
+        product_id: string;
+        group_id: string;
+      }>(
+        `SELECT product_id, group_id
+           FROM cat_product_modifier_groups
+          WHERE product_id = ANY($1::uuid[])
+          ORDER BY sort_order`,
+        [ids],
+      );
 
       const preciosPor = new Map<string, AdminProductView['prices']>();
       for (const p of precios) {
@@ -829,6 +852,13 @@ export class CatalogAdminService {
         pausasPor.set(p.product_id, lista);
       }
 
+      const gruposPor = new Map<string, string[]>();
+      for (const g of grupos) {
+        const lista = gruposPor.get(g.product_id) ?? [];
+        lista.push(g.group_id);
+        gruposPor.set(g.product_id, lista);
+      }
+
       return productos.map((p) => ({
         id: p.id,
         categoryId: p.category_id,
@@ -842,6 +872,67 @@ export class CatalogAdminService {
         rowVersion: p.row_version,
         prices: preciosPor.get(p.id) ?? [],
         pauses: pausasPor.get(p.id) ?? [],
+        modifierGroupIds: gruposPor.get(p.id) ?? [],
+      }));
+    });
+  }
+
+  /**
+   * Los grupos de modificadores de una marca, con sus opciones.
+   *
+   * No existía forma de LISTARLOS. Se podían crear —`POST /modifier-groups` está
+   * desde T4.01— y unirlos a un producto, pero para unir uno hay que saber su
+   * `id`, y el único sitio donde se podía leer era la base de datos. Con lo
+   * cual el módulo entero de modificadores, que es el que hace que un pollo se
+   * pueda pedir «con papas» y cueste tres soles más, solo se podía montar por
+   * SQL o por la semilla de demostración.
+   */
+  async listModifierGroups(
+    tenantId: string,
+    query: { brandId: string },
+  ): Promise<ModifierGroupWithOptions[]> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows: grupos } = await ctx.client.query<FilaGrupo>(
+        `SELECT id, brand_id, name, min_selections, max_selections,
+                allow_repeat, sort_order
+           FROM cat_modifier_groups
+          WHERE brand_id = $1
+          ORDER BY sort_order, name`,
+        [query.brandId],
+      );
+      if (grupos.length === 0) return [];
+
+      const { rows: opciones } = await ctx.client.query<FilaOpcion>(
+        `SELECT id, group_id, name, price_delta, available, sort_order
+           FROM cat_modifier_options
+          WHERE group_id = ANY($1::uuid[])
+          ORDER BY sort_order, name`,
+        [grupos.map((g) => g.id)],
+      );
+
+      const opcionesPor = new Map<string, ModifierOptionView[]>();
+      for (const o of opciones) {
+        const lista = opcionesPor.get(o.group_id) ?? [];
+        lista.push({
+          id: o.id,
+          groupId: o.group_id,
+          name: o.name,
+          priceDelta: o.price_delta,
+          available: o.available,
+          sortOrder: o.sort_order,
+        });
+        opcionesPor.set(o.group_id, lista);
+      }
+
+      return grupos.map((g) => ({
+        id: g.id,
+        brandId: g.brand_id,
+        name: g.name,
+        minSelections: g.min_selections,
+        maxSelections: g.max_selections,
+        allowRepeat: g.allow_repeat,
+        sortOrder: g.sort_order,
+        options: opcionesPor.get(g.id) ?? [],
       }));
     });
   }

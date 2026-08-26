@@ -9,6 +9,11 @@ export interface EstadoCarta {
   ok?: string;
   /** Con qué revertir, cuando se puede. Lo pinta `AvisoConDeshacer`. */
   deshacer?: Deshacer;
+  /**
+   * Lo que se acababa de escribir. React vacía los campos no controlados al
+   * terminar una acción de servidor, y ese vaciado llega DESPUÉS del error.
+   */
+  valores?: Record<string, string>;
 }
 
 /**
@@ -231,4 +236,114 @@ export async function crearProducto(
         ? `"${name}" creado. Ponle precio para que se vea en la tienda.`
         : `"${name}" creado y con precio.`,
   };
+}
+
+/**
+ * Un grupo de modificadores: la pregunta que se le hace al cliente.
+ *
+ * `min`/`max` no son un detalle: con mínimo 1 la pregunta es obligatoria y el
+ * pedido no se puede cerrar sin responderla —«¿término de la carne?»—, y con
+ * mínimo 0 es un extra opcional. Quien monta la carta tiene que poder elegir
+ * las dos, y la regla la valida `@sahana/domain`, el mismo código que corre en
+ * el POS sin conexión.
+ */
+export async function crearGrupoDeModificadores(
+  _prev: EstadoCarta,
+  form: FormData,
+): Promise<EstadoCarta> {
+  const brandId = String(form.get('brandId') ?? '');
+  const name = String(form.get('name') ?? '').trim();
+  const min = Number(form.get('minSelections') ?? 0);
+  const max = Number(form.get('maxSelections') ?? 1);
+
+  if (name.length < 2) {
+    return {
+      error: 'La pregunta necesita un nombre. Por ejemplo: «Guarnición».',
+    };
+  }
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < 1) {
+    return { error: 'El mínimo y el máximo tienen que ser números enteros.' };
+  }
+  if (max < min) {
+    return {
+      error: `No se pueden elegir como mucho ${max} y como poco ${min}.`,
+    };
+  }
+
+  try {
+    await panel.crearGrupoDeModificadores({
+      brandId,
+      name,
+      minSelections: min,
+      maxSelections: max,
+    });
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/catalogo');
+  return {
+    ok:
+      min === 0
+        ? `«${name}» creada. Es opcional: el cliente puede no elegir nada.`
+        : `«${name}» creada. Hay que responderla para poder pedir.`,
+  };
+}
+
+/**
+ * Una opción del grupo, con su diferencia de precio.
+ *
+ * El delta puede ser NEGATIVO —«sin guarnición» descuenta— y por eso se acepta
+ * el signo. Vacío es cero: la mayoría de las opciones no cambian el precio, y
+ * obligar a escribir «0.00» en cada una es fricción por nada.
+ */
+export async function crearOpcionDeModificador(
+  _prev: EstadoCarta,
+  form: FormData,
+): Promise<EstadoCarta> {
+  const groupId = String(form.get('groupId') ?? '');
+  const name = String(form.get('name') ?? '').trim();
+  const bruto = String(form.get('priceDelta') ?? '').trim();
+  if (name.length < 1) return { error: 'La opción necesita un nombre.' };
+
+  let priceDeltaMinor = 0;
+  if (bruto !== '') {
+    const negativo = bruto.startsWith('-');
+    const magnitud = aUnidadesMenores(negativo ? bruto.slice(1) : bruto);
+    if (magnitud === null) {
+      return {
+        error: `"${bruto}" no es un importe. Escríbelo 3.00, o -2.00 si descuenta.`,
+        valores: { name, priceDelta: bruto },
+      };
+    }
+    priceDeltaMinor = negativo ? -magnitud : magnitud;
+  }
+
+  try {
+    await panel.crearOpcionDeModificador({ groupId, name, priceDeltaMinor });
+  } catch (error) {
+    return { ...traducir(error), valores: { name, priceDelta: bruto } };
+  }
+  revalidatePath('/panel/catalogo');
+  return { ok: `«${name}» añadida.` };
+}
+
+/** Une o desune el grupo del plato. Es lo que hace que la pregunta se haga. */
+export async function cambiarGrupoDelProducto(
+  _prev: EstadoCarta,
+  form: FormData,
+): Promise<EstadoCarta> {
+  const productId = String(form.get('productId') ?? '');
+  const groupId = String(form.get('groupId') ?? '');
+  const unir = form.get('unir') === '1';
+  try {
+    if (unir) {
+      await panel.unirGrupoAProducto(productId, groupId);
+    } else {
+      await panel.desunirGrupoDeProducto(productId, groupId);
+    }
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/catalogo');
+  return { ok: unir ? 'Añadida al plato.' : 'Quitada del plato.' };
 }

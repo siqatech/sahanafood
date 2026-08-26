@@ -2420,3 +2420,49 @@ que quien empieza a corregir en cuanto lo lee veía desaparecer lo que tecleaba.
 
 Verde: **789 API · 471 dominio · 5 ui · 91 web · 36 POS · 119 print-agent · 75
 navegador**, dos pasadas limpias del navegador.
+
+## «¿Con papas o ensalada?» solo se podía montar por SQL
+
+Los modificadores estaban enteros desde T4.01: grupos con mínimo y máximo,
+opciones con diferencia de precio —positiva o negativa—, y la validación en
+`@sahana/domain`, el mismo código que corre en el POS sin conexión. El POS los
+pinta al tomar el pedido, la tienda los enseña, la comanda los imprime. Y **no
+los creaba ninguna pantalla**.
+
+Peor: **no había ninguna ruta que los listara.** Para unir un grupo a un plato
+hay que mandar su `id`, y el único sitio donde ese `id` se podía leer era la base
+de datos. Se podían crear grupos que después no se podían usar.
+
+En un SaaS para negocios de comida eso no es un hueco de segundo orden. Sin
+modificadores, cada variante necesita su propio plato: «Pollo con papas» y
+«Pollo con ensalada» como dos entradas de carta, con dos precios que mantener y
+dos sitios donde equivocarse.
+
+**`GET /catalog/modifier-groups`**, con las opciones dentro. Van juntas porque se
+usan juntas: un grupo sin sus opciones no se puede ni revisar ni unir con
+criterio. Y el producto dice ahora a qué grupos está unido, que es la pregunta
+que se hace quien edita la carta —«¿a este pollo se le elige guarnición?»—, y se
+responde mirando el producto.
+
+**Cuatro formas, no dos números.** Se podría ofrecer `min` y `max` y dejar que el
+dueño los combine; lo que sale de ahí es «mínimo 2, máximo 1» y un error del
+servidor. Las cuatro que se ofrecen —obligatoria una, opcional una, opcional
+varias, obligatoria dos— cubren la carta de un restaurante y ninguna es
+inválida. Cada una lleva escrito qué significa **antes** de crearla.
+
+**Un grupo sin opciones se marca en rojo.** No se puede responder, así que
+cualquier plato que la lleve no se podrá pedir. La pantalla lo dice en vez de
+dejar que se descubra cuando un cliente no puede pagar.
+
+**Marcar la pregunta en un plato guarda al pulsar**, no al final. Una casilla que
+se marca y espera a un «guardar» es la forma más rápida de perder un cambio de
+carta a media tarde.
+
+Cuatro pruebas nuevas: listar con sus opciones y el delta como cadena decimal,
+el aislamiento —B pidiendo los modificadores de A recibe una lista vacía, no la
+carta de opciones del competidor con sus precios—, y en navegador el camino
+entero: crear la pregunta, añadirle una opción con su precio, marcarla en un
+plato y **desmarcarla**, porque quitar tiene que quitar de verdad.
+
+Verde: **791 API · 471 dominio · 5 ui · 91 web · 36 POS · 119 print-agent · 76
+navegador**.

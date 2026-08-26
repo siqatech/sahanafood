@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { AvisoConDeshacer } from '../aviso';
 import {
   crearProducto,
@@ -8,6 +8,9 @@ import {
   ponerFoto,
   ponerPrecio,
   reanudar,
+  crearGrupoDeModificadores,
+  crearOpcionDeModificador,
+  cambiarGrupoDelProducto,
   type EstadoCarta,
 } from './acciones';
 
@@ -247,6 +250,179 @@ export function FormularioNuevoProducto({ brandId }: { brandId: string }) {
       <button type="submit" disabled={pendiente}>
         {pendiente ? 'Creando…' : 'Crear plato'}
       </button>
+    </form>
+  );
+}
+
+/**
+ * Crear la pregunta: «¿Con qué guarnición?», «¿Término de la carne?».
+ *
+ * El mínimo y el máximo se eligen con palabras y no con dos números sueltos:
+ * «obligatoria, una sola» y «opcional, varias» es lo que un dueño tiene en la
+ * cabeza; `minSelections=1, maxSelections=1` es cómo se guarda.
+ */
+export function FormularioGrupoDeModificadores({
+  brandId,
+}: {
+  brandId: string;
+}) {
+  const [estado, accion, pendiente] = useActionState<EstadoCarta, FormData>(
+    crearGrupoDeModificadores,
+    {},
+  );
+  const [tipo, setTipo] = useState('obligatoria-una');
+  const forma = FORMAS.find((f) => f.id === tipo) ?? FORMAS[0]!;
+
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="brandId" value={brandId} />
+        <input type="hidden" name="minSelections" value={forma.min} />
+        <input type="hidden" name="maxSelections" value={forma.max} />
+        <input
+          name="name"
+          placeholder="Guarnición"
+          aria-label="Nombre de la pregunta"
+          defaultValue={estado.valores?.['name'] ?? ''}
+        />
+        <select
+          value={tipo}
+          onChange={(e) => {
+            setTipo(e.target.value);
+          }}
+          aria-label="Cómo se responde"
+        >
+          {FORMAS.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.rotulo}
+            </option>
+          ))}
+        </select>
+        <button type="submit" disabled={pendiente}>
+          {pendiente ? '…' : 'Crear pregunta'}
+        </button>
+      </form>
+      <p className="tarjeta__pie">{forma.explicacion}</p>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * Las cuatro formas que de verdad se usan.
+ *
+ * Se podrían ofrecer los dos números y dejar al dueño combinarlos; lo que sale
+ * de ahí es «mínimo 2, máximo 1» y un error del servidor. Estas cuatro cubren
+ * la carta de un restaurante y ninguna es inválida.
+ */
+const FORMAS = [
+  {
+    id: 'obligatoria-una',
+    rotulo: 'Obligatoria, una sola',
+    min: 1,
+    max: 1,
+    explicacion:
+      'Hay que responderla para poder pedir, y solo se elige una. Como el término de la carne.',
+  },
+  {
+    id: 'opcional-una',
+    rotulo: 'Opcional, una sola',
+    min: 0,
+    max: 1,
+    explicacion: 'Se puede no elegir nada. Como una salsa aparte.',
+  },
+  {
+    id: 'opcional-varias',
+    rotulo: 'Opcional, varias',
+    min: 0,
+    max: 10,
+    explicacion:
+      'Extras: el cliente marca los que quiera, o ninguno. Como los toppings.',
+  },
+  {
+    id: 'obligatoria-dos',
+    rotulo: 'Obligatoria, exactamente dos',
+    min: 2,
+    max: 2,
+    explicacion: 'Hay que elegir dos. Como las dos guarniciones de un menú.',
+  },
+] as const;
+
+/** Añadir una opción a la pregunta, con lo que suma o resta al precio. */
+export function FormularioOpcionDeModificador({
+  groupId,
+}: {
+  groupId: string;
+}) {
+  const [estado, accion, pendiente] = useActionState<EstadoCarta, FormData>(
+    crearOpcionDeModificador,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="groupId" value={groupId} />
+        <input
+          name="name"
+          className="corto"
+          placeholder="Papas fritas"
+          aria-label={`Nombre de la opción para ${groupId}`}
+          defaultValue={estado.valores?.['name'] ?? ''}
+        />
+        <input
+          name="priceDelta"
+          className="corto"
+          inputMode="decimal"
+          placeholder="+ S/"
+          aria-label={`Diferencia de precio para ${groupId}`}
+          defaultValue={estado.valores?.['priceDelta'] ?? ''}
+        />
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Añadir opción'}
+        </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * La casilla que decide si a ESTE plato se le hace la pregunta.
+ *
+ * Es un botón y no una casilla de verdad porque cada cambio es una escritura:
+ * una casilla que se marca y no guarda hasta que alguien pulse «guardar» es la
+ * forma más rápida de perder un cambio de carta.
+ */
+export function BotonGrupoDelProducto({
+  productId,
+  groupId,
+  nombre,
+  unido,
+}: {
+  productId: string;
+  groupId: string;
+  nombre: string;
+  unido: boolean;
+}) {
+  const [estado, accion, pendiente] = useActionState<EstadoCarta, FormData>(
+    cambiarGrupoDelProducto,
+    {},
+  );
+  return (
+    <form action={accion} className="en-linea">
+      <input type="hidden" name="productId" value={productId} />
+      <input type="hidden" name="groupId" value={groupId} />
+      <input type="hidden" name="unir" value={unido ? '0' : '1'} />
+      <button
+        type="submit"
+        className={unido ? 'etiqueta etiqueta--unido' : 'discreto'}
+        disabled={pendiente}
+      >
+        {pendiente ? '…' : unido ? `✓ ${nombre}` : nombre}
+      </button>
+      {estado.error ? (
+        <span className="panel__error">{estado.error}</span>
+      ) : null}
     </form>
   );
 }

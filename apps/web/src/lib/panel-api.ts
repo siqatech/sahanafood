@@ -212,6 +212,31 @@ export interface ProductoDelPanel {
     active: boolean;
   }>;
   pauses: Array<{ channel: string; until: string | null }>;
+  /** Grupos de modificadores unidos a este plato (RN-CAT-05). */
+  modifierGroupIds: string[];
+}
+
+/**
+ * Un grupo de modificadores con sus opciones: «¿con qué guarnición?» y las
+ * respuestas posibles, cada una con su diferencia de precio.
+ */
+export interface GrupoDeModificadores {
+  id: string;
+  brandId: string;
+  name: string;
+  minSelections: number;
+  maxSelections: number;
+  allowRepeat: boolean;
+  sortOrder: number;
+  options: Array<{
+    id: string;
+    groupId: string;
+    name: string;
+    /** Cadena decimal, y puede ser negativa: «sin papas» descuenta. */
+    priceDelta: string;
+    available: boolean;
+    sortOrder: number;
+  }>;
 }
 
 /** Pedido tal como lo lista la API (subconjunto de `OrderSummary`). */
@@ -936,6 +961,55 @@ export const panel = {
     llamar(`/catalog/products/${productId}/resume`, {
       method: 'POST',
       body: JSON.stringify({ channels }),
+    }),
+
+  /**
+   * Modificadores (RN-CAT-05).
+   *
+   * El módulo estaba entero desde T4.01 —grupos con mínimo y máximo, opciones
+   * con diferencia de precio, validación compartida con el POS en
+   * `@sahana/domain`— y **no lo llamaba ninguna pantalla**. En un negocio de
+   * comida eso no es un hueco menor: «¿con papas o ensalada?» es la mitad de
+   * una carta, y la única forma de montarlo era SQL.
+   */
+  gruposDeModificadores: (brandId: string): Promise<GrupoDeModificadores[]> =>
+    llamar<GrupoDeModificadores[]>(
+      `/catalog/modifier-groups?brand=${encodeURIComponent(brandId)}`,
+    ),
+
+  crearGrupoDeModificadores: (input: {
+    brandId: string;
+    name: string;
+    minSelections?: number;
+    maxSelections?: number;
+  }): Promise<{ id: string }> =>
+    llamar<{ id: string }>('/catalog/modifier-groups', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  crearOpcionDeModificador: (input: {
+    groupId: string;
+    name: string;
+    priceDeltaMinor?: number;
+  }): Promise<{ id: string }> =>
+    llamar<{ id: string }>('/catalog/modifier-options', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  unirGrupoAProducto: (productId: string, groupId: string): Promise<unknown> =>
+    llamar(`/catalog/products/${productId}/modifier-groups`, {
+      method: 'POST',
+      body: JSON.stringify({ groupId }),
+    }),
+
+  desunirGrupoDeProducto: (
+    productId: string,
+    groupId: string,
+  ): Promise<unknown> =>
+    llamar(`/catalog/products/${productId}/modifier-groups/${groupId}`, {
+      method: 'DELETE',
     }),
 
   crearMarca: (input: {

@@ -296,6 +296,39 @@ tr:last-child td {
   color: var(--panel-suave);
 }
 
+/* --- Preguntas al pedir (modificadores) -------------------------------- */
+
+/* Las preguntas de un plato, en fila y envolviendo. Cada una es su propio
+   formulario —cada cambio se guarda al pulsar— y sin esto la celda crecería una
+   línea por pregunta. */
+.preguntas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* La pregunta que SÍ se le hace a este plato. Se distingue del resto por color
+   y por la marca escrita, no solo por color: en una tabla con diez preguntas,
+   «cuál está puesta» no se puede jugar a adivinarlo. */
+.etiqueta--unido {
+  color: #fff;
+  background: var(--panel-acento);
+  border-color: var(--panel-acento);
+  cursor: pointer;
+}
+
+/* Las respuestas posibles, con su diferencia de precio. Lista simple porque es
+   lo que es: no hay nada que ordenar ni filtrar en cinco guarniciones. */
+.opciones {
+  margin: 8px 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
+}
+
+.opciones li {
+  margin-bottom: 2px;
+}
+
 .etiqueta--pausado {
   color: #92400e;
   background: var(--sahana-aviso-fondo);

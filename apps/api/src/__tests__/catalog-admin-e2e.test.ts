@@ -7,7 +7,11 @@ import { configureApp, NEST_APP_OPTIONS } from '../bootstrap.js';
 import { createPool } from '../database/pool.js';
 import { withTenant } from '../database/rls.js';
 import { TenancyService } from '../modules/tenancy/index.js';
-import { CatalogService } from '../modules/catalog/index.js';
+import {
+  CatalogService,
+  type AdminProductView,
+  type ModifierGroupWithOptions,
+} from '../modules/catalog/index.js';
 import { OrderingService } from '../modules/ordering/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
@@ -248,6 +252,102 @@ suite('Alta de la carta', () => {
     // producto se estaría cobrando al precio base y la carta por canal sería
     // decorativa. El importe ya incluye IGV (RN-T05).
     expect(pedido.total.minorUnits).toBe(620_000);
+  });
+
+  it('LOS GRUPOS DE MODIFICADORES SE PUEDEN LISTAR, que era lo que faltaba', async () => {
+    // Se podían crear grupos y unirlos a un producto, pero para unir uno hay
+    // que mandar su `id` y NINGUNA ruta los devolvía: el único sitio donde ese
+    // `id` se podía leer era la base de datos. El módulo que hace que un pollo
+    // se pueda pedir «con papas» solo se montaba por SQL.
+    const a = como(tokenA);
+    const grupo = await a(http().post('/api/v1/catalog/modifier-groups'))
+      .send({
+        brandId: marcaA,
+        name: '¿Cómo lo quieres?',
+        minSelections: 1,
+        maxSelections: 2,
+      })
+      .expect(201);
+    await a(http().post('/api/v1/catalog/modifier-options'))
+      .send({ groupId: grupo.body.id, name: 'Bien cocido' })
+      .expect(201);
+    await a(http().post('/api/v1/catalog/modifier-options'))
+      .send({
+        groupId: grupo.body.id,
+        name: 'Con ají extra',
+        priceDeltaMinor: 15_000,
+      })
+      .expect(201);
+
+    const listado = await a(
+      http().get(`/api/v1/catalog/modifier-groups?brand=${marcaA}`),
+    ).expect(200);
+
+    const mio = (listado.body as ModifierGroupWithOptions[]).find(
+      (g) => g.id === grupo.body.id,
+    );
+    expect(mio).toBeDefined();
+    expect(mio!.minSelections).toBe(1);
+    expect(mio!.maxSelections).toBe(2);
+    // Con sus opciones: un grupo sin ellas no se puede ni revisar ni unir con
+    // criterio, y son dos consultas que siempre se hacen juntas.
+    expect(mio!.options.map((o) => o.name).sort()).toEqual([
+      'Bien cocido',
+      'Con ají extra',
+    ]);
+    // El importe llega como cadena decimal, nunca como número: es dinero.
+    const aji = mio!.options.find((o) => o.name === 'Con ají extra')!;
+    expect(aji.priceDelta).toBe('1.5000');
+
+    // Y el producto dice a qué grupos está unido, que es la pregunta que se
+    // hace quien edita la carta: «¿a este pollo se le elige guarnición?».
+    const producto = await a(http().post('/api/v1/catalog/products'))
+      .send({ brandId: marcaA, sku: 'CON-GRUPO', name: 'Plato con opciones' })
+      .expect(201);
+    await a(
+      http().post(
+        `/api/v1/catalog/products/${producto.body.id}/modifier-groups`,
+      ),
+    )
+      .send({ groupId: grupo.body.id })
+      .expect(201);
+
+    const carta = await a(
+      http().get(`/api/v1/catalog/products?brand=${marcaA}`),
+    ).expect(200);
+    const enCarta = (carta.body as AdminProductView[]).find(
+      (p) => p.id === producto.body.id,
+    );
+    expect(enCarta!.modifierGroupIds).toEqual([grupo.body.id]);
+
+    // Y al desunirlo desaparece: sin esto, «quitar» sería solo visual y el
+    // cliente seguiría viendo la pregunta en la tienda.
+    await a(
+      http().delete(
+        `/api/v1/catalog/products/${producto.body.id}/modifier-groups/${grupo.body.id}`,
+      ),
+    ).expect(200);
+    const despues = await a(
+      http().get(`/api/v1/catalog/products?brand=${marcaA}`),
+    ).expect(200);
+    expect(
+      (despues.body as AdminProductView[]).find(
+        (p) => p.id === producto.body.id,
+      )!.modifierGroupIds,
+    ).toEqual([]);
+  });
+
+  it('AISLAMIENTO: B no puede listar los modificadores de la marca de A', async () => {
+    // La marca va en la consulta. Sin filtro por tenant, B leería la carta de
+    // opciones del competidor —y sus precios— con una sola petición.
+    await como(tokenA)(http().post('/api/v1/catalog/modifier-groups'))
+      .send({ brandId: marcaA, name: 'Grupo privado de A' })
+      .expect(201);
+
+    const r = await como(tokenB)(
+      http().get(`/api/v1/catalog/modifier-groups?brand=${marcaA}`),
+    ).expect(200);
+    expect(r.body).toEqual([]);
   });
 
   it('el precio del CANAL manda sobre el base, y el del LOCAL sobre los dos', async () => {

@@ -205,6 +205,83 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(enLaTienda).toContainText('S/ 61.50');
   });
 
+  test('LAS PREGUNTAS AL PEDIR se crean y se marcan en el plato', async ({
+    page,
+  }) => {
+    // Los modificadores estaban enteros desde T4.01 —grupos con mínimo y
+    // máximo, opciones con diferencia de precio, la validación compartida con
+    // el POS en `@sahana/domain`— y **no los llamaba ninguna pantalla**. Ni
+    // siquiera había una ruta que los listara: para unir un grupo a un plato
+    // hay que mandar su `id`, y el único sitio donde leerlo era la base de
+    // datos. En un negocio de comida eso no es un hueco menor: «¿con papas o
+    // ensalada?» es la mitad de una carta.
+    await entrar(page);
+    await page.goto('/panel/catalogo');
+
+    // Las preguntas de la semilla, CON su diferencia de precio: una opción que
+    // suma tres soles y no lo dice es un precio que el dueño descubre al
+    // cuadrar la caja.
+    const seccion = page
+      .locator('h2', { hasText: 'Preguntas al pedir' })
+      .locator('..');
+    await expect(
+      page.getByRole('heading', { name: 'Preguntas al pedir' }),
+    ).toBeVisible();
+    await expect(seccion.getByText(/S\//).first()).toBeVisible();
+
+    // Se crea una nueva, opcional a propósito: una obligatoria dejaría sin
+    // poder pedirse a cualquier plato al que se le ponga, y esta prueba no
+    // tiene por qué romper la tienda de las demás.
+    await page.getByLabel('Nombre de la pregunta').fill('¿Algo para tomar?');
+    await page
+      .getByLabel('Cómo se responde')
+      .selectOption({ label: 'Opcional, varias' });
+    // La explicación se lee ANTES de crear: «mínimo 0, máximo 10» no le dice
+    // nada a quien monta una carta.
+    await expect(page.getByText(/marca los que quiera, o ninguno/)).toBeVisible(
+      {},
+    );
+    await page.getByRole('button', { name: 'Crear pregunta' }).click();
+
+    const nueva = page
+      .locator('article.tarjeta')
+      .filter({ hasText: '¿Algo para tomar?' });
+    await expect(nueva).toBeVisible();
+    // Una pregunta sin opciones no se puede responder, así que el plato que la
+    // lleve no se podrá pedir. La pantalla lo dice en vez de dejarlo pasar.
+    await expect(nueva).toContainText(/Sin opciones no se puede responder/);
+
+    await nueva.getByLabel(/^Nombre de la opción/).fill('Chicha morada');
+    await nueva.getByLabel(/^Diferencia de precio/).fill('5.00');
+    await nueva.getByRole('button', { name: 'Añadir opción' }).click();
+    await expect(
+      page.locator('article.tarjeta').filter({ hasText: '¿Algo para tomar?' }),
+    ).toContainText('Chicha morada');
+
+    // Y ahora lo que hace que sirva de algo: marcarla en un plato.
+    const fila = page
+      .locator('tbody tr')
+      .filter({ hasText: 'Pollo a la brasa entero' })
+      .first();
+    await fila
+      .getByRole('button', { name: '¿Algo para tomar?', exact: true })
+      .click();
+    await expect(
+      fila.getByRole('button', { name: '✓ ¿Algo para tomar?' }),
+    ).toBeVisible();
+
+    // Y se quita. Quitar tiene que quitar DE VERDAD: si fuera solo visual, el
+    // cliente seguiría viendo la pregunta en la tienda.
+    await fila.getByRole('button', { name: '✓ ¿Algo para tomar?' }).click();
+    await expect(
+      page
+        .locator('tbody tr')
+        .filter({ hasText: 'Pollo a la brasa entero' })
+        .first()
+        .getByRole('button', { name: '¿Algo para tomar?', exact: true }),
+    ).toBeVisible();
+  });
+
   test('IMPORTAR LA CARTA: se ve el cambio ANTES de aplicarlo', async ({
     page,
   }) => {

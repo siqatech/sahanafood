@@ -19,6 +19,7 @@ export {
   type AdminProductView,
   type PriceView,
   type ModifierGroupView,
+  type ModifierGroupWithOptions,
   type ModifierOptionView,
 } from './app/catalog-admin.service.js';
 export { seedDemoCatalog, type DemoCatalog } from './app/demo-seed.js';

@@ -32,6 +32,7 @@ import {
   CatalogAdminService,
   type CategoryView,
   type ModifierGroupView,
+  type ModifierGroupWithOptions,
   type ModifierOptionView,
   type PriceView,
   type ProductView,
@@ -293,6 +294,25 @@ export class CatalogAdminController {
       throw new ValidationError('Se requiere el parámetro brand.');
     }
     return this.admin.listProducts(req.auth!.tid, { brandId: brand });
+  }
+
+  /**
+   * Los grupos de modificadores de la marca, con sus opciones.
+   *
+   * Faltaba, y sin esto lo demás no servía: para unir un grupo a un producto
+   * hay que mandar su `id`, y el único sitio donde ese `id` se podía leer era
+   * la base de datos. Se podían crear grupos que después no se podían usar.
+   */
+  @Get('modifier-groups')
+  @RequirePermission('catalog.read')
+  modifierGroups(
+    @Req() req: AuthenticatedRequest,
+    @Query('brand') brand?: string,
+  ): Promise<ModifierGroupWithOptions[]> {
+    if (!brand) {
+      throw new ValidationError('Se requiere el parámetro brand.');
+    }
+    return this.admin.listModifierGroups(req.auth!.tid, { brandId: brand });
   }
 
   @Post('categories')
