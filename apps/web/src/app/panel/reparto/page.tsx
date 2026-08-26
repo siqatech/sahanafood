@@ -16,6 +16,8 @@ import {
   FormularioAsignacion,
   BotonLiquidar,
   BotonSeguimiento,
+  AccionesDelEnvio,
+  AccionesDeFallo,
 } from './formularios';
 
 /**
@@ -210,6 +212,17 @@ export default async function RepartoPage({
             enCurso.map((e) => (
               <article key={e.id} className="ficha">
                 <Envio e={e} />
+                <AccionesDelEnvio
+                  shipmentId={e.id}
+                  estado={e.status}
+                  contraEntrega={
+                    e.codAmount !== null &&
+                    Number(e.codAmount) > 0 &&
+                    !e.codCollected
+                      ? solesDeTexto(e.codAmount)
+                      : null
+                  }
+                />
                 {/* El enlace se ofrece cuando el pedido ya va en camino, que es
                     cuando el seguimiento dice algo. Emitirlo antes daría una
                     página que solo pone «asignado» durante media hora. */}
@@ -224,10 +237,12 @@ export default async function RepartoPage({
               {problemas.map((e) => (
                 <article key={e.id} className="ficha ficha--revision">
                   <Envio e={e} />
-                  <p className="tarjeta__pie">
-                    Reprogramar o devolver se hace por API todavía (RN-DLV-03);
-                    lo que no puede pasar es que no se vea.
-                  </p>
+                  {/* Un envío devuelto es terminal: no hay nada que ofrecer
+                      salvo que se vea. Uno fallido, en cambio, es una venta
+                      que todavía se puede salvar. */}
+                  {e.status === 'failed' ? (
+                    <AccionesDeFallo shipmentId={e.id} />
+                  ) : null}
                 </article>
               ))}
             </>

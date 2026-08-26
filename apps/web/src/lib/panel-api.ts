@@ -1391,6 +1391,43 @@ export const panel = {
     }),
 
   /**
+   * El resto del ciclo de vida del envío (RN-DLV-03).
+   *
+   * Las cinco transiciones existían en la API desde T5.15 y **no las llamaba
+   * ninguna pantalla**: el envío se podía crear y asignar, y ahí se quedaba
+   * para siempre. Con eso, el seguimiento del cliente nunca pasaba de
+   * «asignado», el efectivo contra entrega no llegaba nunca a ser saldo del
+   * repartidor —así que no había nada que liquidar— y una entrega fallida no
+   * tenía forma de reintentarse desde el producto.
+   */
+  recogerEnvio: (id: string): Promise<EnvioDelPanel> =>
+    llamar<EnvioDelPanel>(`/delivery/shipments/${id}/pickup`, {
+      method: 'POST',
+    }),
+
+  entregarEnvio: (id: string, codCollected?: boolean): Promise<EnvioDelPanel> =>
+    llamar<EnvioDelPanel>(`/delivery/shipments/${id}/deliver`, {
+      method: 'POST',
+      body: JSON.stringify(codCollected === undefined ? {} : { codCollected }),
+    }),
+
+  fallarEnvio: (id: string, reason: string): Promise<EnvioDelPanel> =>
+    llamar<EnvioDelPanel>(`/delivery/shipments/${id}/fail`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  reintentarEnvio: (id: string): Promise<EnvioDelPanel> =>
+    llamar<EnvioDelPanel>(`/delivery/shipments/${id}/retry`, {
+      method: 'POST',
+    }),
+
+  devolverEnvio: (id: string): Promise<EnvioDelPanel> =>
+    llamar<EnvioDelPanel>(`/delivery/shipments/${id}/return`, {
+      method: 'POST',
+    }),
+
+  /**
    * Emite el enlace de seguimiento de un envío.
    *
    * La API existe desde T5.16 y **no la llamaba nadie**: se emitía un token que

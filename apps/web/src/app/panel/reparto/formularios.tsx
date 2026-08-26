@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import {
   crearRepartidor,
   cambiarEstadoRepartidor,
@@ -8,8 +8,14 @@ import {
   asignar,
   liquidar,
   enlaceDeSeguimiento,
+  recoger,
+  entregar,
+  fallar,
+  reintentar,
+  devolver,
   type EstadoReparto,
 } from './acciones';
+import { MOTIVOS_FRECUENTES, MOTIVO_MAXIMO } from './motivo';
 
 /** Los formularios de la mesa de despacho (spec 09). */
 
@@ -117,7 +123,7 @@ export function FormularioEnvio({
           className="corto"
           inputMode="decimal"
           placeholder="Contra entrega"
-          defaultValue={totalSugerido}
+          defaultValue={estado.valores?.['codAmount'] ?? totalSugerido}
           aria-label={`Importe contra entrega de ${orderId}`}
         />
         <button type="submit" className="discreto" disabled={pendiente}>
@@ -175,6 +181,218 @@ export function FormularioAsignacion({
         </select>
         <button type="submit" disabled={pendiente}>
           {pendiente ? '…' : 'Asignar'}
+        </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * Lo que le pasa al envío mientras está en la calle (RN-DLV-03).
+ *
+ * Un solo bloque por tarjeta y no cinco botones sueltos: en `assigned` lo único
+ * que puede pasar es que lo recoja o que falle antes de salir; en `picked_up`,
+ * que entregue o que falle. Ofrecer transiciones imposibles no da flexibilidad,
+ * da errores del servidor a quien está despachando con prisa.
+ */
+export function AccionesDelEnvio({
+  shipmentId,
+  estado,
+  contraEntrega,
+}: {
+  shipmentId: string;
+  estado: string;
+  /** Importe ya formateado, o `null` si el pedido viene pagado. */
+  contraEntrega: string | null;
+}) {
+  return (
+    <div className="acciones-envio">
+      {estado === 'assigned' ? (
+        <BotonSimple
+          accion={recoger}
+          shipmentId={shipmentId}
+          rotulo="Ya lo recogió"
+          rotuloEnCurso="Marcando…"
+        />
+      ) : null}
+      {estado === 'picked_up' ? (
+        <FormularioEntrega
+          shipmentId={shipmentId}
+          contraEntrega={contraEntrega}
+        />
+      ) : null}
+      <FormularioFallo shipmentId={shipmentId} />
+    </div>
+  );
+}
+
+/**
+ * Entregar. La casilla del cobro solo aparece si hay algo que cobrar.
+ *
+ * Viene marcada porque lo normal es que el repartidor traiga el dinero, pero es
+ * una casilla y no un automatismo: quien despacha tiene que poder decir que no
+ * lo trae, y esa diferencia se paga en el arqueo del turno.
+ */
+export function FormularioEntrega({
+  shipmentId,
+  contraEntrega,
+}: {
+  shipmentId: string;
+  contraEntrega: string | null;
+}) {
+  const [estado, accion, pendiente] = useActionState<EstadoReparto, FormData>(
+    entregar,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="shipmentId" value={shipmentId} />
+        <input
+          type="hidden"
+          name="hayContraEntrega"
+          value={contraEntrega === null ? '0' : '1'}
+        />
+        {contraEntrega !== null ? (
+          <label className="casilla" htmlFor={`cobrado-${shipmentId}`}>
+            <input
+              id={`cobrado-${shipmentId}`}
+              type="checkbox"
+              name="cobrado"
+              defaultChecked
+            />
+            Trae los S/ {contraEntrega}
+          </label>
+        ) : null}
+        <button type="submit" disabled={pendiente}>
+          {pendiente ? 'Marcando…' : 'Entregado'}
+        </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * «No se pudo entregar».
+ *
+ * Se abre al pulsar en vez de ocupar sitio en cada tarjeta: lo habitual es que
+ * la entrega salga bien, y un campo de texto en veinte tarjetas convierte la
+ * columna en un formulario. El motivo va con sugerencias porque quien despacha
+ * escribe con una mano y el teléfono en la otra.
+ */
+export function FormularioFallo({ shipmentId }: { shipmentId: string }) {
+  const [abierto, setAbierto] = useState(false);
+  const [estado, accion, pendiente] = useActionState<EstadoReparto, FormData>(
+    fallar,
+    {},
+  );
+
+  if (!abierto) {
+    return (
+      <button
+        type="button"
+        className="discreto"
+        onClick={() => {
+          setAbierto(true);
+        }}
+      >
+        No se pudo entregar
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="shipmentId" value={shipmentId} />
+        <input
+          name="motivo"
+          list="motivos-de-fallo"
+          maxLength={MOTIVO_MAXIMO}
+          defaultValue={estado.valores?.['motivo'] ?? ''}
+          placeholder="Qué pasó"
+          aria-label={`Motivo del fallo de ${shipmentId}`}
+        />
+        <button type="submit" disabled={pendiente}>
+          {pendiente ? '…' : 'Anotar el fallo'}
+        </button>
+        <button
+          type="button"
+          className="discreto"
+          onClick={() => {
+            setAbierto(false);
+          }}
+        >
+          Cancelar
+        </button>
+      </form>
+      <datalist id="motivos-de-fallo">
+        {MOTIVOS_FRECUENTES.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * Qué se hace con un envío ya fallido: otro intento o de vuelta al local.
+ *
+ * Es la «acción correctiva a un clic» que pide specs/ux/05 para la columna de
+ * problemas. Hasta ahora la pantalla los enseñaba y decía, por escrito, que
+ * había que resolverlos por API.
+ */
+export function AccionesDeFallo({ shipmentId }: { shipmentId: string }) {
+  return (
+    <div className="acciones-envio">
+      <BotonSimple
+        accion={reintentar}
+        shipmentId={shipmentId}
+        rotulo="Reintentar"
+        rotuloEnCurso="…"
+      />
+      <BotonSimple
+        accion={devolver}
+        shipmentId={shipmentId}
+        rotulo="Devolver al local"
+        rotuloEnCurso="…"
+        discreto
+      />
+    </div>
+  );
+}
+
+/** Un botón que solo manda el id del envío. Cuatro acciones son iguales. */
+function BotonSimple({
+  accion,
+  shipmentId,
+  rotulo,
+  rotuloEnCurso,
+  discreto,
+}: {
+  accion: (prev: EstadoReparto, form: FormData) => Promise<EstadoReparto>;
+  shipmentId: string;
+  rotulo: string;
+  rotuloEnCurso: string;
+  discreto?: boolean;
+}) {
+  const [estado, enviar, pendiente] = useActionState<EstadoReparto, FormData>(
+    accion,
+    {},
+  );
+  return (
+    <>
+      <form action={enviar} className="en-linea">
+        <input type="hidden" name="shipmentId" value={shipmentId} />
+        <button
+          type="submit"
+          className={discreto ? 'discreto' : undefined}
+          disabled={pendiente}
+        >
+          {pendiente ? rotuloEnCurso : rotulo}
         </button>
       </form>
       <Resultado estado={estado} />

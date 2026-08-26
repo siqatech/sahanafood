@@ -2362,3 +2362,61 @@ primera y solo la primera.
 
 Verde: **789 API · 471 dominio · 5 ui · 84 web · 36 POS · 119 print-agent · 73
 navegador**. El POS pasa de 25 a 36.
+
+## El envío llegaba a «asignado» y ahí se quedaba
+
+Cinco transiciones —recoger, entregar, fallar, reintentar, devolver— existían en
+la API desde T5.15, con sus pruebas, y **no las llamaba ninguna pantalla**. La
+propia mesa de despacho lo decía por escrito: «reprogramar o devolver se hace
+por API todavía». El efecto no era cosmético:
+
+· El seguimiento que se le manda al cliente **no pasaba nunca de «asignado»**.
+· El cobro contra entrega no llegaba a ser saldo del repartidor, así que la
+  liquidación contra caja —que sí tenía pantalla— no tenía nunca nada que
+  liquidar.
+· Una entrega fallida no se podía reintentar desde el producto. RN-DLV-03 dice
+  que un fallo no es terminal; en la práctica lo era.
+
+**Solo se ofrece lo que la máquina de estados permite.** En `assigned` se puede
+recoger o fallar; en `picked_up`, entregar o fallar. Enseñar los cinco botones
+siempre no da flexibilidad: da errores del servidor a quien despacha con prisa.
+
+**El cobro es una casilla, no un automatismo.** Viene marcada —lo normal es que
+el repartidor traiga el dinero— y se puede desmarcar, porque pasa que el cliente
+paga por app a última hora. Marcar cobrado no mete el dinero en la caja: lo
+apunta como deuda del repartidor hasta que liquide (RN-DLV-02). Y solo se manda
+el dato cuando el envío ES contra entrega: decir «no cobrado» de un pedido ya
+pagado sería afirmar algo sobre un cobro que no existe.
+
+**El motivo del fallo tiene reglas propias**, en `motivo.ts` con siete pruebas:
+se limpia a una línea —se escribe con una mano y el teléfono en la otra—, se
+valida contra lo mismo que exige el servidor para no descubrirlo con un `400` en
+mitad del servicio, y las sugerencias que se ofrecen se comprueban contra el
+propio validador, porque una sugerencia que el validador rechaza es una trampa.
+
+**La semilla ahora trae un envío FALLIDO.** La columna de problemas nacía
+siempre vacía, así que la acción correctiva de specs/ux/05 —«a un clic»— no la
+ejercía nadie. Un reparto que solo se demuestra cuando sale bien no se ha
+demostrado.
+
+### La prueba que esperaba por un texto que ya estaba
+
+Al añadir el envío fallido, la prueba de la cola de corrección de comprobantes
+empezó a fallar siempre. No era la semilla: era una carrera que llevaba ahí
+desde el principio y que el cambio de tiempos destapó.
+
+La prueba mandaba un RUC de nueve dígitos, esperaba a ver «11 dígitos» y
+escribía el correcto. Pero «11 dígitos» **también está en el motivo del OSE
+impreso arriba**, que está en la página desde que carga: la espera no esperaba
+nada. Seguía con la acción todavía en vuelo, y React vacía los campos no
+controlados al terminarla — así que el segundo intento mandaba el dato viejo y
+el rechazo parecía del servidor. En el registro de la API se ve lo que de verdad
+pasaba: **ni una sola petición de corrección**, solo lecturas.
+
+Se corrigen las dos cosas. La prueba espera ahora por la frase de esa acción y
+de ninguna otra. Y los formularios devuelven lo escrito, siguiendo el patrón que
+ya usaba mensajería: el vaciado de React llega DESPUÉS del mensaje de error, así
+que quien empieza a corregir en cuanto lo lee veía desaparecer lo que tecleaba.
+
+Verde: **789 API · 471 dominio · 5 ui · 91 web · 36 POS · 119 print-agent · 75
+navegador**, dos pasadas limpias del navegador.

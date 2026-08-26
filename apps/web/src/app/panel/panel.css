@@ -932,6 +932,38 @@ tr:last-child td {
   border-left: 4px solid var(--panel-baja);
 }
 
+/* --- Acciones del envío ------------------------------------------------ */
+
+/* Lo que se puede hacer con un envío, en fila y envolviendo. Cada acción es su
+   propio formulario —cada una tiene su estado y su mensaje— y sin esto saldrían
+   apiladas, una por línea, con la tarjeta el doble de alta. */
+.acciones-envio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* La casilla y su rótulo se leen como una sola cosa: separados, «Trae los
+   S/ 32.00» parece un dato de la tarjeta y no algo que se pueda desmarcar. */
+.casilla {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  /* Objetivo cómodo: esto se toca en una tablet en el mostrador, y equivocarse
+     aquí es dar por cobrado un dinero que sigue en un bolsillo. */
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.casilla input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--panel-acento);
+}
+
 /* El formulario de corrección va DENTRO de la ficha del rechazo: el motivo que
    devolvió el OSE tiene que quedar a la vista mientras se escribe el dato
    nuevo, o se corrige de memoria. */

@@ -30,6 +30,11 @@ export function FormularioCorreccion({
   // El tipo manda sobre lo que hay que rellenar: una factura necesita razón
   // social y una boleta no, y pedirla siempre entrena a la gente a inventarla.
   const [tipo, setTipo] = useState(docType);
+  // Lo que se acababa de escribir. React vacía los campos no controlados al
+  // terminar la acción, y ese vaciado llega DESPUÉS del mensaje de error: sin
+  // esto, quien empieza a corregir el RUC en cuanto lee «son 11 dígitos» ve
+  // desaparecer lo que está tecleando y vuelve a enviar el dato viejo.
+  const v = estado.valores;
 
   return (
     <form action={accion} className="correccion">
@@ -57,7 +62,7 @@ export function FormularioCorreccion({
           name="docNumber"
           className="corto"
           inputMode="numeric"
-          defaultValue={docNumber ?? ''}
+          defaultValue={v?.['docNumber'] ?? docNumber ?? ''}
         />
       </div>
 
@@ -67,7 +72,7 @@ export function FormularioCorreccion({
           <input
             id={`razon-${id}`}
             name="legalName"
-            defaultValue={legalName ?? ''}
+            defaultValue={v?.['legalName'] ?? legalName ?? ''}
           />
         </div>
       ) : null}

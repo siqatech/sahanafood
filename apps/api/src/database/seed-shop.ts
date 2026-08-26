@@ -395,6 +395,36 @@ async function main(): Promise<void> {
     tenant.ownerUserId,
   );
 
+  // Y uno FALLIDO. Es el caso que hace falta ver, y el que no se veía nunca:
+  // la columna de problemas nacía siempre vacía, así que la acción correctiva
+  // —reintentar o devolver, RN-DLV-03— no la ejercía nadie. Un reparto que solo
+  // se demuestra cuando sale bien no se ha demostrado.
+  const ventaFallida = await ordering.submit(tenant.tenantId, {
+    brandId,
+    locationId: org.locationId,
+    channel: 'web',
+    lines: [{ productId: catalogo.comboId, quantity: 1 }],
+    customerName: 'Cliente que no estaba',
+    customerPhone: '+51987555111',
+  });
+  const envioFallido = await reparto.createShipment(tenant.tenantId, {
+    orderId: ventaFallida.id,
+    actorId: tenant.ownerUserId,
+  });
+  await reparto.assign(
+    tenant.tenantId,
+    envioFallido.id,
+    ciclista.id,
+    tenant.ownerUserId,
+  );
+  await reparto.pickUp(tenant.tenantId, envioFallido.id, tenant.ownerUserId);
+  await reparto.fail(
+    tenant.tenantId,
+    envioFallido.id,
+    'El cliente no estaba',
+    tenant.ownerUserId,
+  );
+
   // Dos ventas ENTREGADAS por canales distintos: sin ellas la pantalla de
   // rentabilidad solo se puede mirar vacía, y es la pregunta que justifica el
   // producto entero —qué marca gana dinero por qué canal—.

@@ -1008,7 +1008,15 @@ test.describe('Panel de gestión en navegador', () => {
     await rechazado
       .getByRole('button', { name: 'Corregir y reenviar' })
       .click();
-    await expect(rechazado.getByText(/11 dígitos/).last()).toBeVisible();
+    // Se espera por «Revísalo antes de reenviar», que es la frase de ESTA
+    // acción, y no por «11 dígitos», que también está en el motivo del OSE
+    // impreso arriba. Esperar por un texto que ya estaba en la página no espera
+    // nada: la prueba seguía con la acción todavía en vuelo, y React vacía los
+    // campos al terminarla — así que el segundo intento mandaba el dato viejo y
+    // el fallo parecía del servidor.
+    await expect(
+      rechazado.getByText(/Revísalo antes de reenviar/),
+    ).toBeVisible();
 
     await rechazado.getByLabel('Número').fill('20123456789');
     await rechazado
@@ -1254,6 +1262,113 @@ test.describe('Panel de gestión en navegador', () => {
     } finally {
       await contexto.close();
     }
+  });
+
+  test('UNA ENTREGA FALLIDA SE RECUPERA sin salir de la pantalla', async ({
+    page,
+  }) => {
+    // Las cinco transiciones que quedaban del envío —recoger, entregar, fallar,
+    // reintentar, devolver— existían en la API desde T5.15 y no las llamaba
+    // ninguna pantalla. El envío se creaba, se asignaba y se quedaba en
+    // «asignado» PARA SIEMPRE: el seguimiento del cliente nunca pasaba de ahí,
+    // el efectivo contra entrega no llegaba a ser saldo de nadie —así que no
+    // había nada que liquidar— y la propia página lo decía por escrito:
+    // «reprogramar o devolver se hace por API todavía».
+    //
+    // Se recorre entero el camino de recuperación, que es el que importa: un
+    // fallo no es el final de la venta si se puede volver a intentar.
+    await entrar(page);
+    await page.goto('/panel/reparto');
+
+    const fallidos = page
+      .locator('.torre__columna')
+      .filter({ hasText: 'Fallidos' });
+    const fallido = fallidos.locator('article.ficha--revision').first();
+    await expect(fallido).toContainText('El cliente no estaba');
+
+    await fallido.getByRole('button', { name: 'Reintentar' }).click();
+
+    // Vuelve a la cola SIN repartidor: se reasigna con criterio, no se le
+    // devuelve al mismo que ya no pudo. Y no queda ninguno fallido.
+    await expect(page.getByRole('button', { name: 'Reintentar' })).toHaveCount(
+      0,
+    );
+    const porAsignar = page
+      .locator('.torre__columna')
+      .filter({ hasText: 'Por asignar' });
+    const reintentado = porAsignar
+      .locator('article')
+      .filter({ hasText: 'sin repartidor' })
+      .first();
+    await expect(reintentado).toBeVisible();
+    await reintentado.getByRole('button', { name: 'Asignar' }).click();
+
+    // Y ahora el resto del camino, que tampoco tenía pantalla. Este envío es el
+    // ÚNICO sin cobro contra entrega, y así se distingue de los demás que están
+    // en la calle sin depender del orden de la columna.
+    const enCalle = page
+      .locator('.torre__columna')
+      .filter({ hasText: 'En la calle' });
+    const sinCobro = enCalle
+      .locator('article.ficha')
+      .filter({ hasNotText: 'contra entrega' });
+    await expect(sinCobro).toHaveCount(1);
+    await sinCobro.getByRole('button', { name: 'Ya lo recogió' }).click();
+
+    // Recogido: ahora sí se puede entregar. Antes NO — entregar sin recoger es
+    // la transición que la máquina de estados prohíbe a propósito, y por eso el
+    // botón no estaba.
+    await expect(
+      sinCobro.getByRole('button', { name: 'Entregado' }),
+    ).toBeVisible();
+    await sinCobro.getByRole('button', { name: 'Entregado' }).click();
+
+    // El efecto: sale de la calle. La venta que se había perdido se recuperó
+    // entera sin tocar un `curl`.
+    await expect(sinCobro).toHaveCount(0);
+  });
+
+  test('EL COBRO CONTRA ENTREGA se marca al entregar, y se puede NO marcar', async ({
+    page,
+  }) => {
+    // El importe contra entrega es lo que después tiene que cuadrar con la caja
+    // (RN-DLV-02). La casilla viene marcada porque lo normal es que el
+    // repartidor traiga el dinero, pero tiene que poder desmarcarse: pasa que
+    // el cliente paga por app a última hora, y dar por cobrado lo que nadie
+    // cobró convierte el arqueo en una diferencia inexplicable tres horas
+    // después.
+    await entrar(page);
+    await page.goto('/panel/reparto');
+
+    const enCalle = page
+      .locator('.torre__columna')
+      .filter({ hasText: 'En la calle' });
+    const contraEntrega = enCalle
+      .locator('article.ficha')
+      .filter({ hasText: 'contra entrega' })
+      .first();
+    await expect(contraEntrega).toBeVisible();
+
+    // Asignado todavía: primero se recoge. La casilla NO está antes, porque
+    // hasta que no se puede entregar no hay nada que cobrar.
+    await expect(contraEntrega.getByRole('checkbox')).toHaveCount(0);
+    await contraEntrega.getByRole('button', { name: 'Ya lo recogió' }).click();
+
+    // El que acaba de recogerse es el único con casilla: así no depende de en
+    // qué orden devuelva la API los envíos de la columna.
+    const enRuta = enCalle
+      .locator('article.ficha')
+      .filter({ has: page.getByRole('checkbox') });
+    await expect(enRuta).toHaveCount(1);
+    await expect(enRuta.getByRole('checkbox')).toBeChecked();
+    await expect(enRuta).toContainText(/Trae los S\//);
+
+    await enRuta.getByRole('checkbox').uncheck();
+    await enRuta.getByRole('button', { name: 'Entregado' }).click();
+
+    // Entregado: sale de la calle. Y el dinero no se dio por cobrado, así que
+    // sigue sin ser saldo de nadie.
+    await expect(enRuta).toHaveCount(0);
   });
 
   test('UN CANAL SE CIERRA Y SE REABRE desde la torre, con su motivo', async ({

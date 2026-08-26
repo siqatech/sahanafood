@@ -6,14 +6,31 @@ import { panel, PanelApiError, SesionCaducada } from '../../../lib/panel-api';
 export interface EstadoComprobante {
   error?: string;
   ok?: string;
+  /**
+   * Lo que se acababa de escribir, para devolvérselo al formulario.
+   *
+   * React **vacía los campos no controlados** cuando termina una acción de
+   * servidor, así que sin esto un rechazo por «el RUC son 11 dígitos» borraba
+   * el RUC de la pantalla y había que volver a teclearlo entero — con el
+   * agravante de que el borrado llega DESPUÉS del error, así que alguien que
+   * empiece a corregir en cuanto lo lee ve desaparecer lo que está tecleando.
+   */
+  valores?: Record<string, string>;
 }
 
-function traducir(error: unknown): EstadoComprobante {
+function traducir(
+  error: unknown,
+  valores?: Record<string, string>,
+): EstadoComprobante {
+  const v = valores ? { valores } : {};
   if (error instanceof SesionCaducada) {
-    return { error: 'Tu sesión caducó. Recarga la página y vuelve a entrar.' };
+    return {
+      error: 'Tu sesión caducó. Recarga la página y vuelve a entrar.',
+      ...v,
+    };
   }
-  if (error instanceof PanelApiError) return { error: error.message };
-  return { error: 'No se pudo enviar. Inténtalo de nuevo.' };
+  if (error instanceof PanelApiError) return { error: error.message, ...v };
+  return { error: 'No se pudo enviar. Inténtalo de nuevo.', ...v };
 }
 
 /**
@@ -31,19 +48,26 @@ export async function corregir(
   const docType = String(form.get('docType') ?? '');
   const docNumber = String(form.get('docNumber') ?? '').trim();
   const legalName = String(form.get('legalName') ?? '').trim();
+  const valores = { docType, docNumber, legalName };
 
   // Se valida aquí lo que se puede decir sin ir al servidor, para no gastar un
   // intento contra el OSE en un RUC de nueve dígitos.
   if (docType === 'RUC') {
     if (!/^\d{11}$/.test(docNumber)) {
-      return { error: 'Un RUC son 11 dígitos. Revísalo antes de reenviar.' };
+      return {
+        error: 'Un RUC son 11 dígitos. Revísalo antes de reenviar.',
+        valores,
+      };
     }
     if (legalName.length < 2) {
-      return { error: 'Una factura necesita la razón social del cliente.' };
+      return {
+        error: 'Una factura necesita la razón social del cliente.',
+        valores,
+      };
     }
   }
   if (docType === 'DNI' && !/^\d{8}$/.test(docNumber)) {
-    return { error: 'Un DNI son 8 dígitos.' };
+    return { error: 'Un DNI son 8 dígitos.', valores };
   }
 
   try {
@@ -53,7 +77,7 @@ export async function corregir(
       ...(legalName !== '' ? { legalName } : {}),
     });
   } catch (error) {
-    return traducir(error);
+    return traducir(error, valores);
   }
   revalidatePath('/panel/comprobantes');
   return { ok: 'Corregido y reenviado.' };

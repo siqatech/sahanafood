@@ -2,10 +2,19 @@
 
 import { revalidatePath } from 'next/cache';
 import { panel, PanelApiError, SesionCaducada } from '../../../lib/panel-api';
+import { revisarMotivo } from './motivo';
 
 export interface EstadoReparto {
   error?: string;
   ok?: string;
+  /**
+   * Lo que se acababa de escribir, para devolvérselo al formulario.
+   *
+   * React **vacía los campos no controlados** al terminar una acción de
+   * servidor, y ese vaciado llega DESPUÉS del mensaje de error: sin esto, quien
+   * empieza a corregir en cuanto lee el aviso ve desaparecer lo que teclea.
+   */
+  valores?: Record<string, string>;
 }
 
 function traducir(error: unknown): EstadoReparto {
@@ -84,7 +93,10 @@ export async function crearEnvio(
   if (contraEntrega !== '') {
     const m = /^(\d+)(?:[.,](\d{1,4}))?$/.exec(contraEntrega);
     if (!m) {
-      return { error: `"${contraEntrega}" no es un importe. Escríbelo 32.00.` };
+      return {
+        error: `"${contraEntrega}" no es un importe. Escríbelo 32.00.`,
+        valores: { codAmount: contraEntrega },
+      };
     }
     // Aritmética entera: el importe contra entrega es el que después tiene que
     // cuadrar con la caja al liquidar el turno (RN-DLV-02).
@@ -117,6 +129,110 @@ export async function asignar(
   }
   revalidatePath('/panel/reparto');
   return { ok: 'Asignado.' };
+}
+
+/**
+ * Recogido: el repartidor ya lleva el pedido encima.
+ *
+ * Es el paso que hace que el seguimiento del cliente diga «en camino» en vez
+ * de «asignado», y sin él la hora de recojo —la mitad de cualquier medición de
+ * tiempos de entrega— no se registra nunca.
+ */
+export async function recoger(
+  _prev: EstadoReparto,
+  form: FormData,
+): Promise<EstadoReparto> {
+  try {
+    await panel.recogerEnvio(String(form.get('shipmentId') ?? ''));
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/reparto');
+  return { ok: 'En camino.' };
+}
+
+/**
+ * Entregado, y si era contra entrega, si trae el dinero.
+ *
+ * Marcar cobrado NO mete el dinero en la caja: lo apunta como saldo del
+ * repartidor hasta que liquide su turno (RN-DLV-02). Por eso la casilla se
+ * ofrece marcada pero **se puede desmarcar**: pasa que el cliente pagó por app
+ * a última hora, y dar por cobrado lo que nadie cobró convierte el arqueo en
+ * una diferencia que nadie sabe explicar tres horas después.
+ */
+export async function entregar(
+  _prev: EstadoReparto,
+  form: FormData,
+): Promise<EstadoReparto> {
+  const id = String(form.get('shipmentId') ?? '');
+  const hayContraEntrega = form.get('hayContraEntrega') === '1';
+  try {
+    // Solo se manda `codCollected` cuando el envío ES contra entrega: mandar
+    // `false` en un pedido ya pagado sería afirmar algo sobre un cobro que no
+    // existe.
+    await panel.entregarEnvio(
+      id,
+      hayContraEntrega ? form.get('cobrado') === 'on' : undefined,
+    );
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/reparto');
+  return { ok: 'Entregado.' };
+}
+
+/** Entrega fallida, con el motivo que después decide qué se hace (RN-DLV-03). */
+export async function fallar(
+  _prev: EstadoReparto,
+  form: FormData,
+): Promise<EstadoReparto> {
+  const id = String(form.get('shipmentId') ?? '');
+  const escrito = String(form.get('motivo') ?? '');
+  const revisado = revisarMotivo(escrito);
+  if ('error' in revisado) {
+    return { error: revisado.error, valores: { motivo: escrito } };
+  }
+
+  try {
+    await panel.fallarEnvio(id, revisado.motivo);
+  } catch (error) {
+    return { ...traducir(error), valores: { motivo: escrito } };
+  }
+  revalidatePath('/panel/reparto');
+  return { ok: 'Anotado. Ahora decide si se reintenta o se devuelve.' };
+}
+
+/** Otro intento: vuelve a la cola SIN repartidor, para reasignarlo con criterio. */
+export async function reintentar(
+  _prev: EstadoReparto,
+  form: FormData,
+): Promise<EstadoReparto> {
+  try {
+    await panel.reintentarEnvio(String(form.get('shipmentId') ?? ''));
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/reparto');
+  return { ok: 'De vuelta a la cola. Asígnalo a quien puedas.' };
+}
+
+/**
+ * Se devuelve al local. Es terminal: de aquí no se sale.
+ *
+ * Qué pasa con la comida —merma o vuelve al stock— lo decide Inventory según
+ * la política, y esta pantalla no lo prejuzga.
+ */
+export async function devolver(
+  _prev: EstadoReparto,
+  form: FormData,
+): Promise<EstadoReparto> {
+  try {
+    await panel.devolverEnvio(String(form.get('shipmentId') ?? ''));
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/reparto');
+  return { ok: 'Devuelto al local.' };
 }
 
 /**
