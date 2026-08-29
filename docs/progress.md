@@ -2575,3 +2575,44 @@ marcas y sus platos en vivo.
 
 Verde: **798 API · 471 dominio · 5 ui · 102 web · 41 POS · 119 print-agent · 77
 navegador**.
+
+## Un combo que no descontaba nada
+
+RN-CAT-04 dice que **el inventario de un combo se consume por sus componentes**,
+y así está implementado: `inventory.service.ts` lee `cat_combo_components` para
+saber qué bajar del stock. Esa tabla solo se podía poblar con SQL o con la
+semilla de demostración, y ninguna ruta devolvía la composición.
+
+El efecto es de los que no se ven hasta que es tarde: **un combo con la lista
+vacía se vende igual y no descuenta ningún insumo**. El stock no baja, la
+pantalla de «cuánto me queda» se desvía venta a venta, y solo se descubre
+cuadrando el almacén a fin de mes — con el mes entero de ventas ya hecho. En una
+pollería, donde el combo es media carta, eso es casi todo el consumo.
+
+**La composición viaja con el producto**, con el nombre de cada componente y
+ordenada por nombre: la pregunta es del producto —«¿qué lleva este combo?»— y una
+lista de identificadores no se puede revisar. Revisarla es justo lo que hace
+falta cuando el stock no cuadra.
+
+**La escritura reemplaza la lista entera**, así que la actual viaja en el
+formulario y se manda completa. Mismo criterio que el horario del local y por lo
+mismo: releerla dentro de la acción deja hueco para el cambio de otra persona
+entre la lectura y la escritura. Si el JSON viniera roto se prefiere no escribir
+a escribir una lista vacía — vaciar un combo sin querer deja de descontar y no lo
+nota nadie.
+
+**Repetir un componente no suma dos filas**: reemplaza la cantidad. Dos filas del
+mismo plato descontarían bien pero se leerían mal, y la lista es lo que alguien
+mira cuando el inventario no cuadra.
+
+**Y ahora se puede crear un combo**. `crearProducto` no mandaba `isCombo`, así
+que la única forma de tener uno era la semilla; el endpoint de composición
+rechaza —con razón— un producto que no esté marcado. Al crearlo se avisa en el
+mismo mensaje: «dile de qué se compone o no descontará insumos».
+
+Un combo sin componentes se enseña **en rojo**, con la frase que importa: «se
+vende y no descuenta insumos». No es un aviso decorativo: es el estado en el que
+estaban todos.
+
+Verde: **799 API · 471 dominio · 5 ui · 102 web · 41 POS · 119 print-agent · 78
+navegador**.

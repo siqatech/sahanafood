@@ -8,6 +8,7 @@ import {
   ponerFoto,
   ponerPrecio,
   reanudar,
+  cambiarComposicion,
   crearGrupoDeModificadores,
   crearOpcionDeModificador,
   cambiarGrupoDelProducto,
@@ -247,10 +248,123 @@ export function FormularioNuevoProducto({ brandId }: { brandId: string }) {
           placeholder="12.50"
         />
       </div>
+      <div className="campo">
+        <label className="casilla" htmlFor="nuevo-combo">
+          <input id="nuevo-combo" type="checkbox" name="isCombo" />
+          Es un combo
+        </label>
+        <p className="tarjeta__pie">
+          Un combo tiene precio propio y se compone de otros platos. El
+          inventario se descuenta por lo que lleva dentro, así que hay que
+          decirle de qué se compone — si no, se vende y no descuenta nada.
+        </p>
+      </div>
       <button type="submit" disabled={pendiente}>
         {pendiente ? 'Creando…' : 'Crear plato'}
       </button>
     </form>
+  );
+}
+
+/**
+ * De qué se compone un combo (RN-CAT-04).
+ *
+ * No es una lista decorativa: **el inventario de un combo se descuenta por sus
+ * componentes**. Uno con la lista vacía se vende igual y no baja el stock de
+ * nada, así que el «cuánto me queda» se va desviando venta a venta y solo se
+ * descubre cuadrando el almacén.
+ *
+ * La lista actual viaja escondida en cada formulario porque la API reemplaza la
+ * composición entera: añadir un componente es mandar los que ya había más el
+ * nuevo.
+ */
+export function ComposicionDelCombo({
+  comboId,
+  componentes,
+  candidatos,
+}: {
+  comboId: string;
+  componentes: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+  }>;
+  /** Los demás platos de la marca. Un combo no se lleva a sí mismo. */
+  candidatos: Array<{ id: string; name: string }>;
+}) {
+  const [estado, accion, pendiente] = useActionState<EstadoCarta, FormData>(
+    cambiarComposicion,
+    {},
+  );
+  const actuales = JSON.stringify(
+    componentes.map((c) => ({ productId: c.productId, quantity: c.quantity })),
+  );
+  const disponibles = candidatos.filter(
+    (p) => p.id !== comboId && !componentes.some((c) => c.productId === p.id),
+  );
+
+  return (
+    <div className="combo">
+      {componentes.length === 0 ? (
+        <p className="panel__error">
+          Este combo no lleva nada: se vende y no descuenta insumos.
+        </p>
+      ) : (
+        <ul className="opciones">
+          {componentes.map((c) => (
+            <li key={c.productId}>
+              {c.quantity}× {c.productName}{' '}
+              <form action={accion} className="en-linea">
+                <input type="hidden" name="comboId" value={comboId} />
+                <input type="hidden" name="actuales" value={actuales} />
+                <input type="hidden" name="quitar" value={c.productId} />
+                <button
+                  type="submit"
+                  className="discreto"
+                  disabled={pendiente}
+                  aria-label={`Quitar ${c.productName} del combo`}
+                >
+                  Quitar
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {disponibles.length === 0 ? (
+        <p className="tarjeta__pie">
+          No queda ningún otro plato de esta marca que añadir.
+        </p>
+      ) : (
+        <form action={accion} className="en-linea">
+          <input type="hidden" name="comboId" value={comboId} />
+          <input type="hidden" name="actuales" value={actuales} />
+          <input
+            name="cantidad"
+            className="corto"
+            inputMode="numeric"
+            defaultValue={estado.valores?.['cantidad'] ?? '1'}
+            aria-label={`Cuántas unidades lleva el combo ${comboId}`}
+          />
+          <select
+            name="anadir"
+            defaultValue={disponibles[0]?.id}
+            aria-label={`Qué añadir al combo ${comboId}`}
+          >
+            {disponibles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="discreto" disabled={pendiente}>
+            {pendiente ? '…' : 'Añadir'}
+          </button>
+        </form>
+      )}
+      <Resultado estado={estado} />
+    </div>
   );
 }
 

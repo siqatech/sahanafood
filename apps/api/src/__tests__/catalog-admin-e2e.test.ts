@@ -350,6 +350,78 @@ suite('Alta de la carta', () => {
     expect(r.body).toEqual([]);
   });
 
+  it('LA COMPOSICIÓN DEL COMBO SE PUEDE LEER, y es lo que descuenta el stock', async () => {
+    // `cat_combo_components` solo se podía poblar por SQL y ninguna ruta la
+    // devolvía. El consumo de inventario de un combo va POR COMPONENTES
+    // (RN-CAT-04): uno con la lista vacía se vende igual y **no descuenta
+    // nada**, así que el stock no baja y el «cuánto me queda» miente en cada
+    // venta hasta que alguien cuadra el almacén.
+    const a = como(tokenA);
+    const pollo = await a(http().post('/api/v1/catalog/products'))
+      .send({ brandId: marcaA, sku: 'COMP-POLLO', name: 'Pollo del combo' })
+      .expect(201);
+    const gaseosa = await a(http().post('/api/v1/catalog/products'))
+      .send({ brandId: marcaA, sku: 'COMP-GASEOSA', name: 'Gaseosa 1L' })
+      .expect(201);
+    const combo = await a(http().post('/api/v1/catalog/products'))
+      .send({
+        brandId: marcaA,
+        sku: 'COMBO-FAM',
+        name: 'Combo familiar',
+        isCombo: true,
+      })
+      .expect(201);
+
+    await a(http().post(`/api/v1/catalog/products/${combo.body.id}/combo`))
+      .send({
+        components: [
+          { productId: pollo.body.id, quantity: 1 },
+          { productId: gaseosa.body.id, quantity: 2 },
+        ],
+      })
+      .expect(201);
+
+    const carta = await a(
+      http().get(`/api/v1/catalog/products?brand=${marcaA}`),
+    ).expect(200);
+    const enCarta = (carta.body as AdminProductView[]).find(
+      (p) => p.id === combo.body.id,
+    );
+    expect(enCarta!.isCombo).toBe(true);
+    // Con el NOMBRE de cada componente: una lista de identificadores no se
+    // puede revisar, y revisarla es justo lo que hace falta cuando el stock no
+    // cuadra. Ordenada por nombre y no por el orden en que se metieron, que es
+    // como se busca algo en una lista.
+    expect(
+      enCarta!.comboComponents.map((c) => `${c.quantity}× ${c.productName}`),
+    ).toEqual(['2× Gaseosa 1L', '1× Pollo del combo']);
+
+    // Un plato normal no lleva composición: no es que esté vacía por error.
+    const suelto = (carta.body as AdminProductView[]).find(
+      (p) => p.id === pollo.body.id,
+    );
+    expect(suelto!.comboComponents).toEqual([]);
+
+    // Y la escritura REEMPLAZA: es lo que obliga a que la pantalla mande la
+    // lista completa, y lo que haría desaparecer la gaseosa si no lo hiciera.
+    await a(http().post(`/api/v1/catalog/products/${combo.body.id}/combo`))
+      .send({ components: [{ productId: pollo.body.id, quantity: 3 }] })
+      .expect(201);
+    const despues = await a(
+      http().get(`/api/v1/catalog/products?brand=${marcaA}`),
+    ).expect(200);
+    expect(
+      (despues.body as AdminProductView[]).find((p) => p.id === combo.body.id)!
+        .comboComponents,
+    ).toEqual([
+      {
+        productId: pollo.body.id,
+        productName: 'Pollo del combo',
+        quantity: 3,
+      },
+    ]);
+  });
+
   it('el precio del CANAL manda sobre el base, y el del LOCAL sobre los dos', async () => {
     // RN-CAT-01 vista desde la escritura: los tres niveles se crean por API y
     // la resolución elige el más específico.

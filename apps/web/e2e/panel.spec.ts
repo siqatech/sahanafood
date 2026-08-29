@@ -282,6 +282,50 @@ test.describe('Panel de gestión en navegador', () => {
     ).toBeVisible();
   });
 
+  test('LA COMPOSICIÓN DEL COMBO se edita, y un combo vacío lo dice', async ({
+    page,
+  }) => {
+    // El consumo de inventario de un combo va POR COMPONENTES (RN-CAT-04), y
+    // `cat_combo_components` solo se podía poblar por SQL. Un combo con la
+    // lista vacía se vende igual y **no descuenta nada**: el stock no baja y el
+    // «cuánto me queda» se desvía venta a venta hasta que alguien cuadra el
+    // almacén a fin de mes.
+    await entrar(page);
+    await page.goto('/panel/catalogo');
+    await expect(page.getByRole('heading', { name: 'Combos' })).toBeVisible();
+
+    const combo = page.locator('article.tarjeta').filter({ hasText: 'Combo' });
+    const primero = combo.first();
+    await expect(primero).toBeVisible();
+
+    // Se añade un componente y se comprueba releyendo: que la lista lo muestre
+    // no prueba nada si no llegó a guardarse.
+    const cuantos = await primero.locator('.opciones li').count();
+    await primero.getByRole('button', { name: 'Añadir' }).click();
+    await page.reload();
+
+    const trasAnadir = page
+      .locator('article.tarjeta')
+      .filter({ hasText: 'Combo' })
+      .first();
+    await expect(trasAnadir.locator('.opciones li')).toHaveCount(cuantos + 1);
+
+    // Y se quita. Quitar tiene que quitar de verdad: si fuera visual, el
+    // inventario seguiría descontando un plato que ya no lleva.
+    await trasAnadir
+      .getByRole('button', { name: /^Quitar / })
+      .first()
+      .click();
+    await page.reload();
+    await expect(
+      page
+        .locator('article.tarjeta')
+        .filter({ hasText: 'Combo' })
+        .first()
+        .locator('.opciones li'),
+    ).toHaveCount(cuantos);
+  });
+
   test('IMPORTAR LA CARTA: se ve el cambio ANTES de aplicarlo', async ({
     page,
   }) => {

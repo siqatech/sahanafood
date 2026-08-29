@@ -15,6 +15,7 @@ import {
   FormularioGrupoDeModificadores,
   FormularioOpcionDeModificador,
   BotonGrupoDelProducto,
+  ComposicionDelCombo,
 } from './formularios';
 
 /**
@@ -164,6 +165,12 @@ export default async function CatalogoPage({
                   <tr key={p.id}>
                     <td>
                       <strong>{p.name}</strong>
+                      {p.isCombo ? (
+                        <>
+                          {' '}
+                          <span className="etiqueta">combo</span>
+                        </>
+                      ) : null}
                       {p.sku ? (
                         <>
                           <br />
@@ -261,6 +268,37 @@ export default async function CatalogoPage({
           así que se puede corregir en Excel y pegar de vuelta.
         </span>
       </p>
+
+      {productos.some((p) => p.isCombo) ? (
+        <>
+          <h2>Combos</h2>
+          <p className="panel__subtitulo">
+            Un combo tiene su propio precio, pero el inventario se descuenta por
+            lo que lleva dentro (RN-CAT-04). Uno sin componentes se vende igual
+            y no baja el stock de nada — y eso solo se descubre cuadrando el
+            almacén a fin de mes.
+          </p>
+          <div className="tarjetas">
+            {productos
+              .filter((p) => p.isCombo)
+              .map((c) => (
+                <article key={c.id} className="tarjeta">
+                  <p className="tarjeta__rotulo">Combo</p>
+                  <p>
+                    <strong>{c.name}</strong>
+                  </p>
+                  <ComposicionDelCombo
+                    comboId={c.id}
+                    componentes={c.comboComponents}
+                    candidatos={productos
+                      .filter((p) => !p.isCombo)
+                      .map((p) => ({ id: p.id, name: p.name }))}
+                  />
+                </article>
+              ))}
+          </div>
+        </>
+      ) : null}
 
       <h2 id="anadir">Añadir</h2>
       <FormularioNuevoProducto brandId={marca.id} />

@@ -15,6 +15,7 @@ const producto = (over: Partial<ProductoDelPanel> = {}): ProductoDelPanel => ({
   rowVersion: 1,
   prices: [{ channel: null, locationId: null, price: '55.0000', active: true }],
   pauses: [],
+  comboComponents: [],
   modifierGroupIds: [],
   ...over,
 });

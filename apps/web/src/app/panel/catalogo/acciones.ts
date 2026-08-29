@@ -207,6 +207,7 @@ export async function crearProducto(
   const name = String(form.get('name') ?? '').trim();
   const sku = String(form.get('sku') ?? '').trim();
   const precio = String(form.get('price') ?? '').trim();
+  const esCombo = form.get('isCombo') === 'on';
   if (name.length < 2) return { error: 'El producto necesita un nombre.' };
 
   const priceMinor = precio === '' ? null : aUnidadesMenores(precio);
@@ -219,6 +220,7 @@ export async function crearProducto(
       brandId,
       name,
       ...(sku ? { sku } : {}),
+      ...(esCombo ? { isCombo: true } : {}),
     });
     // El precio base va en la misma acción: un producto sin precio no se ve en
     // ningún canal, así que crearlo y dejarlo invisible sería crear trabajo
@@ -230,6 +232,13 @@ export async function crearProducto(
     return traducir(error);
   }
   revalidatePath('/panel/catalogo');
+  if (esCombo) {
+    // Un combo sin composición no descuenta insumos. Decirlo AL CREARLO evita
+    // que se descubra un mes después, cuadrando un inventario que no cuadra.
+    return {
+      ok: `"${name}" creado como combo. Dile de qué se compone o no descontará insumos.`,
+    };
+  }
   return {
     ok:
       priceMinor === null
@@ -346,4 +355,84 @@ export async function cambiarGrupoDelProducto(
   }
   revalidatePath('/panel/catalogo');
   return { ok: unir ? 'Añadida al plato.' : 'Quitada del plato.' };
+}
+
+/**
+ * Añade o quita un componente del combo (RN-CAT-04).
+ *
+ * La API **reemplaza la lista entera**, así que la lista actual viaja en el
+ * formulario y se manda completa. Es lo mismo que el horario del local y por lo
+ * mismo: releerla dentro de la acción dejaría hueco para el cambio de otra
+ * persona entre la lectura y la escritura.
+ *
+ * Y no es papeleo: el consumo de inventario de un combo va POR COMPONENTES. Un
+ * combo con la lista vacía se vende y **no descuenta nada**, así que el stock
+ * no baja y la pantalla de inventario miente en cada venta.
+ */
+export async function cambiarComposicion(
+  _prev: EstadoCarta,
+  form: FormData,
+): Promise<EstadoCarta> {
+  const comboId = String(form.get('comboId') ?? '');
+  const quitar = String(form.get('quitar') ?? '').trim();
+  const anadir = String(form.get('anadir') ?? '').trim();
+  const bruto = String(form.get('cantidad') ?? '1').trim();
+
+  const actuales = leerComponentes(form.get('actuales'));
+
+  let siguientes: Array<{ productId: string; quantity: number }>;
+  if (quitar !== '') {
+    siguientes = actuales.filter((c) => c.productId !== quitar);
+  } else {
+    if (anadir === '') return { error: 'Elige qué plato lleva el combo.' };
+    const cantidad = Number(bruto);
+    if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 99) {
+      return {
+        error: `"${bruto}" no es una cantidad. Escribe un número entero del 1 al 99.`,
+        valores: { cantidad: bruto },
+      };
+    }
+    // Repetir un componente no suma dos filas: se reemplaza la cantidad. Dos
+    // filas del mismo plato descontarían bien pero se leerían mal, y la lista
+    // es lo que alguien revisa cuando el stock no cuadra.
+    siguientes = [
+      ...actuales.filter((c) => c.productId !== anadir),
+      { productId: anadir, quantity: cantidad },
+    ];
+  }
+
+  try {
+    await panel.ponerComposicion(comboId, siguientes);
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/catalogo');
+  return {
+    ok:
+      siguientes.length === 0
+        ? 'Combo vacío. Así se vende, pero no descuenta ningún insumo.'
+        : quitar !== ''
+          ? 'Quitado del combo.'
+          : 'Añadido al combo.',
+  };
+}
+
+/**
+ * La composición actual viaja serializada en el formulario.
+ *
+ * Si el JSON viniera roto se prefiere no escribir a escribir una lista vacía:
+ * vaciar un combo sin querer deja de descontar insumos y no lo nota nadie.
+ */
+function leerComponentes(
+  bruto: FormDataEntryValue | null,
+): Array<{ productId: string; quantity: number }> {
+  if (typeof bruto !== 'string' || bruto === '') return [];
+  try {
+    const v: unknown = JSON.parse(bruto);
+    return Array.isArray(v)
+      ? (v as Array<{ productId: string; quantity: number }>)
+      : [];
+  } catch {
+    return [];
+  }
 }

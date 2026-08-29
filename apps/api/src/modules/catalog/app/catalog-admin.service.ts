@@ -115,6 +115,18 @@ export interface AdminProductView {
   }>;
   pauses: Array<{ channel: string; until: string | null }>;
   /**
+   * De qué se compone, si es un combo (RN-CAT-04).
+   *
+   * Va con el producto porque la pregunta es del producto —«¿qué lleva este
+   * combo?»— y porque sin ella no se puede editar: la escritura REEMPLAZA la
+   * lista entera, así que quitar un componente exige conocer los demás.
+   */
+  comboComponents: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+  }>;
+  /**
    * Grupos de modificadores unidos a este producto.
    *
    * Va aquí y no en una consulta aparte porque la pregunta que se hace quien
@@ -819,6 +831,21 @@ export class CatalogAdminService {
            FROM cat_product_pauses WHERE product_id = ANY($1::uuid[])`,
         [ids],
       );
+      const { rows: componentes } = await ctx.client.query<{
+        combo_id: string;
+        component_id: string;
+        component_name: string;
+        quantity: number;
+      }>(
+        `SELECT cc.combo_id, cc.component_id, p.name AS component_name,
+                cc.quantity
+           FROM cat_combo_components cc
+           JOIN cat_products p ON p.id = cc.component_id
+                              AND p.tenant_id = cc.tenant_id
+          WHERE cc.combo_id = ANY($1::uuid[])
+          ORDER BY p.name`,
+        [ids],
+      );
       const { rows: grupos } = await ctx.client.query<{
         product_id: string;
         group_id: string;
@@ -852,6 +879,20 @@ export class CatalogAdminService {
         pausasPor.set(p.product_id, lista);
       }
 
+      const componentesPor = new Map<
+        string,
+        AdminProductView['comboComponents']
+      >();
+      for (const c of componentes) {
+        const lista = componentesPor.get(c.combo_id) ?? [];
+        lista.push({
+          productId: c.component_id,
+          productName: c.component_name,
+          quantity: c.quantity,
+        });
+        componentesPor.set(c.combo_id, lista);
+      }
+
       const gruposPor = new Map<string, string[]>();
       for (const g of grupos) {
         const lista = gruposPor.get(g.product_id) ?? [];
@@ -872,6 +913,7 @@ export class CatalogAdminService {
         rowVersion: p.row_version,
         prices: preciosPor.get(p.id) ?? [],
         pauses: pausasPor.get(p.id) ?? [],
+        comboComponents: componentesPor.get(p.id) ?? [],
         modifierGroupIds: gruposPor.get(p.id) ?? [],
       }));
     });

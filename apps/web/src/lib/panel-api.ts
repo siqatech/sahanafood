@@ -227,6 +227,12 @@ export interface ProductoDelPanel {
     active: boolean;
   }>;
   pauses: Array<{ channel: string; until: string | null }>;
+  /** De qué se compone, si es un combo (RN-CAT-04). */
+  comboComponents: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+  }>;
   /** Grupos de modificadores unidos a este plato (RN-CAT-05). */
   modifierGroupIds: string[];
 }
@@ -930,6 +936,7 @@ export const panel = {
     name: string;
     sku?: string;
     prepMinutes?: number;
+    isCombo?: boolean;
   }): Promise<{ id: string }> =>
     llamar<{ id: string }>('/catalog/products', {
       method: 'POST',
@@ -976,6 +983,24 @@ export const panel = {
     llamar(`/catalog/products/${productId}/resume`, {
       method: 'POST',
       body: JSON.stringify({ channels }),
+    }),
+
+  /**
+   * La composición de un combo (RN-CAT-04).
+   *
+   * **Reemplaza la lista entera**, así que se manda siempre completa. El
+   * endpoint existía desde T4.01 y no lo llamaba nadie: `cat_combo_components`
+   * solo se podía poblar por SQL, y el consumo de inventario de un combo es
+   * POR COMPONENTES. Un combo vendido con la lista vacía no descuenta nada: el
+   * stock no baja y la pantalla de inventario miente en cada venta.
+   */
+  ponerComposicion: (
+    comboId: string,
+    components: Array<{ productId: string; quantity: number }>,
+  ): Promise<unknown> =>
+    llamar(`/catalog/products/${comboId}/combo`, {
+      method: 'POST',
+      body: JSON.stringify({ components }),
     }),
 
   /**
