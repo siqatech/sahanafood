@@ -27,8 +27,16 @@ const REFRESCO_MS = 5_000;
  *  margen para que un desfase de reloj no invalide un deshacer legítimo. */
 const DESHACER_MS = 8_000;
 
+/**
+ * Las columnas, con los estados QUE DEVUELVE LA API.
+ *
+ * Decía `queued`, y el servidor manda `pending`: la columna «Nuevos» estaba
+ * **siempre vacía**. Un ticket recién llegado no aparecía en ninguna parte, así
+ * que desde el KDS no se podía empezar ni un solo pedido. No fallaba nada —la
+ * pantalla cargaba, las tres columnas se pintaban— y por eso duró.
+ */
 const COLUMNAS = [
-  { estado: 'queued', rotulo: 'Nuevos', siguiente: 'start' as const },
+  { estado: 'pending', rotulo: 'Nuevos', siguiente: 'start' as const },
   {
     estado: 'in_progress',
     rotulo: 'En preparación',

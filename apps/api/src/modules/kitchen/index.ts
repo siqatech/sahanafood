@@ -14,6 +14,7 @@ export {
   PackChecklistIncompleteError,
   OrderNotReadyError,
   type TicketView,
+  type PackingOrderView,
   type TicketLine,
   type TicketStatus,
   type CreateTicketsResult,

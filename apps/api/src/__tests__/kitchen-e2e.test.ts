@@ -127,6 +127,16 @@ suite('Cocina / KDS', () => {
   const http = () => request(app.getHttpServer());
   const auth = (r: request.Test) => r.set('authorization', `Bearer ${tokenA}`);
 
+  /** Los ids de las líneas reales del pedido, que es lo que pide el empaque. */
+  const lineasDe = (orderId: string): Promise<string[]> =>
+    withTenant(pool, tenantA, async ({ client }) => {
+      const { rows } = await client.query<{ id: string }>(
+        'SELECT id FROM ord_order_lines WHERE order_id = $1 AND is_adjustment = false',
+        [orderId],
+      );
+      return rows.map((r) => r.id);
+    });
+
   /** Pedido con líneas de dos estaciones distintas. */
   const pedidoDosEstaciones = () =>
     ordering.submit(tenantA, {
@@ -470,6 +480,117 @@ suite('Cocina / KDS', () => {
   });
 
   // ------------------------------------------------- Empaque (RN-KIT-03)
+
+  it('LA COLUMNA «LISTOS» EXISTE: un ticket terminado sigue en la cola', async () => {
+    // La consulta devolvía solo `pending` e `in_progress`, así que un ticket
+    // marcado listo DESAPARECÍA de la pantalla. La columna «Listos» de ux/02
+    // estaba siempre vacía: no había forma de comprobar que el toque hizo algo
+    // ni de deshacerlo, y el cocinero no sabía si el pedido había salido.
+    const pedido = await pedidoDosEstaciones();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    const tickets = await kitchen.ticketsForOrder(tenantA, pedido.id);
+    const primero = tickets[0]!;
+    await kitchen.startTicket(tenantA, primero.id);
+    await kitchen.readyTicket(tenantA, primero.id);
+    await drenarEventos();
+
+    const cola = await kitchen.queue(tenantA, { kitchenId: org.kitchenId });
+    const listo = cola.find((t) => t.id === primero.id);
+    expect(listo).toBeDefined();
+    expect(listo!.status).toBe('ready');
+    // Y el resto sigue igual: el otro ticket no se ha tocado.
+    expect(cola.find((t) => t.id === tickets[1]!.id)?.status).toBe('pending');
+  });
+
+  it('UN PEDIDO EMPACADO SALE de la cola: la columna no crece sin fin', async () => {
+    // El límite es lo que hace que la columna sirva. Sin él, «Listos» acumula
+    // el servicio entero y a las tres horas no la mira nadie.
+    const pedido = await pedidoDosEstaciones();
+    await aceptar(pedido.id);
+    await drenarEventos();
+    for (const t of await kitchen.ticketsForOrder(tenantA, pedido.id)) {
+      await kitchen.startTicket(tenantA, t.id);
+      await kitchen.readyTicket(tenantA, t.id);
+    }
+    await drenarEventos();
+
+    const antes = await kitchen.queue(tenantA, { kitchenId: org.kitchenId });
+    expect(antes.some((t) => t.orderId === pedido.id)).toBe(true);
+
+    const lineas = await lineasDe(pedido.id);
+    await auth(
+      http()
+        .post(`/api/v1/kitchen/orders/${pedido.id}/pack`)
+        .send({ checkedLineIds: lineas }),
+    ).expect(201);
+    await drenarEventos();
+
+    const despues = await kitchen.queue(tenantA, { kitchenId: org.kitchenId });
+    expect(despues.some((t) => t.orderId === pedido.id)).toBe(false);
+  });
+
+  it('LA COLA DE EMPAQUE trae el pedido ENTERO, no los tickets sueltos', async () => {
+    // `POST /orders/:id/pack` estaba desde T4.16 y no lo llamaba ninguna
+    // pantalla: el estado `packed` era inalcanzable desde el producto, y con él
+    // el paso que atrapa el pedido incompleto antes de que salga por la puerta.
+    // Para construirlo faltaba lo primero: saber QUÉ hay que empacar.
+    const pedido = await pedidoDosEstaciones();
+    await aceptar(pedido.id);
+    await drenarEventos();
+
+    // Con tickets a medias NO aparece: ofrecer empacar un pedido a medio hacer
+    // es ofrecer mandar comida cruda.
+    const aMedias = await auth(
+      http().get(`/api/v1/kitchen/packing?kitchen=${org.kitchenId}`),
+    ).expect(200);
+    expect(
+      (aMedias.body as Array<{ orderId: string }>).some(
+        (p) => p.orderId === pedido.id,
+      ),
+    ).toBe(false);
+
+    for (const t of await kitchen.ticketsForOrder(tenantA, pedido.id)) {
+      await kitchen.startTicket(tenantA, t.id);
+      await kitchen.readyTicket(tenantA, t.id);
+    }
+    await drenarEventos();
+
+    const cola = await auth(
+      http().get(`/api/v1/kitchen/packing?kitchen=${org.kitchenId}`),
+    ).expect(200);
+    const suyo = (
+      cola.body as Array<{
+        orderId: string;
+        brandName: string;
+        lines: Array<{ id: string }>;
+      }>
+    ).find((p) => p.orderId === pedido.id);
+    expect(suyo).toBeDefined();
+    // El pedido ENTERO: el de dos estaciones trae las líneas de las dos, que
+    // es justo lo que un ticket suelto no puede dar.
+    const lineas = await lineasDe(pedido.id);
+    expect(suyo!.lines.map((l) => l.id).sort()).toEqual([...lineas].sort());
+    // Con la marca, que es la que va en la etiqueta (RN-KIT-03).
+    expect(suyo!.brandName).toBeTruthy();
+
+    // Y al empacarlo sale de la cola.
+    await auth(
+      http()
+        .post(`/api/v1/kitchen/orders/${pedido.id}/pack`)
+        .send({ checkedLineIds: lineas }),
+    ).expect(201);
+    await drenarEventos();
+    const despues = await auth(
+      http().get(`/api/v1/kitchen/packing?kitchen=${org.kitchenId}`),
+    ).expect(200);
+    expect(
+      (despues.body as Array<{ orderId: string }>).some(
+        (p) => p.orderId === pedido.id,
+      ),
+    ).toBe(false);
+  });
 
   it('el empaque EXIGE verificar todas las líneas', async () => {
     // Mandar el pedido incompleto cuesta el pedido, el reparto y la

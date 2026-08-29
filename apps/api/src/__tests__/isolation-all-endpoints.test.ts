@@ -557,6 +557,16 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /org/schedules', async () => {
+    // A qué hora abre y cierra un local es información de negocio del dueño.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /org/schedules', (r) =>
+        r.get(`/api/v1/org/schedules?location=${demoA.locationId}`),
+      ),
+    );
+  });
+
   it('GET /organization/open', async () => {
     await assertEndpointIsolation(
       app,
@@ -856,6 +866,17 @@ suite('Aislamiento — todos los endpoints', () => {
       app,
       caseFor('GET /kitchen/queue', (r) =>
         r.get(`/api/v1/kitchen/queue?kitchen=${demoA.kitchenId}`),
+      ),
+    );
+  });
+
+  it('GET /kitchen/packing', async () => {
+    // La cola de empaque lleva números de pedido, marcas y platos: leer la del
+    // competidor sería leer qué vende y cuánto, en vivo.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /kitchen/packing', (r) =>
+        r.get(`/api/v1/kitchen/packing?kitchen=${demoA.kitchenId}`),
       ),
     );
   });

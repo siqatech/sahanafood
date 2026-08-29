@@ -676,3 +676,99 @@ label {
   padding: 5px 9px;
   margin-top: 4px;
 }
+
+/* --- Empaque (ux/02 §Empaque, RN-KIT-03) --------------------------------- */
+
+/* Una columna de bolsas, no tres: aquí no hay estados que separar. Se empaca
+   una y se pasa a la siguiente. */
+.empaque {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  padding: 16px;
+  align-items: start;
+}
+
+.empaque__pedido {
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.empaque__cabecera {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+/* La marca, grande: es la que va en la etiqueta, y con cuatro marcas en el
+   local etiquetar con la equivocada es un error que ve el cliente. */
+.empaque__marca {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.empaque__lineas {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+/* La línea ENTERA es el objetivo táctil, no una casilla de 16 px: se toca con
+   una mano, con prisa y a veces con guante. */
+.empaque__linea {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  font-size: 1.1rem;
+  background: transparent;
+  color: inherit;
+  border: 2px solid var(--borde);
+  border-radius: 10px;
+}
+
+/* Verificada: color Y marca escrita. Solo con color, en una cocina con vapor y
+   luz de sodio, no se distingue de la que falta (docs/25 §6). */
+.empaque__linea--ok {
+  border-color: var(--exito, #15803d);
+  background: rgba(21, 128, 61, 0.18);
+}
+
+.empaque__marca-visual {
+  display: inline-block;
+  min-width: 24px;
+  font-size: 1.4rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.empaque__boton {
+  width: 100%;
+  min-height: 64px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* Deshabilitado de verdad y a la vista: el botón no se puede pulsar hasta que
+   la bolsa está verificada entera, y tiene que NOTARSE que no se puede. */
+.empaque__boton:disabled {
+  opacity: 0.5;
+}
+
+/* Lo último que se hizo, fijo arriba: quien empaca lo siguiente que hace es
+   pegar la etiqueta, y necesita saber de qué marca. */
+.kds__confirmacion-fija {
+  background: var(--tarjeta);
+  border-bottom: 1px solid var(--borde);
+  padding: 12px 16px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}

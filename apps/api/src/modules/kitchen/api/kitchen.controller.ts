@@ -14,7 +14,11 @@ import {
   type AuthenticatedRequest,
 } from '../../../common/authz.js';
 import { ValidationError } from '../../../common/errors.js';
-import { KitchenService, type TicketView } from '../app/kitchen.service.js';
+import {
+  KitchenService,
+  type PackingOrderView,
+  type TicketView,
+} from '../app/kitchen.service.js';
 import {
   SaturationService,
   type CapacityConfig,
@@ -231,6 +235,25 @@ export class KitchenController {
       actorId: req.auth!.sub,
       ...(req.traceId !== undefined ? { traceId: req.traceId } : {}),
     });
+  }
+
+  /**
+   * Lo que espera empaque en esta cocina (ux/02 §Empaque).
+   *
+   * Se pide por cocina y devuelve PEDIDOS con todas sus líneas, no tickets:
+   * empacar es del pedido. Un pedido repartido entre parrilla y frío se empaca
+   * una vez, mirando la bolsa completa.
+   */
+  @Get('packing')
+  @RequirePermission('kitchen.read')
+  packing(
+    @Req() req: AuthenticatedRequest,
+    @Query('kitchen') kitchen?: string,
+  ): Promise<PackingOrderView[]> {
+    if (!kitchen) {
+      throw new ValidationError('Se requiere el parámetro kitchen.');
+    }
+    return this.kitchen.packingQueue(req.auth!.tid, { kitchenId: kitchen });
   }
 
   /**

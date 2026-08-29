@@ -11,6 +11,7 @@ import { Emparejar } from './pantallas/emparejar';
 import { Entrar } from './pantallas/entrar';
 import { Venta } from './pantallas/venta';
 import { Cocina } from './pantallas/cocina';
+import { Empaque } from './pantallas/empaque';
 import { Caja } from './pantallas/caja';
 import { Impresoras } from './pantallas/impresoras';
 
@@ -30,7 +31,7 @@ import { Impresoras } from './pantallas/impresoras';
 
 const SINCRONIZAR_CADA_MS = 15_000;
 
-type Modo = 'venta' | 'cocina' | 'caja' | 'impresoras';
+type Modo = 'venta' | 'cocina' | 'empaque' | 'caja' | 'impresoras';
 
 export function App() {
   const [dispositivo, setDispositivo] = useState<
@@ -167,7 +168,11 @@ export function App() {
   const locationId = dispositivo.locationId;
 
   return (
-    <div className={modo === 'cocina' ? 'app app--cocina' : 'app'}>
+    <div
+      className={
+        modo === 'cocina' || modo === 'empaque' ? 'app app--cocina' : 'app'
+      }
+    >
       <header className="barra">
         <div className="barra__modos">
           <button
@@ -187,6 +192,15 @@ export function App() {
             }}
           >
             Cocina
+          </button>
+          <button
+            type="button"
+            className={modo === 'empaque' ? 'activo' : ''}
+            onClick={() => {
+              setModo('empaque');
+            }}
+          >
+            Empaque
           </button>
           <button
             type="button"
@@ -278,7 +292,7 @@ export function App() {
           </p>
         )
       ) : (
-        <CocinaConCocina token={sesion.accessToken} />
+        <CocinaConCocina token={sesion.accessToken} pantalla={modo} />
       )}
     </div>
   );
@@ -291,7 +305,13 @@ export function App() {
  * esta tablet. Elegir entre varias es configuración del dispositivo y todavía
  * no existe; se dice aquí en vez de fingir que el problema no está.
  */
-function CocinaConCocina({ token }: { token: string }) {
+function CocinaConCocina({
+  token,
+  pantalla,
+}: {
+  token: string;
+  pantalla: 'cocina' | 'empaque';
+}) {
   const [kitchenId, setKitchenId] = useState<string | null | undefined>(
     undefined,
   );
@@ -332,5 +352,11 @@ function CocinaConCocina({ token }: { token: string }) {
       </p>
     );
   }
-  return <Cocina token={token} kitchenId={kitchenId} />;
+  // Las dos pantallas necesitan lo mismo —saber QUÉ cocina— y resolverlo dos
+  // veces daría dos consultas y dos formas de fallar.
+  return pantalla === 'empaque' ? (
+    <Empaque token={token} kitchenId={kitchenId} />
+  ) : (
+    <Cocina token={token} kitchenId={kitchenId} />
+  );
 }

@@ -166,6 +166,24 @@ export interface ResultadoDeSincronizacion {
   failed: number;
 }
 
+/** Un pedido esperando empaque, con TODAS sus líneas. */
+export interface PedidoParaEmpacar {
+  orderId: string;
+  orderNumber: number;
+  brandId: string;
+  brandName: string;
+  channel: string;
+  promisedAt: string | null;
+  readyAt: string | null;
+  lines: Array<{
+    id: string;
+    productName: string;
+    quantity: number;
+    modifiersText: string | null;
+    notes: string | null;
+  }>;
+}
+
 export interface TicketDeCocina {
   id: string;
   orderId: string;
@@ -311,6 +329,34 @@ export const api = {
       : `kitchen=${encodeURIComponent(filtro.kitchenId ?? '')}`;
     return llamar<TicketDeCocina[]>(`/kitchen/queue?${q}`, {}, token);
   },
+
+  /**
+   * Lo que espera empaque, y el empaque en sí (RN-KIT-03, ux/02 §Empaque).
+   *
+   * Va por PEDIDO y no por ticket a propósito: un pedido repartido entre
+   * parrilla y frío se empaca una vez, mirando la bolsa completa. Empacar
+   * ticket a ticket sería la forma más segura de mandar media bolsa.
+   */
+  paraEmpacar: (
+    token: string,
+    kitchenId: string,
+  ): Promise<PedidoParaEmpacar[]> =>
+    llamar<PedidoParaEmpacar[]>(
+      `/kitchen/packing?kitchen=${encodeURIComponent(kitchenId)}`,
+      {},
+      token,
+    ),
+
+  empacar: (
+    token: string,
+    orderId: string,
+    checkedLineIds: string[],
+  ): Promise<{ brandName: string; lines: number }> =>
+    llamar<{ brandName: string; lines: number }>(
+      `/kitchen/orders/${orderId}/pack`,
+      { method: 'POST', body: JSON.stringify({ checkedLineIds }) },
+      token,
+    ),
 
   // ---------------------------------------------------------------- Caja
   //

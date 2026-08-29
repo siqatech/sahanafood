@@ -2520,3 +2520,58 @@ no se pueden leer. Se dice, en vez de esconderlo.
 
 Verde: **793 API · 471 dominio · 5 ui · 102 web · 36 POS · 119 print-agent · 77
 navegador**.
+
+## Dos columnas vacías en la pantalla de la cocina, y el empaque que no existía
+
+Buscando por qué `POST /orders/:id/pack` no lo llamaba nadie aparecieron antes
+dos fallos del KDS que **no daban error en ninguna parte**. La pantalla cargaba,
+las tres columnas se pintaban, y dos de las tres no podían tener nada dentro.
+
+**«Nuevos» estaba siempre vacía.** La columna filtraba por `queued` y el
+servidor manda `pending`. Un ticket recién llegado no aparecía en ningún sitio,
+así que **desde el KDS no se podía empezar un solo pedido**. Una cadena de
+texto, en la pantalla de la que depende una cocina entera.
+
+**«Listos» también.** La consulta de la cola devolvía solo `pending` e
+`in_progress`, así que un ticket marcado listo desaparecía sin dejar rastro: ni
+confirmación de que el toque hizo algo, ni forma de deshacerlo, ni manera de
+saber si el pedido había salido. Ahora salen, **acotados a los pedidos que
+siguen en cocina**: al empacar, sus tickets dejan de aparecer. Sin ese límite la
+columna acumularía el servicio entero y a las tres horas no la miraría nadie.
+
+### Y entonces sí, el empaque (ux/02 §Empaque, RN-KIT-03)
+
+`packOrder` estaba desde T4.16, con su regla: no se empaca con líneas sin
+verificar, ni con tickets a medias. Nadie lo llamaba, así que **`packed` era un
+estado inalcanzable desde el producto** y con él el último filtro antes de que
+la comida salga por la puerta. Mandar el pedido incompleto cuesta el pedido, el
+reparto y el cliente: es el fallo más caro y más frecuente del delivery.
+
+Faltaba lo primero, otra vez: **saber qué hay que empacar**. `GET
+/kitchen/packing` devuelve **pedidos**, no tickets. Un pedido repartido entre
+parrilla y frío se empaca una vez, mirando la bolsa completa; empacar ticket a
+ticket sería la forma más segura de mandar media bolsa. Y no aparece hasta que
+todos sus tickets están listos: ofrecer empacar un pedido a medio hacer es
+ofrecer mandar comida cruda.
+
+**El botón está bloqueado hasta marcarlo todo.** El servidor también lo rechaza
+—tiene su prueba desde T4.16— pero un botón que se pulsa y da error enseña a
+pulsar dos veces. **No hay «marcar todas»**, y es la decisión que sostiene el
+paso entero: si se puede dar la bolsa por buena sin mirarla, la verificación no
+verifica nada.
+
+**La línea entera es el objetivo táctil** —una mano, con prisa, a veces con
+guante— y marcada lleva el símbolo escrito además del color, porque con vapor y
+luz de sodio el color solo no se distingue (docs/25 §6). Al terminar se anuncia
+**la etiqueta y su marca**, no «guardado»: lo siguiente que hace quien empaca es
+pegarla, y con cuatro marcas en el local hay que decirle cuál.
+
+Cinco pruebas de componente sobre la checklist (ADR-0021), comprobadas por
+mutación: quitar el bloqueo deja dos en rojo. Tres de API —la columna «Listos»,
+que empacar saca el pedido de la cola, y que la cola de empaque trae el pedido
+entero— y los dos endpoints nuevos registrados en la suite bloqueante de
+aislamiento: la cola de empaque del competidor son sus números de pedido, sus
+marcas y sus platos en vivo.
+
+Verde: **798 API · 471 dominio · 5 ui · 102 web · 41 POS · 119 print-agent · 77
+navegador**.

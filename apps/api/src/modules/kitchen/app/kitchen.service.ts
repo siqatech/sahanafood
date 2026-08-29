@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, inArray, or } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import { PG_POOL } from '../../../database/database.module.js';
 import { withTenant, type TenantContext } from '../../../database/rls.js';
@@ -45,6 +45,30 @@ export interface TicketLine {
    * distinguirlo: una comanda antigua sin dato no es una comanda inocua.
    */
   allergens: string[] | null;
+}
+
+/**
+ * Un pedido esperando empaque, con TODAS sus líneas.
+ *
+ * Lleva la marca porque la etiqueta se imprime con ella (RN-KIT-03): en un
+ * local con cuatro marcas, etiquetar con la equivocada es un error que ve el
+ * cliente.
+ */
+export interface PackingOrderView {
+  orderId: string;
+  orderNumber: number;
+  brandId: string;
+  brandName: string;
+  channel: string;
+  promisedAt: string | null;
+  readyAt: string | null;
+  lines: Array<{
+    id: string;
+    productName: string;
+    quantity: number;
+    modifiersText: string | null;
+    notes: string | null;
+  }>;
 }
 
 export interface TicketView {
@@ -329,8 +353,23 @@ export class KitchenService {
       // ese recurso no existe para ti.
       await this.assertOwnScope(ctx, query);
 
+      // Los tickets YA LISTOS también salen, y no es un detalle: la pantalla
+      // de cocina tiene una columna «Listos» (ux/02) que estaba siempre vacía
+      // porque la consulta no los devolvía. Un ticket que se marca listo
+      // desaparecía sin dejar rastro, así que no había forma de comprobar que
+      // el toque hizo algo ni de deshacerlo.
+      //
+      // Se acotan a los pedidos QUE SIGUEN EN COCINA: en cuanto el pedido se
+      // empaca, sus tickets dejan de aparecer. Sin ese límite la columna
+      // crecería sin fin y a las tres horas nadie la miraría.
       const condiciones = [
-        inArray(schema.kitchenTickets.status, ['pending', 'in_progress']),
+        or(
+          inArray(schema.kitchenTickets.status, ['pending', 'in_progress']),
+          and(
+            eq(schema.kitchenTickets.status, 'ready'),
+            inArray(schema.orders.status, ['preparing', 'ready']),
+          ),
+        )!,
       ];
       if (query.stationId) {
         condiciones.push(eq(schema.kitchenTickets.stationId, query.stationId));
@@ -340,8 +379,15 @@ export class KitchenService {
       }
 
       const filas = await ctx.db
-        .select()
+        // Solo las columnas del ticket: con la unión, un `select()` a secas
+        // devolvería filas anidadas por tabla y el resto del método espera
+        // tickets planos.
+        .select(getTableColumns(schema.kitchenTickets))
         .from(schema.kitchenTickets)
+        .innerJoin(
+          schema.orders,
+          eq(schema.kitchenTickets.orderId, schema.orders.id),
+        )
         .where(and(...condiciones))
         // Por COMPROMISO y no por hora de llegada: un pedido programado que
         // entra tarde puede ser lo más urgente de la pantalla.
@@ -551,6 +597,97 @@ export class KitchenService {
    * mandar el pedido incompleto, que cuesta el pedido entero más el reparto
    * más la reputación.
    */
+  /**
+   * Los pedidos que esperan que alguien los empaque (ux/02 §Empaque).
+   *
+   * Un pedido está listo para empacar cuando **todos** sus tickets están
+   * `ready` —o cancelados— y todavía no se ha empacado. Se pregunta por cocina
+   * porque la mesa de empaque está en el local, y se devuelve el pedido entero
+   * con sus líneas: empacar es del PEDIDO, no del ticket. Un pedido repartido
+   * entre parrilla y frío se empaca una vez, mirando la bolsa completa.
+   */
+  async packingQueue(
+    tenantId: string,
+    query: { kitchenId: string },
+  ): Promise<PackingOrderView[]> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      await this.assertOwnScope(ctx, { kitchenId: query.kitchenId });
+
+      const { rows } = await ctx.client.query<{
+        order_id: string;
+        order_number: number;
+        brand_id: string;
+        brand_name: string;
+        channel: string;
+        promised_at: Date | null;
+        ready_at: Date | null;
+      }>(
+        `SELECT o.id AS order_id, o.order_number, o.brand_id,
+                b.name AS brand_name, o.channel, o.promised_at,
+                max(t.ready_at) AS ready_at
+           FROM kit_tickets t
+           JOIN ord_orders o ON o.id = t.order_id AND o.tenant_id = t.tenant_id
+           JOIN org_brands b ON b.id = o.brand_id AND b.tenant_id = o.tenant_id
+          WHERE t.kitchen_id = $1
+            AND o.status = 'ready'
+          GROUP BY o.id, o.order_number, o.brand_id, b.name, o.channel,
+                   o.promised_at
+         -- Ni un solo ticket sin terminar. Ofrecer empacar un pedido a medio
+         -- hacer es ofrecer mandar comida cruda: el servidor lo rechaza, pero
+         -- la pantalla no debería llegar a proponerlo.
+         HAVING count(*) FILTER (
+                  WHERE t.status NOT IN ('ready', 'cancelled')
+                ) = 0
+          ORDER BY o.promised_at NULLS LAST`,
+        [query.kitchenId],
+      );
+      if (rows.length === 0) return [];
+
+      const { rows: lineas } = await ctx.client.query<{
+        id: string;
+        order_id: string;
+        product_name: string;
+        quantity: number;
+        modifiers: Array<{ name?: string }> | null;
+        notes: string | null;
+      }>(
+        `SELECT id, order_id, product_name, quantity, modifiers, notes
+           FROM ord_order_lines
+          WHERE order_id = ANY($1::uuid[])
+          ORDER BY created_at`,
+        [rows.map((r) => r.order_id)],
+      );
+
+      const porPedido = new Map<string, PackingOrderView['lines']>();
+      for (const l of lineas) {
+        const acumulado = porPedido.get(l.order_id) ?? [];
+        acumulado.push({
+          id: l.id,
+          productName: l.product_name,
+          quantity: l.quantity,
+          modifiersText:
+            (l.modifiers ?? [])
+              .map((m) => m.name)
+              .filter((n): n is string => typeof n === 'string')
+              .join(', ') || null,
+          notes: l.notes,
+        });
+        porPedido.set(l.order_id, acumulado);
+      }
+
+      return rows.map((r) => ({
+        orderId: r.order_id,
+        orderNumber: r.order_number,
+        brandId: r.brand_id,
+        brandName: r.brand_name,
+        channel: r.channel,
+        promisedAt: r.promised_at?.toISOString() ?? null,
+        readyAt: r.ready_at?.toISOString() ?? null,
+        lines: porPedido.get(r.order_id) ?? [],
+      }));
+    });
+  }
+
   async packOrder(
     tenantId: string,
     orderId: string,
