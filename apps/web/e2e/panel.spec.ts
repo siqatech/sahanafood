@@ -543,8 +543,76 @@ test.describe('Panel de gestión en navegador', () => {
     // Un panel que ofreciera un botón para cada cosa y fallara en la mitad
     // sería peor que uno que dice dónde está el límite.
     await expect(
-      page.getByText(/Zonas de reparto, horarios, cocinas y estaciones/),
+      page.getByText(/Zonas de reparto, cocinas y estaciones/),
     ).toBeVisible();
+  });
+
+  test('EL HORARIO DEL LOCAL se cambia desde el panel, y el feriado también', async ({
+    page,
+  }) => {
+    // `POST /org/schedules` existía desde T3.12 y no lo llamaba ninguna
+    // pantalla; ni siquiera había forma de LEER lo guardado, y el POST
+    // reemplaza la semana entera. El horario es lo que decide si la tienda
+    // acepta un pedido: mal puesto, no da error en ninguna pantalla — se
+    // descubre cuando un cliente pide con el local cerrado.
+    await entrar(page);
+    await page.goto('/panel/negocio');
+    await expect(page.getByRole('heading', { name: 'Horarios' })).toBeVisible();
+
+    // Se cambia el martes y se comprueba releyendo: que el campo lo muestre no
+    // prueba nada, lo muestra porque lo escribimos.
+    await page.getByLabel('Martes: hora de apertura').fill('12:30');
+    await page.getByLabel('Martes: hora de cierre').fill('22:45');
+    await page.getByRole('button', { name: 'Guardar el horario' }).click();
+    await expect(page.getByText('Horario guardado.')).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByLabel('Martes: hora de apertura')).toHaveValue(
+      '12:30',
+    );
+    await expect(page.getByLabel('Martes: hora de cierre')).toHaveValue(
+      '22:45',
+    );
+
+    // Media hora es un error, y lo dice CON EL NOMBRE DEL DÍA: «campo
+    // inválido» en una rejilla de catorce casillas no ayuda a nadie.
+    await page.getByLabel('Miércoles: hora de apertura').fill('12:00');
+    // Se VACÍA el cierre a propósito: el local sembrado ya tiene horario, así
+    // que rellenar solo la apertura no dejaría el día a medias.
+    await page.getByLabel('Miércoles: hora de cierre').fill('');
+    await page.getByRole('button', { name: 'Guardar el horario' }).click();
+    await expect(
+      page.getByText(/El miércoles tiene solo una hora/),
+    ).toBeVisible();
+
+    await page.reload();
+
+    // Un feriado. Sin horas es cerrado todo el día, que es el caso normal.
+    await page.getByLabel('Fecha del feriado').fill('2026-07-28');
+    await page.getByRole('button', { name: 'Anotar el día' }).click();
+    await expect(page.getByText(/El 2026-07-28 queda cerrado/)).toBeVisible();
+
+    await page.reload();
+    const feriado = page.locator('li', { hasText: '2026-07-28' }).first();
+    await expect(feriado).toContainText('cerrado todo el día');
+
+    // Y LO QUE MÁS IMPORTA: anotar el feriado NO se llevó por delante el
+    // horario semanal. La API reemplaza el registro entero, así que este es el
+    // fallo que abriría el local un 28 de julio sin que nadie lo pidiera.
+    await expect(page.getByLabel('Martes: hora de apertura')).toHaveValue(
+      '12:30',
+    );
+
+    // Quitarlo no anuncia nada: se comprueba el EFECTO, que es que el día
+    // desaparece de la lista y vuelve a regirse por la semana.
+    await feriado.getByRole('button', { name: 'Quitar 2026-07-28' }).click();
+    await expect(page.locator('li', { hasText: '2026-07-28' })).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.locator('li', { hasText: '2026-07-28' })).toHaveCount(0);
+    await expect(page.getByLabel('Martes: hora de apertura')).toHaveValue(
+      '12:30',
+    );
   });
 
   test('LA PORTADA dice qué hay que arreglar, no solo cuánto se vendió', async ({

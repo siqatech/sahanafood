@@ -187,6 +187,21 @@ export interface ResumenDeHoy {
   activeNow: number;
 }
 
+/** Un horario guardado, con el ámbito al que se aplica (RN-ORG-03). */
+export interface HorarioDelPanel {
+  id: string;
+  locationId: string;
+  /** `null` = vale para todas las marcas del local. */
+  brandId: string | null;
+  /** `null` = vale para todos los canales. */
+  channel: string | null;
+  weekly: Array<{ weekday: number; opensAt: string; closesAt: string }>;
+  exceptions: Array<{
+    date: string;
+    ranges: Array<{ opensAt: string; closesAt: string }>;
+  }>;
+}
+
 export interface Estructura {
   companies: Array<{ id: string; legalName: string; taxId: string }>;
   brands: Array<{ id: string; name: string; slug: string; active: boolean }>;
@@ -984,6 +999,33 @@ export const panel = {
     maxSelections?: number;
   }): Promise<{ id: string }> =>
     llamar<{ id: string }>('/catalog/modifier-groups', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /**
+   * Horarios del local (RN-ORG-03).
+   *
+   * `POST /org/schedules` existía desde T3.12 y no lo llamaba ninguna pantalla;
+   * peor, no había forma de LEER lo guardado, y el POST reemplaza la semana
+   * entera. Sin lectura previa, cambiar el jueves obliga a reescribir los otros
+   * seis días de memoria — que es exactamente cómo se cierra un local un sábado.
+   */
+  horarios: (locationId: string): Promise<HorarioDelPanel[]> =>
+    llamar<HorarioDelPanel[]>(
+      `/org/schedules?location=${encodeURIComponent(locationId)}`,
+    ),
+
+  guardarHorario: (input: {
+    locationId: string;
+    brandId?: string | null;
+    weekly: Array<{ weekday: number; opensAt: string; closesAt: string }>;
+    exceptions?: Array<{
+      date: string;
+      ranges: Array<{ opensAt: string; closesAt: string }>;
+    }>;
+  }): Promise<{ id: string }> =>
+    llamar<{ id: string }>('/org/schedules', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

@@ -9,6 +9,7 @@ export {
   type CompanyView,
   type BrandView,
   type LocationView,
+  type ScheduleView,
   type ZoneView,
 } from './app/organization-admin.service.js';
 export { seedDemoOrganization } from './app/demo-seed.js';

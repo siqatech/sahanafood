@@ -76,6 +76,18 @@ export interface ZoneView {
   active: boolean;
 }
 
+/** Un horario guardado, con el ámbito al que se aplica (RN-ORG-03). */
+export interface ScheduleView {
+  id: string;
+  locationId: string;
+  /** `null` = vale para todas las marcas del local. */
+  brandId: string | null;
+  /** `null` = vale para todos los canales. */
+  channel: string | null;
+  weekly: Schedule['weekly'];
+  exceptions: NonNullable<Schedule['exceptions']>;
+}
+
 @Injectable()
 export class OrganizationAdminService {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
@@ -621,6 +633,49 @@ export class OrganizationAdminService {
    * cerrado a mediodía sin que nada falle: la consulta devuelve «no abierto» y
    * nadie sabe por qué.
    */
+  /**
+   * Los horarios guardados de un local.
+   *
+   * No existía forma de LEERLOS. `POST /schedules` reemplaza el horario entero
+   * —es un upsert por (local, marca, canal)— así que sin una lectura previa
+   * cualquier pantalla que quisiera cambiar el jueves tendría que reescribir la
+   * semana de memoria, y el horario que un dueño no puede ver es el horario que
+   * no sabe que está mal hasta que un cliente pide con la tienda cerrada.
+   */
+  async listSchedules(
+    tenantId: string,
+    query: { locationId: string },
+  ): Promise<ScheduleView[]> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      await this.exigeLocal(ctx, query.locationId);
+      const { rows } = await ctx.client.query<{
+        id: string;
+        location_id: string;
+        brand_id: string | null;
+        channel: string | null;
+        weekly: unknown;
+        exceptions: unknown;
+      }>(
+        `SELECT id, location_id, brand_id, channel, weekly, exceptions
+           FROM org_schedules
+          WHERE location_id = $1
+          ORDER BY brand_id NULLS FIRST, channel NULLS FIRST`,
+        [query.locationId],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        locationId: r.location_id,
+        brandId: r.brand_id,
+        channel: r.channel,
+        // `jsonb` llega ya parseado, pero el tipo que devuelve `pg` es
+        // `unknown`: se afirma aquí y no en la pantalla porque el que sabe qué
+        // hay en esa columna es quien la escribió.
+        weekly: (r.weekly ?? []) as Schedule['weekly'],
+        exceptions: (r.exceptions ?? []) as NonNullable<Schedule['exceptions']>,
+      }));
+    });
+  }
+
   async upsertSchedule(
     tenantId: string,
     input: {

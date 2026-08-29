@@ -2466,3 +2466,57 @@ plato y **desmarcarla**, porque quitar tiene que quitar de verdad.
 
 Verde: **791 API · 471 dominio · 5 ui · 91 web · 36 POS · 119 print-agent · 76
 navegador**.
+
+## El horario del local, que decidía las ventas y no tenía pantalla
+
+`POST /org/schedules` existía desde T3.12 con `isOpenAt` probado en el dominio
+—turnos que cruzan medianoche incluidos—, y la propia página de negocio lo
+admitía por escrito: «horarios… todavía se configuran con el archivo. La API ya
+las soporta; lo que falta es la pantalla».
+
+No es un ajuste cosmético. **El horario es lo que decide si la tienda acepta un
+pedido.** Mal puesto no da error en ninguna pantalla: o entra comida que nadie
+va a cocinar a esa hora, o se rechazan pedidos con la cocina vacía. Las dos se
+descubren tarde y por el lado del cliente.
+
+**Y faltaba lo primero: leerlo.** El POST **reemplaza el horario entero**, así
+que sin una lectura previa cualquier pantalla que quisiera cambiar el jueves
+tendría que reescribir los otros seis días de memoria. `GET /org/schedules`
+cierra eso.
+
+**Siete filas y dos horas.** Un día sin horas está **cerrado**, y lo dice en
+pantalla: es el segundo caso más frecuente y en un desplegable de
+«abierto/cerrado» habría que tocar dos controles para lo mismo. Cruzar la
+medianoche está permitido —18:00 a 02:00 es una jornada de pollería, no un
+error— y por eso no se comprueba que el cierre sea posterior. Abrir y cerrar a
+la misma hora, en cambio, **se pregunta**: podría ser cero horas o veinticuatro,
+las dos lecturas son defendibles y ninguna se adivina.
+
+**Los errores llevan el nombre del día.** «Campo inválido» en una rejilla de
+catorce casillas no ayuda a nadie.
+
+**Los feriados van en su propio formulario y conservan la semana.** Sin horas,
+cerrado todo el día —el 28 de julio— y con horas, jornada especial que
+**reemplaza** al horario de esa fecha, que es lo que decide el dominio. Como la
+API reemplaza el registro completo, el formulario reenvía lo que no toca: perder
+el horario semanal al anotar un feriado abriría el local un 28 de julio sin que
+nadie lo pidiera, y esa es la aserción que la prueba de navegador vigila
+explícitamente.
+
+**El estado viaja en el formulario, no se relee en la acción.** Es feo a la
+vista y es a propósito: entre una lectura dentro de la acción y su escritura cabe
+el cambio de otra persona. Así, lo que se guarda es exactamente lo que estaba en
+la pantalla que el operador miró.
+
+Once pruebas de la lectura del formulario, dos de API —ida y vuelta del turno que
+cruza medianoche y del feriado sin franjas, más que volver a guardar reemplaza y
+no acumula— y el aislamiento: B pidiendo el horario de un local de A recibe
+**404**, no una lista vacía. El local no existe para B, y decir «existe pero no
+tiene horario» ya sería contar algo.
+
+Los horarios por marca o por canal que permite RN-ORG-03 se **enseñan** si
+existen, con su cuenta, pero no se editan aquí: tres ejes en un mismo formulario
+no se pueden leer. Se dice, en vez de esconderlo.
+
+Verde: **793 API · 471 dominio · 5 ui · 102 web · 36 POS · 119 print-agent · 77
+navegador**.

@@ -7,7 +7,10 @@ import { configureApp, NEST_APP_OPTIONS } from '../bootstrap.js';
 import { createPool } from '../database/pool.js';
 import { withTenant } from '../database/rls.js';
 import { TenancyService } from '../modules/tenancy/index.js';
-import { OrganizationService } from '../modules/organization/index.js';
+import {
+  OrganizationService,
+  type ScheduleView,
+} from '../modules/organization/index.js';
 import { seedPlans } from '../database/seed.js';
 import { INTEGRATION_DB, deleteTenants } from './helpers.js';
 
@@ -291,6 +294,88 @@ suite('Alta de la estructura del negocio', () => {
   });
 
   // ------------------------------------------------------ AISLAMIENTO
+
+  it('EL HORARIO SE PUEDE LEER, que era lo que faltaba para poder cambiarlo', async () => {
+    // `POST /schedules` existía desde T3.12 y REEMPLAZA la semana entera. Sin
+    // una lectura, cualquier pantalla que quisiera cambiar el jueves tendría que
+    // reescribir los otros seis días de memoria — que es como se cierra un local
+    // un sábado sin que nadie se entere hasta que llama un cliente.
+    const a = como(tokenA);
+    const empresa = await a(http().post('/api/v1/org/companies'))
+      .send({ legalName: 'Horarios S.A.C.', taxId: '20512345678' })
+      .expect(201);
+    const local = await a(http().post('/api/v1/org/locations'))
+      .send({ companyId: empresa.body.id, name: 'Con horario', address: 'x' })
+      .expect(201);
+
+    await a(http().post('/api/v1/org/schedules'))
+      .send({
+        locationId: local.body.id,
+        weekly: [
+          { weekday: 1, opensAt: '11:00', closesAt: '23:00' },
+          // Cruza la medianoche: es lo normal en una pollería, y tiene que
+          // volver tal cual o el viernes se guardaría al revés.
+          { weekday: 5, opensAt: '18:00', closesAt: '02:00' },
+        ],
+        exceptions: [{ date: '2026-07-28', ranges: [] }],
+      })
+      .expect(201);
+
+    const leido = await a(
+      http().get(`/api/v1/org/schedules?location=${local.body.id}`),
+    ).expect(200);
+
+    expect(leido.body).toHaveLength(1);
+    const h = (leido.body as ScheduleView[])[0]!;
+    expect(h.brandId).toBeNull();
+    expect(h.channel).toBeNull();
+    expect(h.weekly).toEqual([
+      { weekday: 1, opensAt: '11:00', closesAt: '23:00' },
+      { weekday: 5, opensAt: '18:00', closesAt: '02:00' },
+    ]);
+    // El feriado sin franjas es «cerrado todo el día», y tiene que sobrevivir
+    // a la ida y vuelta: perderlo abriría el local un 28 de julio.
+    expect(h.exceptions).toEqual([{ date: '2026-07-28', ranges: [] }]);
+
+    // Y volver a guardar REEMPLAZA, no acumula: es lo que obliga a que la
+    // pantalla mande siempre la semana completa.
+    await a(http().post('/api/v1/org/schedules'))
+      .send({
+        locationId: local.body.id,
+        weekly: [{ weekday: 1, opensAt: '12:00', closesAt: '22:00' }],
+      })
+      .expect(201);
+    const trasGuardar = await a(
+      http().get(`/api/v1/org/schedules?location=${local.body.id}`),
+    ).expect(200);
+    expect((trasGuardar.body as ScheduleView[])[0]!.weekly).toEqual([
+      { weekday: 1, opensAt: '12:00', closesAt: '22:00' },
+    ]);
+  });
+
+  it('AISLAMIENTO: B no puede leer el horario de un local de A', async () => {
+    // El local va en la consulta. Sin filtro por tenant, B sabría a qué hora
+    // abre y cierra el competidor con una sola petición.
+    const a = como(tokenA);
+    const empresa = await a(http().post('/api/v1/org/companies'))
+      .send({ legalName: 'Privado S.A.C.', taxId: '20587654321' })
+      .expect(201);
+    const local = await a(http().post('/api/v1/org/locations'))
+      .send({ companyId: empresa.body.id, name: 'Privado', address: 'x' })
+      .expect(201);
+    await a(http().post('/api/v1/org/schedules'))
+      .send({
+        locationId: local.body.id,
+        weekly: [{ weekday: 1, opensAt: '11:00', closesAt: '23:00' }],
+      })
+      .expect(201);
+
+    // 404 y no lista vacía: el local no existe PARA B, y decir «existe pero no
+    // tiene horario» ya sería contar algo.
+    await como(tokenB)(
+      http().get(`/api/v1/org/schedules?location=${local.body.id}`),
+    ).expect(404);
+  });
 
   it('AISLAMIENTO: el tenant B no puede colgar nada de la empresa de A', async () => {
     // La comprobación obligatoria de todo endpoint nuevo. El `companyId` va en

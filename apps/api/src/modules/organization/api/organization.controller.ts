@@ -15,6 +15,7 @@ import {
   type BrandView,
   type CompanyView,
   type LocationView,
+  type ScheduleView,
   type ZoneView,
 } from '../app/organization-admin.service.js';
 
@@ -267,6 +268,27 @@ export class OrganizationAdminController {
       polygon: input.polygon as unknown as Ring,
       actorId: req.auth!.sub,
     });
+  }
+
+  /**
+   * GET /org/schedules?location= → los horarios guardados del local.
+   *
+   * Faltaba, y sin esto el POST no se puede usar desde una pantalla: reemplaza
+   * el horario ENTERO, así que cambiar el jueves exige haber leído los otros
+   * seis días. Escribirlos de memoria es cómo se cierra un local un sábado.
+   */
+  @Get('schedules')
+  // `tenant.read`, el mismo que lee la estructura: mirar a qué hora abre el
+  // local no es configurarlo, y el encargado de turno tiene que poder verlo.
+  @RequirePermission('tenant.read')
+  schedules(
+    @Req() req: AuthenticatedRequest,
+    @Query('location') location?: string,
+  ): Promise<ScheduleView[]> {
+    if (!location) {
+      throw new ValidationError('Se requiere el parámetro location.');
+    }
+    return this.admin.listSchedules(req.auth!.tid, { locationId: location });
   }
 
   @Post('schedules')
