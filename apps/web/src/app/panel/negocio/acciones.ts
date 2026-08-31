@@ -198,3 +198,75 @@ function leerFeriados(bruto: FormDataEntryValue | null): Feriado[] {
     return [];
   }
 }
+
+/**
+ * Crea una cocina en un local.
+ *
+ * Sin cocina no hay dónde producir: los tickets salen a las estaciones de una
+ * cocina y una marca sin cocina asignada no puede recibir pedidos (RN-ORG-01).
+ * El endpoint existía desde T3.12 y no lo llamaba ninguna pantalla, así que un
+ * negocio montado desde el panel no podía vender y nada lo decía.
+ */
+export async function crearCocina(
+  _prev: EstadoNegocio,
+  form: FormData,
+): Promise<EstadoNegocio> {
+  const locationId = String(form.get('locationId') ?? '');
+  const name = String(form.get('name') ?? '').trim();
+  if (name.length < 2) return { error: 'La cocina necesita un nombre.' };
+  try {
+    await panel.crearCocina({ locationId, name });
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/negocio');
+  return {
+    ok: `Cocina "${name}" creada. Ponle al menos una estación y únela a una marca.`,
+  };
+}
+
+/**
+ * Crea una estación dentro de una cocina.
+ *
+ * Es a las estaciones a las que salen los tickets: una cocina sin estaciones no
+ * enseña nada en el KDS por mucho que entren pedidos.
+ */
+export async function crearEstacion(
+  _prev: EstadoNegocio,
+  form: FormData,
+): Promise<EstadoNegocio> {
+  const kitchenId = String(form.get('kitchenId') ?? '');
+  const name = String(form.get('name') ?? '').trim();
+  if (name.length < 2) return { error: 'La estación necesita un nombre.' };
+  try {
+    await panel.crearEstacion({ kitchenId, name });
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/negocio');
+  return { ok: `Estación "${name}" creada.` };
+}
+
+/**
+ * Une una marca a una cocina (RN-ORG-01).
+ *
+ * Es la relación que decide si una marca puede vender: Ordering valida que haya
+ * dónde cocinar y rechaza el pedido si no. Una misma cocina puede producir
+ * varias marcas —es la idea entera de una dark kitchen— y una marca puede
+ * producirse en varias cocinas.
+ */
+export async function unirMarcaACocina(
+  _prev: EstadoNegocio,
+  form: FormData,
+): Promise<EstadoNegocio> {
+  const brandId = String(form.get('brandId') ?? '');
+  const kitchenId = String(form.get('kitchenId') ?? '');
+  if (kitchenId === '') return { error: 'Elige la cocina.' };
+  try {
+    await panel.unirMarcaACocina({ brandId, kitchenId });
+  } catch (error) {
+    return traducir(error);
+  }
+  revalidatePath('/panel/negocio');
+  return { ok: 'Unida. Esa marca ya se puede producir ahí.' };
+}

@@ -353,6 +353,64 @@ suite('Alta de la estructura del negocio', () => {
     ]);
   });
 
+  it('LA ESTRUCTURA DICE dónde se produce cada marca y qué estaciones hay', async () => {
+    // `GET /organization` devolvía empresas, marcas, locales y cocinas — y ni
+    // las estaciones ni los enlaces marca↔cocina. Sin eso no se puede ver si
+    // una marca puede vender: RN-ORG-01 dice que una marca SIN cocina asignada
+    // no recibe pedidos, y desde el panel no había forma de saberlo ni de
+    // arreglarlo.
+    const a = como(tokenA);
+    const empresa = await a(http().post('/api/v1/org/companies'))
+      .send({ legalName: 'Estructura S.A.C.', taxId: '20533344455' })
+      .expect(201);
+    const marca = await a(http().post('/api/v1/org/brands'))
+      .send({ companyId: empresa.body.id, name: 'Marca con cocina' })
+      .expect(201);
+    const local = await a(http().post('/api/v1/org/locations'))
+      .send({ companyId: empresa.body.id, name: 'Local uno', address: 'x' })
+      .expect(201);
+    const cocina = await a(http().post('/api/v1/org/kitchens'))
+      .send({ locationId: local.body.id, name: 'Cocina uno' })
+      .expect(201);
+
+    // Antes de unirla: la marca existe y NO se produce en ninguna parte.
+    const antes = await a(http().get('/api/v1/organization')).expect(200);
+    expect(
+      (
+        antes.body as { brandKitchens: Array<{ brandId: string }> }
+      ).brandKitchens.some((l) => l.brandId === marca.body.id),
+    ).toBe(false);
+
+    await a(http().post('/api/v1/org/stations'))
+      .send({ kitchenId: cocina.body.id, name: 'Parrilla' })
+      .expect(201);
+    await a(http().post('/api/v1/org/brand-kitchens'))
+      .send({ brandId: marca.body.id, kitchenId: cocina.body.id })
+      .expect(201);
+
+    const despues = await a(http().get('/api/v1/organization')).expect(200);
+    const cuerpo = despues.body as {
+      stations: Array<{ id: string; kitchenId: string; name: string }>;
+      brandKitchens: Array<{ brandId: string; kitchenId: string }>;
+    };
+    expect(
+      cuerpo.stations
+        .filter((e) => e.kitchenId === cocina.body.id)
+        .map((e) => e.name),
+    ).toContain('Parrilla');
+    expect(
+      cuerpo.brandKitchens.some(
+        (l) => l.brandId === marca.body.id && l.kitchenId === cocina.body.id,
+      ),
+    ).toBe(true);
+
+    // LA COMPROBACIÓN QUE IMPORTA: con el enlace, el dominio ya sabe dónde se
+    // cocina esa marca. Sin él, `submit` rechaza el pedido.
+    const org = app.get(OrganizationService);
+    const cocinas = await org.kitchensForBrand(tenantA, marca.body.id);
+    expect(cocinas.map((c) => c.locationId)).toContain(local.body.id);
+  });
+
   it('AISLAMIENTO: B no puede leer el horario de un local de A', async () => {
     // El local va en la consulta. Sin filtro por tenant, B sabría a qué hora
     // abre y cierra el competidor con una sola petición.

@@ -282,6 +282,8 @@ export class OrganizationService {
     brands: unknown[];
     locations: unknown[];
     kitchens: unknown[];
+    stations: unknown[];
+    brandKitchens: unknown[];
   }> {
     return withTenant(this.pool, tenantId, async (ctx) => {
       // SECUENCIAL a propósito: todas comparten la misma conexión dentro de la
@@ -293,11 +295,19 @@ export class OrganizationService {
       const brandList = await ctx.db.select().from(schema.brands);
       const locationList = await ctx.db.select().from(schema.locations);
       const kitchenList = await ctx.db.select().from(schema.kitchens);
+      // Estaciones y enlaces marca↔cocina faltaban, y sin ellos la estructura
+      // no se puede ni mirar ni completar: RN-ORG-01 dice que una marca sin
+      // cocina asignada NO PUEDE recibir pedidos, y desde el panel no había
+      // forma de saber si lo estaba —ni de arreglarlo—.
+      const stationList = await ctx.db.select().from(schema.stations);
+      const links = await ctx.db.select().from(schema.brandKitchens);
       return {
         companies,
         brands: brandList,
         locations: locationList,
         kitchens: kitchenList,
+        stations: stationList,
+        brandKitchens: links,
       };
     });
   }

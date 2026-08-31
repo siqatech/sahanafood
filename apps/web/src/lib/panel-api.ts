@@ -235,6 +235,21 @@ export interface Estructura {
   brands: Array<{ id: string; name: string; slug: string; active: boolean }>;
   locations: Array<{ id: string; name: string; address: string }>;
   kitchens: Array<{ id: string; name: string; locationId: string }>;
+  /** Estaciones de cada cocina: es a ellas a las que salen los tickets. */
+  stations: Array<{
+    id: string;
+    kitchenId: string;
+    name: string;
+    sortOrder: number;
+    active: boolean;
+  }>;
+  /**
+   * Qué marca se produce en qué cocina (RN-ORG-01, M:N).
+   *
+   * Una marca SIN cocina asignada no puede recibir pedidos: la validación está
+   * en Ordering y rechaza la venta. Por eso esto se enseña, no se supone.
+   */
+  brandKitchens: Array<{ brandId: string; kitchenId: string; active: boolean }>;
 }
 
 export interface ProductoDelPanel {
@@ -1141,6 +1156,42 @@ export const panel = {
   ): Promise<unknown> =>
     llamar(`/catalog/products/${productId}/modifier-groups/${groupId}`, {
       method: 'DELETE',
+    }),
+
+  crearCocina: (input: {
+    locationId: string;
+    name: string;
+  }): Promise<{ id: string; name: string }> =>
+    llamar<{ id: string; name: string }>('/org/kitchens', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  crearEstacion: (input: {
+    kitchenId: string;
+    name: string;
+    sortOrder?: number;
+  }): Promise<{ id: string; name: string }> =>
+    llamar<{ id: string; name: string }>('/org/stations', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /**
+   * Une una marca a una cocina (RN-ORG-01).
+   *
+   * Sin este enlace la marca **no puede recibir pedidos**: Ordering lo valida y
+   * rechaza la venta porque no hay dónde cocinarla. El endpoint existía desde
+   * T3.12 y no lo llamaba nada, así que una marca creada desde el panel nacía
+   * sin poder vender y nada lo decía.
+   */
+  unirMarcaACocina: (input: {
+    brandId: string;
+    kitchenId: string;
+  }): Promise<unknown> =>
+    llamar('/org/brand-kitchens', {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
 
   crearMarca: (input: {

@@ -6,6 +6,9 @@ import {
   FormularioHorario,
   FormularioFeriado,
   BotonQuitarFeriado,
+  FormularioCocina,
+  FormularioEstacion,
+  FormularioMarcaCocina,
 } from './formularios';
 
 /**
@@ -84,21 +87,52 @@ export default async function NegocioPage({
               <tr>
                 <th>Marca</th>
                 <th>Identificador</th>
+                <th>Se produce en</th>
                 <th>Estado</th>
               </tr>
             </thead>
             <tbody>
-              {estructura.brands.map((m) => (
-                <tr key={m.id}>
-                  <td>{m.name}</td>
-                  <td>{m.slug}</td>
-                  <td>
-                    <span className="etiqueta">
-                      {m.active ? 'activa' : 'inactiva'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {estructura.brands.map((m) => {
+                const suyas = estructura.kitchens.filter((k) =>
+                  estructura.brandKitchens.some(
+                    (l) => l.brandId === m.id && l.kitchenId === k.id,
+                  ),
+                );
+                const libres = estructura.kitchens
+                  .filter((k) => !suyas.some((s) => s.id === k.id))
+                  .map((k) => ({
+                    id: k.id,
+                    name: k.name,
+                    local:
+                      estructura.locations.find((l) => l.id === k.locationId)
+                        ?.name ?? 'local',
+                  }));
+                return (
+                  <tr key={m.id}>
+                    <td>{m.name}</td>
+                    <td>{m.slug}</td>
+                    <td>
+                      {/* RN-ORG-01: una marca sin cocina asignada NO PUEDE
+                          recibir pedidos — Ordering lo valida y rechaza la
+                          venta. Es lo primero que hay que ver de una marca
+                          nueva, y hasta ahora no se veía en ninguna parte. */}
+                      {suyas.length === 0 ? (
+                        <span className="panel__error">
+                          en ninguna: no puede recibir pedidos
+                        </span>
+                      ) : (
+                        suyas.map((k) => k.name).join(', ')
+                      )}
+                      <FormularioMarcaCocina brandId={m.id} cocinas={libres} />
+                    </td>
+                    <td>
+                      <span className="etiqueta">
+                        {m.active ? 'activa' : 'inactiva'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -116,20 +150,54 @@ export default async function NegocioPage({
               <tr>
                 <th>Local</th>
                 <th>Dirección</th>
-                <th>Cocinas</th>
+                <th>Cocinas y estaciones</th>
               </tr>
             </thead>
             <tbody>
-              {estructura.locations.map((l) => (
-                <tr key={l.id}>
-                  <td>{l.name}</td>
-                  <td>{l.address}</td>
-                  <td>
-                    {estructura.kitchens.filter((k) => k.locationId === l.id)
-                      .length || '—'}
-                  </td>
-                </tr>
-              ))}
+              {estructura.locations.map((l) => {
+                const cocinas = estructura.kitchens.filter(
+                  (k) => k.locationId === l.id,
+                );
+                return (
+                  <tr key={l.id}>
+                    <td>{l.name}</td>
+                    <td>{l.address}</td>
+                    <td>
+                      {cocinas.length === 0 ? (
+                        <p className="panel__error">
+                          Sin cocina no hay dónde producir: ninguna marca podrá
+                          vender desde este local.
+                        </p>
+                      ) : (
+                        <ul className="opciones">
+                          {cocinas.map((k) => {
+                            const estaciones = estructura.stations.filter(
+                              (e) => e.kitchenId === k.id,
+                            );
+                            return (
+                              <li key={k.id}>
+                                <strong>{k.name}</strong>{' '}
+                                {/* Los tickets salen a las ESTACIONES: una
+                                    cocina sin ninguna no enseña nada en el KDS
+                                    por mucho que entren pedidos. */}
+                                {estaciones.length === 0 ? (
+                                  <span className="panel__error">
+                                    sin estaciones: el KDS no enseñará nada
+                                  </span>
+                                ) : (
+                                  estaciones.map((e) => e.name).join(' · ')
+                                )}
+                                <FormularioEstacion kitchenId={k.id} />
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                      <FormularioCocina locationId={l.id} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -220,9 +288,11 @@ export default async function NegocioPage({
       <FormularioLocal companyId={empresa.id} />
 
       <p className="tarjeta__pie">
-        Zonas de reparto, cocinas y estaciones todavía se configuran con el
-        archivo de <code>docs/34-puesta-en-marcha.md</code> §5. La API ya las
-        soporta; lo que falta es la pantalla.
+        Las zonas de reparto todavía se configuran con el archivo de{' '}
+        <code>docs/34-puesta-en-marcha.md</code> §5: un polígono se dibuja en un
+        mapa, y ese mapa es una pantalla aparte. Desunir una marca de una cocina
+        tampoco está: la API solo une, y qué pasa con los pedidos en curso al
+        desunir es una decisión que la spec 03 no fija.
       </p>
     </>
   );

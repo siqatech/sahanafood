@@ -2665,3 +2665,44 @@ página en vez de dejar creer que ya funciona así.
 
 Verde: **800 API · 471 dominio · 5 ui · 110 web · 41 POS · 119 print-agent · 79
 navegador**.
+
+## Un negocio montado desde el panel no podía vender
+
+Desde el panel se podía crear una marca y un local. No una cocina, no una
+estación, y no el enlace entre la marca y la cocina. Los tres endpoints existen
+desde T3.12 y no los llamaba nadie.
+
+**RN-ORG-01 dice que una marca sin cocina asignada no puede recibir pedidos**, y
+la validación está puesta: Ordering rechaza la venta porque no hay dónde
+cocinarla. Así que el panel dejaba montar un negocio que **estructuralmente no
+podía vender**, y no lo decía en ninguna parte: la marca aparecía «activa».
+
+Peor todavía: `GET /organization` devolvía empresas, marcas, locales y cocinas y
+**ni las estaciones ni los enlaces**. Aunque alguien hubiera hecho el enlace por
+API, la pantalla no podía enseñar si estaba hecho.
+
+**La tabla de marcas dice ahora dónde se produce cada una**, y cuando no se
+produce en ninguna lo dice en rojo y con la consecuencia escrita: «en ninguna: no
+puede recibir pedidos». Al lado, el desplegable para arreglarlo — solo con las
+cocinas a las que todavía no está unida, porque un desplegable con opciones que
+no hacen nada enseña a no fiarse de él.
+
+**Y la tabla de locales enseña las cocinas con sus estaciones.** Una cocina sin
+estaciones tampoco falla: los tickets salen a las estaciones, así que la cocina
+recibe pedidos y **el KDS no enseña nada**. También se dice donde se ve.
+
+Una misma cocina puede producir varias marcas —es la idea entera de una dark
+kitchen— y una marca puede producirse en varias cocinas. El M:N estaba en el
+modelo desde el principio; lo que faltaba era poder usarlo.
+
+### Lo que sigue fuera, y por qué
+
+El pie de la página ya no es una lista de pendientes: dice **el motivo** de cada
+uno. Las zonas de reparto siguen en el archivo de configuración porque un
+polígono se dibuja en un mapa, y ese mapa es una pantalla aparte. **Desunir** una
+marca de una cocina tampoco está: la API solo une, y qué pasa con los pedidos en
+curso al desunir es una decisión que la spec 03 no fija — inventarla aquí sería
+justo lo que CLAUDE.md prohíbe.
+
+Verde: **801 API · 471 dominio · 5 ui · 110 web · 41 POS · 119 print-agent · 80
+navegador**.

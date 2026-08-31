@@ -641,8 +641,12 @@ test.describe('Panel de gestión en navegador', () => {
     // Un panel que ofreciera un botón para cada cosa y fallara en la mitad
     // sería peor que uno que dice dónde está el límite.
     await expect(
-      page.getByText(/Zonas de reparto, cocinas y estaciones/),
+      page.getByText(/Las zonas de reparto todavía se configuran/),
     ).toBeVisible();
+    // Y ahora sí se dice POR QUÉ falta cada cosa, en vez de una lista: el
+    // polígono de una zona se dibuja en un mapa, y desunir una marca de una
+    // cocina exige decidir qué pasa con los pedidos en curso.
+    await expect(page.getByText(/un mapa/)).toBeVisible();
   });
 
   test('EL HORARIO DEL LOCAL se cambia desde el panel, y el feriado también', async ({
@@ -711,6 +715,35 @@ test.describe('Panel de gestión en navegador', () => {
     await expect(page.getByLabel('Martes: hora de apertura')).toHaveValue(
       '12:30',
     );
+  });
+
+  test('UNA MARCA SIN COCINA no puede vender, y el panel deja arreglarlo', async ({
+    page,
+  }) => {
+    // Desde el panel se podía crear una marca y un local, pero no una cocina,
+    // ni unirla a la marca, ni crear estaciones. RN-ORG-01 dice que una marca
+    // sin cocina asignada NO recibe pedidos: el panel dejaba montar un negocio
+    // que estructuralmente no podía vender, y no lo decía en ninguna parte.
+    await entrar(page);
+    await page.goto('/panel/negocio');
+
+    // Una marca nueva nace sin cocina, y la tabla lo dice con todas las letras.
+    await page.getByLabel('Nombre comercial').fill('Marca sin cocina');
+    await page.getByRole('button', { name: 'Crear marca' }).click();
+    await page.reload();
+
+    const fila = page
+      .locator('tbody tr')
+      .filter({ hasText: 'Marca sin cocina' })
+      .first();
+    await expect(fila).toContainText('no puede recibir pedidos');
+
+    // Y se arregla desde aquí: se le da una cocina.
+    await fila.getByRole('button', { name: 'Producir aquí' }).click();
+    await page.reload();
+    await expect(
+      page.locator('tbody tr').filter({ hasText: 'Marca sin cocina' }).first(),
+    ).not.toContainText('no puede recibir pedidos');
   });
 
   test('LA PORTADA dice qué hay que arreglar, no solo cuánto se vendió', async ({

@@ -81,6 +81,8 @@ export class OrganizationController {
     brands: unknown[];
     locations: unknown[];
     kitchens: unknown[];
+    stations: unknown[];
+    brandKitchens: unknown[];
   }> {
     return this.org.getStructure(req.auth!.tid);
   }

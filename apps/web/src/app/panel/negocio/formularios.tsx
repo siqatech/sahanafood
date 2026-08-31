@@ -4,6 +4,9 @@ import { useActionState } from 'react';
 import {
   crearLocal,
   crearMarca,
+  crearCocina,
+  crearEstacion,
+  unirMarcaACocina,
   guardarHorario,
   anadirFeriado,
   quitarFeriado,
@@ -244,5 +247,102 @@ export function BotonQuitarFeriado({
         <span className="panel__error">{estado.error}</span>
       ) : null}
     </form>
+  );
+}
+
+/** Una cocina dentro de un local. Sin ella no hay dónde producir. */
+export function FormularioCocina({ locationId }: { locationId: string }) {
+  const [estado, accion, pendiente] = useActionState<EstadoNegocio, FormData>(
+    crearCocina,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="locationId" value={locationId} />
+        <input
+          name="name"
+          placeholder="Cocina principal"
+          aria-label={`Nombre de la cocina nueva en ${locationId}`}
+        />
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Añadir cocina'}
+        </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * Una estación dentro de la cocina.
+ *
+ * Es a las estaciones a las que salen los tickets: parrilla, frío, bebidas. Una
+ * cocina sin ninguna no enseña nada en el KDS por mucho que entren pedidos.
+ */
+export function FormularioEstacion({ kitchenId }: { kitchenId: string }) {
+  const [estado, accion, pendiente] = useActionState<EstadoNegocio, FormData>(
+    crearEstacion,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="kitchenId" value={kitchenId} />
+        <input
+          name="name"
+          className="corto"
+          placeholder="Parrilla"
+          aria-label={`Nombre de la estación nueva en ${kitchenId}`}
+        />
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Añadir estación'}
+        </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
+  );
+}
+
+/**
+ * Une la marca a una cocina (RN-ORG-01).
+ *
+ * Solo se ofrecen las cocinas a las que TODAVÍA no está unida: repetir el
+ * enlace no rompe nada, pero un desplegable con opciones que no hacen nada
+ * enseña a no fiarse de él.
+ */
+export function FormularioMarcaCocina({
+  brandId,
+  cocinas,
+}: {
+  brandId: string;
+  cocinas: Array<{ id: string; name: string; local: string }>;
+}) {
+  const [estado, accion, pendiente] = useActionState<EstadoNegocio, FormData>(
+    unirMarcaACocina,
+    {},
+  );
+  if (cocinas.length === 0) return null;
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="brandId" value={brandId} />
+        <select
+          name="kitchenId"
+          defaultValue={cocinas[0]?.id}
+          aria-label={`Cocina donde se produce ${brandId}`}
+        >
+          {cocinas.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} — {c.local}
+            </option>
+          ))}
+        </select>
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Producir aquí'}
+        </button>
+      </form>
+      <Resultado estado={estado} />
+    </>
   );
 }
