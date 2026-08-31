@@ -109,7 +109,12 @@ export default async function CatalogoPage({
       <h1>Carta de {marca.name}</h1>
       <p className="panel__subtitulo">
         Los precios incluyen IGV. Un plato sin precio en un canal no se vende en
-        ese canal.
+        ese canal. Lo que se cambia aquí vale ya en la tienda;{' '}
+        <Link href={`/panel/catalogo/publicar?marca=${marca.id}`}>
+          publicar una versión
+        </Link>{' '}
+        congela una foto de la carta para los canales y deja el historial de qué
+        cambió y cuándo.
       </p>
 
       {marcas.length > 1 ? (

@@ -326,6 +326,60 @@ test.describe('Panel de gestión en navegador', () => {
     ).toHaveCount(cuantos);
   });
 
+  test('PUBLICAR LA CARTA deja versión, historial y QUÉ CAMBIÓ', async ({
+    page,
+  }) => {
+    // T4.06 estaba entero —versión inmutable con checksum, historial, descarga
+    // y diff calculado en `@sahana/domain`— y no lo llamaba ninguna pantalla.
+    // La foto de la carta que consumen los canales no se podía ni emitir ni
+    // mirar, y el criterio de aceptación de la spec 04 —«diff de versiones
+    // descargable»— no se cumplía por falta de una página.
+    await entrar(page);
+    await page.goto('/panel/catalogo');
+    await page.getByRole('link', { name: 'publicar una versión' }).click();
+    await expect(
+      page.getByRole('heading', { name: /^Publicar la carta de / }),
+    ).toBeVisible();
+
+    // Primera publicación del canal.
+    await page.getByRole('button', { name: 'Publicar web' }).click();
+    await expect(page.getByText(/Publicada la versión 1 de web/)).toBeVisible();
+
+    // Publicar otra vez SIN CAMBIOS no crea una versión nueva: el servidor
+    // compara el contenido. Se dice, porque si no, pulsar y no ver un número
+    // nuevo parece que falló.
+    await page.getByRole('button', { name: 'Publicar web' }).click();
+    await expect(page.getByText(/Sin cambios/)).toBeVisible();
+
+    // Se cambia un precio y se vuelve a publicar: ahora sí hay versión 2.
+    await page.goto('/panel/catalogo');
+    const fila = page
+      .locator('tbody tr')
+      .filter({ hasText: 'Pollo a la brasa entero' })
+      .first();
+    await fila.getByLabel('Precio en web').fill('77.00');
+    await fila
+      .getByRole('button', { name: 'Guardar el precio de web' })
+      .click();
+    await expect(fila.getByLabel('Precio en web')).toHaveValue('77.00');
+
+    await page.goto('/panel/catalogo/publicar');
+    await page.getByRole('button', { name: 'Publicar web' }).click();
+    await expect(page.getByText(/Publicada la versión 2 de web/)).toBeVisible();
+
+    // Y LO QUE IMPORTA: el diff dice qué cambió, en palabras y con el precio
+    // legible. Un `priceMinor` de 770000 delante de quien decide qué se cobra
+    // no es información, es ruido.
+    await page.reload();
+    await expect(
+      page.getByRole('heading', { name: 'Qué cambió' }),
+    ).toBeVisible();
+    await expect(page.getByText(/1 plato con cambios/)).toBeVisible();
+
+    const cambios = page.locator('tbody tr').filter({ hasText: 'precio' });
+    await expect(cambios.first()).toContainText('S/ 77.00');
+  });
+
   test('IMPORTAR LA CARTA: se ve el cambio ANTES de aplicarlo', async ({
     page,
   }) => {

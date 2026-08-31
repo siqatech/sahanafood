@@ -2616,3 +2616,52 @@ estaban todos.
 
 Verde: **799 API · 471 dominio · 5 ui · 102 web · 41 POS · 119 print-agent · 78
 navegador**.
+
+## La publicación versionada de la carta no tenía pantalla
+
+T4.06 está entero desde F4: versión inmutable con checksum, historial por canal,
+descarga de la instantánea y **diff calculado en `@sahana/domain`** —el mismo
+código que aplicará el POS al otro lado, para que las dos no diverjan—. Con sus
+pruebas. Y ni una sola pantalla lo llamaba: la foto de la carta que consumen los
+canales no se podía emitir ni mirar desde el producto.
+
+El criterio de aceptación de la spec 04 dice, literalmente, «**diff de versiones
+descargable**». No se cumplía por falta de una página.
+
+**Se publica por canal**, y no es un detalle de implementación: el precio de un
+plato en un marketplace no es el de la tienda propia, así que cada canal tiene su
+propia línea de versiones y se publica cuando toca.
+
+**Publicar dos veces sin cambios no crea una versión nueva.** El servidor compara
+el contenido y devuelve la que ya existía; la pantalla lo dice, porque si no,
+pulsar y no ver un número nuevo parece que falló.
+
+**El diff se traduce a palabras**, y esa traducción tiene sus propias pruebas:
+«1 plato nuevo · 2 platos con cambios», con los grupos vacíos omitidos —una línea
+de ceros obliga a leerla entera para encontrar el número que no lo es— y los
+campos en el idioma de quien vende: `priceMinor` es «precio», `prepMinutes` es
+«tiempo de preparación». Un campo que no esté en la lista se enseña tal cual
+antes que ocultarlo: un cambio que no se ve es peor que uno con nombre técnico.
+
+**Y el precio se lee en soles con la escala del dominio**, que es 4. Es la
+aserción menos vistosa y la más importante de las ocho: dividir entre 100 daría
+importes cien veces mayores justo en la pantalla que decide qué se cobra. El
+cambio de precio va además marcado aparte, porque es el único que se cobra — un
+nombre distinto se corrige mañana.
+
+Por defecto se comparan las **dos últimas** versiones, que es la pregunta de
+quien acaba de publicar: «¿qué acabo de cambiar?».
+
+`GET /catalog/versions/diff` queda registrado en la suite bloqueante de
+aislamiento: el diff lleva nombres y precios, y leer el del competidor sería leer
+su lista de precios y cómo la mueve.
+
+### Lo que sigue sin estar, dicho en la propia pantalla
+
+La tablet **descarga la carta viva y no una versión publicada**. Publicar deja la
+foto y su diff disponibles; que el POS los consuma es un cambio aparte, con sus
+propias consecuencias sobre el modo offline (ADR-0019), y se dice al pie de la
+página en vez de dejar creer que ya funciona así.
+
+Verde: **800 API · 471 dominio · 5 ui · 110 web · 41 POS · 119 print-agent · 79
+navegador**.

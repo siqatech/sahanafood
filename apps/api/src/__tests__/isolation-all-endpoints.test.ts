@@ -1140,6 +1140,24 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /catalog/versions/diff', async () => {
+    // El diff enseña nombres y PRECIOS de la carta: leer el del competidor
+    // sería leer su lista de precios y cómo la mueve.
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /catalog/versions/diff',
+        (r) =>
+          r.get(
+            `/api/v1/catalog/versions/diff?brand=${demoA.brandIds[0]}&channel=web&from=1&to=1`,
+          ),
+        // Comparar una versión consigo misma es válido y da un diff vacío; lo
+        // que se comprueba aquí es de QUIÉN son las versiones que se leen.
+        { expectedStatusForA: [200, 404] },
+      ),
+    );
+  });
+
   it('POST /catalog/publish', async () => {
     await assertEndpointIsolation(
       app,

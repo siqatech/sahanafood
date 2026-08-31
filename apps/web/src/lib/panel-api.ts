@@ -187,6 +187,34 @@ export interface ResumenDeHoy {
   activeNow: number;
 }
 
+/** Una versión publicada de la carta (T4.06, spec 04). */
+export interface VersionDeCarta {
+  id: string;
+  brandId: string;
+  channel: string;
+  version: number;
+  /** Huella del contenido: dos versiones iguales dan el mismo checksum. */
+  checksum: string;
+  productCount: number;
+  publishedAt: string;
+  /** true si no había cambios y se devolvió la versión que ya existía. */
+  reused?: boolean;
+}
+
+/** Diferencias entre dos versiones, calculadas en `@sahana/domain`. */
+export interface DiferenciaDeVersiones {
+  from: number;
+  to: number;
+  added: Array<{ id: string; name: string; priceMinor?: number }>;
+  removed: Array<{ id: string; name: string; priceMinor?: number }>;
+  changed: Array<{
+    id: string;
+    name: string;
+    changes: Array<{ field: string; from: unknown; to: unknown }>;
+  }>;
+  identical: boolean;
+}
+
 /** Un horario guardado, con el ámbito al que se aplica (RN-ORG-03). */
 export interface HorarioDelPanel {
   id: string;
@@ -984,6 +1012,42 @@ export const panel = {
       method: 'POST',
       body: JSON.stringify({ channels }),
     }),
+
+  /**
+   * Publicación versionada de la carta (T4.06, spec 04).
+   *
+   * Estaba entera desde T4.06 —versión inmutable, historial, descarga y diff
+   * calculado en `@sahana/domain`— y **no la llamaba ninguna pantalla**: la
+   * versión que consumen los canales no se podía emitir ni mirar desde el
+   * producto.
+   */
+  versionesDeCarta: (
+    brandId: string,
+    channel: string,
+  ): Promise<VersionDeCarta[]> =>
+    llamar<VersionDeCarta[]>(
+      `/catalog/versions?brand=${encodeURIComponent(brandId)}&channel=${encodeURIComponent(channel)}`,
+    ),
+
+  publicarCarta: (input: {
+    brandId: string;
+    channel: string;
+    notes?: string;
+  }): Promise<VersionDeCarta> =>
+    llamar<VersionDeCarta>('/catalog/publish', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  diferenciaDeCarta: (
+    brandId: string,
+    channel: string,
+    from: number,
+    to: number,
+  ): Promise<DiferenciaDeVersiones> =>
+    llamar<DiferenciaDeVersiones>(
+      `/catalog/versions/diff?brand=${encodeURIComponent(brandId)}&channel=${encodeURIComponent(channel)}&from=${from}&to=${to}`,
+    ),
 
   /**
    * La composición de un combo (RN-CAT-04).
