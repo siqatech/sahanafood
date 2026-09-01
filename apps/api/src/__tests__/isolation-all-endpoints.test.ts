@@ -478,7 +478,30 @@ suite('Aislamiento — todos los endpoints', () => {
          VALUES ($1,$2,$3,'outbound','template','pedido_confirmado','sent')`,
         [b.tenantId, rows[0]!.id, pedidoDeB],
       );
+
+      // Traza del agente de B. Se inserta a mano porque `receiveInbound` no
+      // dispara al agente sin configuración publicada, y sin fila la prueba
+      // compararía dos listas vacías: eso no es aislamiento, es que nadie ha
+      // hablado con el bot. La traza guarda LO QUE EL CLIENTE ESCRIBIÓ y lo
+      // que el agente iba a contestar —incluido lo que se bloqueó—, así que
+      // filtrarse aquí es filtrar la conversación entera por otra puerta.
+      await client.query(
+        `INSERT INTO ai_traces
+           (tenant_id, conversation_id, inbound_text, outbound_text,
+            resolution, tools_called, credits)
+         VALUES ($1,$2,$3,$4,'llm','["catalogo.buscar"]',42)`,
+        [
+          b.tenantId,
+          conversacionDeB,
+          'Pregunta SECRETA al agente de B',
+          'Traza SECRETA del agente de B',
+        ],
+      );
     });
+    secretsOfB.push(
+      'Pregunta SECRETA al agente de B',
+      'Traza SECRETA del agente de B',
+    );
 
     const loginA = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
@@ -1547,6 +1570,19 @@ suite('Aislamiento — todos los endpoints', () => {
     await assertEndpointIsolation(
       app,
       caseFor('GET /ai/budget', (r) => r.get('/api/v1/ai/budget')),
+    );
+  });
+
+  it('GET /ai/traces/:conversationId no destapa el hilo de B', async () => {
+    // La traza guarda el mensaje del cliente y la respuesta del agente
+    // —incluida la que el validador frenó—. Es la misma conversación por otra
+    // puerta: si el filtro por tenant faltara aquí, daría igual lo bien
+    // aislada que esté `/conversations`.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /ai/traces/:conversationId', (r) =>
+        r.get(`/api/v1/ai/traces/${conversacionDeB}`),
+      ),
     );
   });
 

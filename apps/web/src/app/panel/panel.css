@@ -1539,3 +1539,37 @@ input[type='color'] {
   font-size: 0.9rem;
   line-height: 1.45;
 }
+
+/* --- Trazas del asistente (RN-AIA-05) ---------------------------------- */
+
+.trazas {
+  margin-top: 2rem;
+  border: 1px solid var(--panel-borde);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+}
+
+.trazas > summary {
+  /* Cursor de mano y peso: el desplegable tiene que verse desplegable. El
+     triángulo nativo por sí solo pasa desapercibido junto a un hilo largo. */
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.trazas[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+.trazas .ficha {
+  margin-bottom: 0.75rem;
+}
+
+.trazas__detalle {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.9rem;
+  color: var(--panel-texto-suave, #57534e);
+}

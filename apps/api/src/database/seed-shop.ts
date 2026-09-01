@@ -154,6 +154,69 @@ async function main(): Promise<void> {
     text: '¿A qué hora abren hoy?',
   });
 
+  // Las trazas de esa conversación (RN-AIA-05). Se siembran a mano porque la
+  // demo no llama a ningún modelo, y sin ellas la pantalla que explica POR QUÉ
+  // contestó el asistente se ve vacía justo en la conversación que el bot
+  // derivó — que es la única en la que alguien se lo pregunta.
+  //
+  // Los tres turnos son los tres casos que hay que saber leer: uno que resolvió
+  // una regla (coste cero), uno que redactó el modelo consultando el catálogo,
+  // y uno BLOQUEADO por el validador. El bloqueado es el que justifica la
+  // pantalla: se guarda lo que el asistente quería decir y nunca se envió.
+  await withTenant(pool, tenant.tenantId, async ({ client }) => {
+    for (const t of [
+      {
+        inbound: '¿Cuánto cuesta el pollo entero?',
+        outbound: 'El pollo a la brasa entero está S/ 32.00.',
+        resolution: 'rule',
+        tools: '[]',
+        validador: null,
+        creditos: 0,
+        latencia: 8,
+      },
+      {
+        inbound: '¿Tienen algo sin picante para un niño?',
+        outbound:
+          'Sí: el cuarto de pollo con papas va sin ají. Te lo mandamos con la crema aparte.',
+        resolution: 'llm',
+        tools: '["catalogo.buscar","alergenos.consultar"]',
+        validador: JSON.stringify({ ok: true }),
+        creditos: 4,
+        latencia: 1_240,
+      },
+      {
+        inbound: '¿Me hacen descuento si pido cuatro?',
+        outbound: 'Claro, por cuatro pollos te dejo cada uno a S/ 25.',
+        resolution: 'blocked',
+        tools: '[]',
+        validador: JSON.stringify({
+          ok: false,
+          reason: 'ofreció un precio que ninguna herramienta devolvió',
+        }),
+        creditos: 3,
+        latencia: 980,
+      },
+    ]) {
+      await client.query(
+        `INSERT INTO ai_traces
+           (tenant_id, conversation_id, inbound_text, outbound_text,
+            resolution, tools_called, validator, credits, latency_ms)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9)`,
+        [
+          tenant.tenantId,
+          derivada.conversationId,
+          t.inbound,
+          t.outbound,
+          t.resolution,
+          t.tools,
+          t.validador,
+          t.creditos,
+          t.latencia,
+        ],
+      );
+    }
+  });
+
   // Un turno de caja ABIERTO con movimientos de dos medios distintos. El de
   // tarjeta está a propósito: cuadra el turno pero no pone billetes en la
   // gaveta, y es justo la lectura que hace que un turno correcto parezca un

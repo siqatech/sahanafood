@@ -1017,6 +1017,53 @@ test.describe('Panel de gestión en navegador', () => {
     );
   });
 
+  test('LA TRAZA DEL ASISTENTE explica por qué contestó, y lo BLOQUEADO no salió', async ({
+    page,
+  }) => {
+    // CLAUDE.md lo exige en una línea: «toda respuesta IA deja traza». La traza
+    // se escribía desde T5.24 y ninguna pantalla la leía, que es media
+    // garantía: servía para un `psql`, no para que quien atiende —o el dueño—
+    // entienda al bot.
+    await entrar(page);
+    await page.goto('/panel/conversaciones');
+    await page.locator('article.ficha').first().getByRole('link').click();
+
+    const trazas = page.locator('details.trazas');
+    await expect(trazas).toBeVisible();
+
+    // Viene ABIERTO sin tocar nada: hay un turno bloqueado. Que haya que
+    // acordarse de desplegarlo es justo cómo no se descubre nunca.
+    await expect(trazas).toHaveAttribute('open', '');
+    await expect(trazas.locator('summary')).toContainText('1 a revisar');
+
+    // Los dos extremos de la jerarquía de ADR-0011, escritos y distinguibles.
+    // `exact` porque el resumen de arriba también dice «una regla tuya»: sin
+    // él la prueba choca con su propia cabecera.
+    await expect(trazas.getByText('Regla tuya', { exact: true })).toBeVisible();
+    await expect(
+      trazas.getByText('Redactó el asistente', { exact: true }),
+    ).toBeVisible();
+
+    // Y la cuenta de la cabecera, que es la métrica de ADR-0011: cuántos
+    // turnos NO necesitaron al modelo.
+    await expect(trazas).toContainText('1 de 3 los resolvió una regla tuya');
+
+    // El turno bloqueado: se ve lo que el asistente QUERÍA decir, se dice que
+    // no se envió, y se dice por qué lo frenó el validador.
+    await expect(
+      trazas.getByText(/Quería decir \(no se envió\)/),
+    ).toBeVisible();
+    await expect(trazas).toContainText('cada uno a S/ 25');
+    await expect(trazas).toContainText(
+      /la frenó — ofreció un precio que ninguna herramienta devolvió/,
+    );
+
+    // Y lo que de verdad importa: ese precio inventado NO está en el hilo. Si
+    // apareciera ahí, no habría sido bloqueado — se lo habría llevado el
+    // cliente, y la traza estaría documentando una fuga en vez de evitarla.
+    await expect(page.locator('.hilo')).not.toContainText('cada uno a S/ 25');
+  });
+
   test('LOS CHIPS filtran de verdad, y el CSV exporta LO FILTRADO', async ({
     page,
   }) => {

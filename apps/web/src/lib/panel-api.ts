@@ -924,6 +924,30 @@ export interface MensajeDelPanel {
   createdAt: string;
 }
 
+/**
+ * Un turno del asistente, tal como quedó registrado (RN-AIA-05).
+ *
+ * `toolsCalled` y `validator` van como `unknown` porque en la base son `jsonb`
+ * y la traza es de auditoría: se guardó con la forma que tenía el agente ese
+ * día. Se leen con los ayudantes de `panel/conversaciones/trazas.ts`, que
+ * ignoran lo que no reconocen en vez de romper la pantalla.
+ */
+export interface TrazaDeAgente {
+  inbound: string;
+  outbound: string | null;
+  resolution: string;
+  ruleId: string | null;
+  ruleName: string | null;
+  toolsCalled: unknown;
+  validator: unknown;
+  /** Cuántas fuentes del tenant se citaron (RAG). */
+  sources: number;
+  promptVersion: string | null;
+  latencyMs: number | null;
+  credits: number;
+  at: string;
+}
+
 export interface ConexionDelPanel {
   id: string;
   provider: string;
@@ -1979,6 +2003,16 @@ export const panel = {
 
   resolverConversacion: (id: string): Promise<unknown> =>
     llamar(`/conversations/${id}/resolve`, { method: 'POST' }),
+
+  /**
+   * Por qué el asistente contestó lo que contestó (RN-AIA-05).
+   *
+   * Se degrada sola en la pantalla: leer trazas exige `ai.read`, que quien
+   * atiende puede no tener, y no poder auditar al bot no es motivo para no
+   * poder responderle al cliente.
+   */
+  trazas: (conversationId: string): Promise<TrazaDeAgente[]> =>
+    llamar<TrazaDeAgente[]>(`/ai/traces/${conversationId}`),
 
   excepciones: (): Promise<PedidoDelPanel[]> =>
     llamar<PedidoDelPanel[]>('/orders/exceptions'),

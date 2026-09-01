@@ -563,7 +563,13 @@ export class AgentService {
     );
   }
 
-  /** Trazas de una conversación, para el sandbox y la auditoría (RN-AIA-05). */
+  /**
+   * Trazas de una conversación, para el sandbox y la auditoría (RN-AIA-05).
+   *
+   * Devuelve el **nombre** de la regla y no solo su id: quien abre esto es el
+   * dueño o quien atiende, y un uuid no responde a «¿por qué contestó eso?».
+   * El id se sigue devolviendo para poder saltar a la regla y corregirla.
+   */
   async traces(
     tenantId: string,
     conversationId: string,
@@ -573,8 +579,12 @@ export class AgentService {
       outbound: string | null;
       resolution: string;
       ruleId: string | null;
+      ruleName: string | null;
       toolsCalled: unknown;
       validator: unknown;
+      sources: number;
+      promptVersion: string | null;
+      latencyMs: number | null;
       credits: number;
       at: string;
     }>
@@ -585,15 +595,24 @@ export class AgentService {
         outbound_text: string | null;
         resolution: string;
         rule_id: string | null;
+        rule_name: string | null;
         tools_called: unknown;
         validator: unknown;
+        sources: string;
+        prompt_version: string | null;
+        latency_ms: number | null;
         credits: number;
         created_at: Date;
       }>(
-        `SELECT inbound_text, outbound_text, resolution, rule_id,
-                tools_called, validator, credits, created_at
-           FROM ai_traces WHERE conversation_id = $1
-          ORDER BY created_at`,
+        `SELECT t.inbound_text, t.outbound_text, t.resolution, t.rule_id,
+                r.name AS rule_name, t.tools_called, t.validator,
+                coalesce(array_length(t.source_ids, 1), 0) AS sources,
+                t.prompt_version, t.latency_ms, t.credits, t.created_at
+           FROM ai_traces t
+           LEFT JOIN ai_rules r
+             ON r.tenant_id = t.tenant_id AND r.id = t.rule_id
+          WHERE t.conversation_id = $1
+          ORDER BY t.created_at`,
         [conversationId],
       );
       return rows.map((r) => ({
@@ -601,8 +620,12 @@ export class AgentService {
         outbound: r.outbound_text,
         resolution: r.resolution,
         ruleId: r.rule_id,
+        ruleName: r.rule_name,
         toolsCalled: r.tools_called,
         validator: r.validator,
+        sources: Number(r.sources),
+        promptVersion: r.prompt_version,
+        latencyMs: r.latency_ms,
         credits: r.credits,
         at: r.created_at.toISOString(),
       }));

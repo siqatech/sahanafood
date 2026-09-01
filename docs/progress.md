@@ -2761,3 +2761,78 @@ producto no promete.
 
 Verde: **803 API · 471 dominio · 5 ui · 122 web · 41 POS · 119 print-agent · 80
 navegador**.
+
+## «Toda respuesta IA deja traza» era media garantía
+
+CLAUDE.md lo pide en una línea y ADR-0011 lo desarrolla: la jerarquía es
+determinista primero, el modelo nunca redacta precios de memoria, y **toda
+respuesta deja traza**. La traza se escribía desde T5.24 —qué regla disparó, qué
+herramientas se llamaron, qué dijo el validador de salida, con qué versión de
+instrucciones, cuánto costó— y `GET /ai/traces/:conversationId` existía. Ninguna
+pantalla lo llamaba.
+
+Una traza que solo se puede leer con `psql` cumple la mitad de lo que promete:
+sirve para una autopsia, no para que quien atiende entienda al bot **antes** de
+seguir hablando con el cliente. Y el dueño, que es quien puede arreglarlo
+escribiendo una regla, no tiene acceso a la base.
+
+Ahora el hilo de la conversación lleva abajo **«Por qué contestó el
+asistente»**: turno a turno, qué le escribieron, qué contestó, y con qué —regla
+propia, modelo, derivación, bloqueo o presupuesto agotado— en castellano de
+negocio, sin la palabra «LLM», «prompt» ni «token» en ninguna parte. Hay una
+prueba que lo vigila: el vocabulario es parte del producto, no del estilo.
+
+**Va plegado, y se abre solo cuando hay algo que mirar.** Quien abre un hilo
+viene a contestar, no a auditar; pero un turno bloqueado o el presupuesto
+agotado no se descubren nunca si hay que acordarse de desplegar un desplegable.
+
+**En un bloqueo se rotula «Quería decir (no se envió)».** Es la diferencia entre
+documentar que el validador funcionó y afirmar que el cliente vio un precio
+inventado. La prueba de navegador comprueba las dos mitades: que ese texto está
+en la traza **y** que no está en el hilo.
+
+**La cabecera dice cuántos turnos resolvió una regla propia.** Es la métrica de
+ADR-0011 escrita donde se mira: cada turno que resuelve una regla no cuesta
+créditos y no puede inventarse nada. Si esa proporción baja, al dueño le faltan
+reglas — y la pantalla enlaza a donde se escriben.
+
+### El endpoint devolvía un uuid donde hacía falta un nombre
+
+`traces` devolvía `ruleId` y nada más. «Contestó la regla
+`4f2a…-…-9c1b`» no responde a la pregunta de nadie. Ahora hace `LEFT JOIN` con
+`ai_rules` y devuelve el nombre —y `borrada` si la regla ya no está, que también
+es una respuesta—, además de la versión de instrucciones, la latencia y cuántas
+fuentes propias se citaron, que ya estaban guardadas y no salían.
+
+### Los ayudantes ignoran lo que no reconocen, a propósito
+
+`tools_called` y `validator` son `jsonb`: la traza es de auditoría y se guardó
+con la forma que tenía el agente **ese día**. Los lectores descartan lo que no
+entienden en vez de romper la página — una traza vieja mal formada no puede
+impedir leer las cinco que sí importan. Y una `resolution` desconocida se marca
+**para revisar**, no como normal: es un servidor más nuevo que esta pantalla, y
+dar por bueno lo que no se sabe leer es la peor de las respuestas posibles.
+
+### La prueba de aislamiento necesitaba una traza que robar
+
+Registrar el endpoint en la suite bloqueante habría comparado dos listas vacías,
+que es exactamente el error que ya se había cometido con `/ai/budget`: dos
+respuestas idénticas de cero no demuestran aislamiento, demuestran que nadie ha
+hablado con el bot. Ahora B tiene una traza sembrada con texto reconocible. La
+traza guarda **lo que el cliente escribió** y lo que el agente iba a contestar:
+filtrarse por aquí es filtrar la conversación entera por otra puerta, y da igual
+lo bien aislado que esté `/conversations`.
+
+Verde: **804 API · 471 dominio · 5 ui · 132 web · 41 POS · 119 print-agent · 81
+navegador**.
+
+### Y una lección de procedimiento: la suite de navegador iba contra un binario viejo
+
+Ejecutando la suite a mano —sin `make e2e-web`— se salta lo único que la hace
+significar algo: **compilar**. La API corría desde un `dist/` del 21 de agosto y
+la tienda desde un `.next` de la misma fecha, así que 37 pruebas fallaban por
+funciones que existen en el código y no en el binario, y las que pasaban lo
+hacían contra un producto de hace diez días. `make e2e-web` sí compila las dos;
+ejecutar `playwright test` suelto, no. Queda escrito porque el fallo no se
+parece a un fallo de procedimiento: se parece a una regresión, y se persigue
+como tal.

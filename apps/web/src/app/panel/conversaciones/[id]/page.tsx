@@ -1,7 +1,17 @@
 import Link from 'next/link';
-import { panel, type MensajeDelPanel } from '../../../../lib/panel-api';
+import {
+  panel,
+  type MensajeDelPanel,
+  type TrazaDeAgente,
+} from '../../../../lib/panel-api';
 import { cargar } from '../../../../lib/panel-guard';
 import { Compositor, BotonTomar, BotonResolver } from '../formularios';
+import {
+  leerResolucion,
+  herramientas,
+  veredicto,
+  resumirTrazas,
+} from '../trazas';
 
 /**
  * El hilo de una conversación (specs/ux/06).
@@ -47,6 +57,11 @@ export default async function HiloPage({
     cargar(ruta, yaSeIntento, () => panel.mensajes(id)),
     cargar(ruta, yaSeIntento, () => panel.perfil()),
   ]);
+
+  // Las trazas se degradan solas: leerlas exige `ai.read`, que quien atiende
+  // puede no tener, y no poder auditar al bot no impide responderle al cliente.
+  const trazas = await panel.trazas(id).catch(() => [] as TrazaDeAgente[]);
+  const cuentas = resumirTrazas(trazas);
 
   const resumen = conv.handoffSummary;
   const capturados = Object.entries(resumen?.captured ?? {});
@@ -126,6 +141,105 @@ export default async function HiloPage({
       <div style={{ marginTop: 16 }}>
         <BotonResolver conversationId={conv.id} />
       </div>
+
+      {trazas.length > 0 ? (
+        /* Plegado por defecto: quien abre el hilo viene a contestar, no a
+           auditar. Se abre solo cuando hay algo que mirar —una respuesta
+           bloqueada o el presupuesto agotado— porque justo eso no se descubre
+           si hay que acordarse de desplegarlo. */
+        <details className="trazas" open={cuentas.aRevisar > 0}>
+          <summary>
+            Por qué contestó el asistente ({cuentas.turnos}{' '}
+            {cuentas.turnos === 1 ? 'turno' : 'turnos'}
+            {cuentas.aRevisar > 0 ? ` · ${cuentas.aRevisar} a revisar` : ''})
+          </summary>
+
+          <p className="tarjeta__pie">
+            {cuentas.porRegla} de {cuentas.turnos} los resolvió una regla tuya
+            —sin modelo y sin coste—. En total gastó {cuentas.creditos}{' '}
+            {cuentas.creditos === 1 ? 'crédito' : 'créditos'}. Cuanto más suba
+            la primera cifra, menos puede inventarse el asistente.
+          </p>
+
+          {trazas.map((t, i) => {
+            const lectura = leerResolucion(t.resolution);
+            const usadas = herramientas(t.toolsCalled);
+            const validador = veredicto(t.validator);
+            return (
+              <article
+                key={`${t.at}-${i}`}
+                className={`ficha${lectura.tono === 'revision' ? ' ficha--revision' : ''}`}
+              >
+                <p>
+                  <span className="etiqueta">{lectura.rotulo}</span>{' '}
+                  <span className="tarjeta__pie">
+                    {new Date(t.at).toLocaleString('es-PE', {
+                      timeZone: 'America/Lima',
+                    })}
+                    {t.latencyMs !== null ? ` · ${t.latencyMs} ms` : ''}
+                  </span>
+                </p>
+                <p className="tarjeta__pie">{lectura.explicacion}</p>
+
+                <p className="tarjeta__rotulo">Le escribieron</p>
+                <p>{t.inbound}</p>
+
+                {t.outbound !== null ? (
+                  <>
+                    <p className="tarjeta__rotulo">
+                      {/* En un bloqueo lo guardado es lo que el modelo QUERÍA
+                          decir y no salió. Rotularlo «Contestó» sería mentir
+                          sobre lo que el cliente llegó a ver. */}
+                      {t.resolution === 'blocked'
+                        ? 'Quería decir (no se envió)'
+                        : 'Contestó'}
+                    </p>
+                    <p>{t.outbound}</p>
+                  </>
+                ) : null}
+
+                <ul className="trazas__detalle">
+                  {t.ruleId !== null ? (
+                    <li>
+                      Regla: <strong>{t.ruleName ?? 'borrada'}</strong>
+                    </li>
+                  ) : null}
+                  {usadas.length > 0 ? (
+                    <li>Consultó: {usadas.join(', ')}</li>
+                  ) : null}
+                  {t.sources > 0 ? (
+                    <li>
+                      Citó {t.sources}{' '}
+                      {t.sources === 1 ? 'fuente tuya' : 'fuentes tuyas'}
+                    </li>
+                  ) : null}
+                  {validador ? (
+                    <li>
+                      Validador:{' '}
+                      {validador.ok
+                        ? 'dejó pasar la respuesta'
+                        : `la frenó — ${validador.motivo ?? 'sin motivo escrito'}`}
+                    </li>
+                  ) : null}
+                  {t.promptVersion !== null ? (
+                    <li className="tarjeta__pie">
+                      Instrucciones {t.promptVersion}
+                    </li>
+                  ) : null}
+                </ul>
+              </article>
+            );
+          })}
+
+          <p className="tarjeta__pie">
+            Se guarda cada turno del asistente, incluidos los que no se
+            enviaron. Si algo de aquí no debería haber salido, la respuesta casi
+            siempre es una regla nueva en{' '}
+            <Link href="/panel/agente">el agente</Link>: una regla gana siempre
+            al modelo.
+          </p>
+        </details>
+      ) : null}
 
       <p style={{ marginTop: 24 }}>
         <Link href="/panel/conversaciones">← Volver a la bandeja</Link>
