@@ -116,6 +116,10 @@ export const PERMISSIONS = [
   'conversations.reply',
   // Repartir el trabajo entre agentes. Es de supervisión, no de atención.
   'conversations.assign',
+  // Escribir las respuestas rápidas del equipo. Se separa de `reply` porque no
+  // es contestar a un cliente: es fijar lo que TODO el equipo va a contestar a
+  // partir de mañana, y un atajo mal escrito se manda cuarenta veces al día.
+  'conversations.manage',
   // Agente de IA (F5)
   'ai.read',
   // Configurar el agente, sus reglas y sus fuentes. Es lo que decide QUÉ dice

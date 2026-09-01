@@ -82,6 +82,20 @@ export interface MessageView {
   createdAt: string;
 }
 
+/**
+ * Una respuesta rápida: el texto que se escribe cuarenta veces al día.
+ *
+ * `brandId` en `null` significa que vale para todas las marcas del tenant, que
+ * es lo correcto para «gracias, ya lo anoto» y lo incorrecto para una dirección
+ * de recojo — cada marca tiene la suya.
+ */
+export interface QuickReplyView {
+  id: string;
+  brandId: string | null;
+  shortcut: string;
+  body: string;
+}
+
 /** Lo que el bot entrega al humano. Sin esto no hay traspaso (RN-CNV-02). */
 export interface HandoffSummary {
   /** Qué venía buscando el cliente, en una frase. */
@@ -613,15 +627,97 @@ export class ConversationsService {
   async quickReplies(
     tenantId: string,
     brandId?: string,
-  ): Promise<Array<{ shortcut: string; body: string }>> {
+  ): Promise<QuickReplyView[]> {
     return withTenant(this.pool, tenantId, async ({ client }) => {
-      const { rows } = await client.query<{ shortcut: string; body: string }>(
-        `SELECT shortcut, body FROM cnv_quick_replies
+      const { rows } = await client.query<{
+        id: string;
+        brand_id: string | null;
+        shortcut: string;
+        body: string;
+      }>(
+        `SELECT id, brand_id, shortcut, body FROM cnv_quick_replies
           WHERE brand_id IS NULL OR brand_id = $1
           ORDER BY shortcut`,
         [brandId ?? null],
       );
-      return rows;
+      return rows.map((r) => ({
+        id: r.id,
+        brandId: r.brand_id,
+        shortcut: r.shortcut,
+        body: r.body,
+      }));
+    });
+  }
+
+  /**
+   * Crea una respuesta rápida.
+   *
+   * La tabla existía desde T5.19 y **nadie podía escribir en ella**: solo había
+   * lectura, así que la única forma de tener respuestas rápidas era un `INSERT`
+   * a mano. En una bandeja, escribir la misma dirección de recojo cuarenta
+   * veces al día no es una molestia estética: es el motivo por el que la gente
+   * contesta con prisa y se equivoca.
+   *
+   * El atajo es único **sin distinguir mayúsculas** y por marca: dos `/recojo`
+   * distintos en la misma marca convierten la ayuda en una lotería.
+   */
+  async createQuickReply(
+    tenantId: string,
+    input: { shortcut: string; body: string; brandId?: string | undefined },
+  ): Promise<QuickReplyView> {
+    // Se guarda en minúsculas: el atajo se teclea, y `/Recojo` y `/recojo`
+    // siendo dos plantillas distintas convierte la ayuda en una lotería.
+    const shortcut = input.shortcut.trim().toLowerCase();
+    const body = input.body.trim();
+    if (shortcut === '') {
+      throw new ValidationError('La respuesta rápida necesita un atajo.');
+    }
+    if (body === '') {
+      throw new ValidationError('La respuesta rápida necesita un texto.');
+    }
+
+    return withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rows } = await client.query<{ shortcut: string }>(
+        `SELECT shortcut FROM cnv_quick_replies
+          WHERE lower(shortcut) = lower($1)
+            AND coalesce(brand_id, '00000000-0000-0000-0000-000000000000'::uuid)
+              = coalesce($2::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        [shortcut, input.brandId ?? null],
+      );
+      const ya = rows[0];
+      if (ya) {
+        // Se nombra el atajo QUE YA EXISTE y no el que se acaba de escribir:
+        // quien teclea `/Horario` y choca con `/horario` necesita saber cuál
+        // buscar en la lista para cambiarlo.
+        throw new ValidationError(
+          `Ya hay una respuesta rápida con el atajo «/${ya.shortcut}».`,
+        );
+      }
+
+      const { rows: creadas } = await client.query<{ id: string }>(
+        `INSERT INTO cnv_quick_replies (tenant_id, brand_id, shortcut, body)
+         VALUES ($1,$2,$3,$4) RETURNING id`,
+        [tenantId, input.brandId ?? null, shortcut, body],
+      );
+      return {
+        id: creadas[0]!.id,
+        brandId: input.brandId ?? null,
+        shortcut,
+        body,
+      };
+    });
+  }
+
+  /** Borra una respuesta rápida. No hay histórico: es una plantilla, no un dato. */
+  async deleteQuickReply(tenantId: string, id: string): Promise<void> {
+    await withTenant(this.pool, tenantId, async ({ client }) => {
+      const { rowCount } = await client.query(
+        `DELETE FROM cnv_quick_replies WHERE id = $1`,
+        [id],
+      );
+      if (rowCount === 0) {
+        throw new NotFoundError('Respuesta rápida no encontrada.');
+      }
     });
   }
 

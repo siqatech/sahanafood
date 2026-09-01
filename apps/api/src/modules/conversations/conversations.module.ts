@@ -3,7 +3,10 @@ import { DatabaseModule } from '../../database/database.module.js';
 import { MessagingModule } from '../messaging/index.js';
 import { OrderingModule } from '../ordering/index.js';
 import { ConversationsService } from './app/conversations.service.js';
-import { ConversationsController } from './api/conversations.controller.js';
+import {
+  ConversationsController,
+  QuickRepliesController,
+} from './api/conversations.controller.js';
 
 /**
  * Bandeja omnicanal (spec 18, F5).
@@ -15,7 +18,7 @@ import { ConversationsController } from './api/conversations.controller.js';
  */
 @Module({
   imports: [DatabaseModule, MessagingModule, OrderingModule],
-  controllers: [ConversationsController],
+  controllers: [ConversationsController, QuickRepliesController],
   providers: [ConversationsService],
   exports: [ConversationsService],
 })

@@ -6,4 +6,5 @@ export {
   type ConversationView,
   type MessageView,
   type HandoffSummary,
+  type QuickReplyView,
 } from './app/conversations.service.js';

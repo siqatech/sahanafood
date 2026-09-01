@@ -3,6 +3,7 @@ import {
   panel,
   type MensajeDelPanel,
   type TrazaDeAgente,
+  type RespuestaRapida,
 } from '../../../../lib/panel-api';
 import { cargar } from '../../../../lib/panel-guard';
 import { Compositor, BotonTomar, BotonResolver } from '../formularios';
@@ -60,7 +61,10 @@ export default async function HiloPage({
 
   // Las trazas se degradan solas: leerlas exige `ai.read`, que quien atiende
   // puede no tener, y no poder auditar al bot no impide responderle al cliente.
-  const trazas = await panel.trazas(id).catch(() => [] as TrazaDeAgente[]);
+  const [trazas, respuestas] = await Promise.all([
+    panel.trazas(id).catch(() => [] as TrazaDeAgente[]),
+    panel.respuestasDeConversacion(id).catch(() => [] as RespuestaRapida[]),
+  ]);
   const cuentas = resumirTrazas(trazas);
 
   const resumen = conv.handoffSummary;
@@ -136,7 +140,14 @@ export default async function HiloPage({
         conversationId={conv.id}
         puedeTextoLibre={conv.window.canSendFreeform}
         etiquetaDeVentana={conv.window.label}
+        respuestas={respuestas}
       />
+      <p className="tarjeta__pie">
+        <Link href="/panel/conversaciones/respuestas">
+          Escribir respuestas rápidas
+        </Link>{' '}
+        para lo que se repite cada día.
+      </p>
 
       <div style={{ marginTop: 16 }}>
         <BotonResolver conversationId={conv.id} />

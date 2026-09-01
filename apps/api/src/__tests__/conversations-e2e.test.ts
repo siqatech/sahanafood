@@ -473,4 +473,87 @@ suite('Bandeja omnicanal', () => {
     expect(vista.body.messageCount).toBe(2);
     expect(vista.body.costTotal).toBe('0.0500');
   });
+
+  // ------------------------------------------------ Respuestas rápidas
+
+  it('UNA RESPUESTA RÁPIDA se crea, se usa y se borra desde la API', async () => {
+    // La tabla existía desde T5.19 con solo lectura: llenarla exigía un
+    // `INSERT` a mano, así que en la práctica estaba vacía y la bandeja
+    // obligaba a reescribir la dirección de recojo en cada conversación.
+    const creada = await auth(http().post('/api/v1/quick-replies'))
+      .send({
+        shortcut: 'recojo',
+        body: 'Puedes recogerlo en Av. Pardo 123.',
+      })
+      .expect(201);
+    expect(creada.body.shortcut).toBe('recojo');
+    expect(creada.body.brandId).toBeNull();
+
+    const lista = await auth(http().get('/api/v1/quick-replies')).expect(200);
+    expect(lista.body.map((r: { shortcut: string }) => r.shortcut)).toContain(
+      'recojo',
+    );
+
+    await auth(http().delete(`/api/v1/quick-replies/${creada.body.id}`)).expect(
+      200,
+    );
+    const tras = await auth(http().get('/api/v1/quick-replies')).expect(200);
+    expect(
+      tras.body.map((r: { shortcut: string }) => r.shortcut),
+    ).not.toContain('recojo');
+  });
+
+  it('UN ATAJO REPETIDO se rechaza: dos /recojo distintos son una lotería', async () => {
+    await auth(http().post('/api/v1/quick-replies'))
+      .send({ shortcut: 'horario', body: 'Abrimos de 11 a 23.' })
+      .expect(201);
+
+    // Y no distingue mayúsculas: `/Horario` y `/horario` los teclea la misma
+    // persona con la misma intención.
+    const repetida = await auth(http().post('/api/v1/quick-replies'))
+      .send({ shortcut: 'HORARIO', body: 'Otro horario.' })
+      .expect(422);
+    expect(repetida.body.detail).toContain('horario');
+  });
+
+  it('UN ATAJO CON ESPACIOS se rechaza con un motivo, no con un 500', async () => {
+    const r = await auth(http().post('/api/v1/quick-replies'))
+      .send({ shortcut: 'av pardo', body: 'Av. Pardo 123.' })
+      .expect(422);
+    expect(r.body.detail).toMatch(/espacios/i);
+  });
+
+  it('LA DE OTRA MARCA no sale en la conversación de esta (RN-CNV-05)', async () => {
+    // Es el error que estas plantillas existen para evitar: mandarle a un
+    // cliente la dirección del local de la otra marca del mismo dueño.
+    const [marcaA, marcaB] = org.brandIds;
+    await auth(http().post('/api/v1/quick-replies'))
+      .send({
+        shortcut: 'direccion-a',
+        body: 'Local de la primera marca.',
+        brandId: marcaA,
+      })
+      .expect(201);
+    await auth(http().post('/api/v1/quick-replies'))
+      .send({
+        shortcut: 'direccion-b',
+        body: 'Local de la segunda marca.',
+        brandId: marcaB,
+      })
+      .expect(201);
+
+    const { conversationId } = await conversations.receiveInbound(tenantA, {
+      brandId: marcaA!,
+      channel: 'whatsapp',
+      phone: '+51987004444',
+      text: '¿Dónde recojo?',
+    });
+
+    const r = await auth(
+      http().get(`/api/v1/conversations/${conversationId}/quick-replies`),
+    ).expect(200);
+    const atajos = r.body.map((x: { shortcut: string }) => x.shortcut);
+    expect(atajos).toContain('direccion-a');
+    expect(atajos).not.toContain('direccion-b');
+  });
 });

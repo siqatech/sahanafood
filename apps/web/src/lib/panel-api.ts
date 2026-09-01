@@ -925,6 +925,19 @@ export interface MensajeDelPanel {
 }
 
 /**
+ * Una respuesta rápida del equipo.
+ *
+ * `brandId` en `null` vale para todas las marcas del tenant: correcto para
+ * «gracias, ya lo anoto», incorrecto para una dirección de recojo.
+ */
+export interface RespuestaRapida {
+  id: string;
+  brandId: string | null;
+  shortcut: string;
+  body: string;
+}
+
+/**
  * Un turno del asistente, tal como quedó registrado (RN-AIA-05).
  *
  * `toolsCalled` y `validator` van como `unknown` porque en la base son `jsonb`
@@ -2003,6 +2016,34 @@ export const panel = {
 
   resolverConversacion: (id: string): Promise<unknown> =>
     llamar(`/conversations/${id}/resolve`, { method: 'POST' }),
+
+  /**
+   * Las respuestas rápidas que valen en esta conversación.
+   *
+   * Se piden por conversación y no en bloque: la API filtra por la marca de
+   * ese hilo, y la dirección de recojo de una marca ofrecida en la bandeja de
+   * otra es exactamente el error que estas plantillas existen para evitar.
+   */
+  respuestasDeConversacion: (id: string): Promise<RespuestaRapida[]> =>
+    llamar<RespuestaRapida[]>(`/conversations/${id}/quick-replies`),
+
+  respuestasRapidas: (brandId?: string): Promise<RespuestaRapida[]> =>
+    llamar<RespuestaRapida[]>(
+      `/quick-replies${brandId ? `?brandId=${brandId}` : ''}`,
+    ),
+
+  crearRespuestaRapida: (input: {
+    shortcut: string;
+    body: string;
+    brandId?: string;
+  }): Promise<RespuestaRapida> =>
+    llamar<RespuestaRapida>('/quick-replies', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  borrarRespuestaRapida: (id: string): Promise<unknown> =>
+    llamar(`/quick-replies/${id}`, { method: 'DELETE' }),
 
   /**
    * Por qué el asistente contestó lo que contestó (RN-AIA-05).

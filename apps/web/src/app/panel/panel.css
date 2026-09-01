@@ -1573,3 +1573,29 @@ input[type='color'] {
   font-size: 0.9rem;
   color: var(--panel-texto-suave, #57534e);
 }
+
+/* --- Respuestas rápidas en el compositor -------------------------------- */
+
+.atajos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+
+.atajos .tarjeta__rotulo {
+  margin: 0 0.3rem 0 0;
+}
+
+.atajos__chip {
+  /* Botón, no enlace: pega texto en el campo, no navega. Se ve pulsable y se
+     distingue del de enviar, que es el que sí manda algo al cliente. */
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-borde);
+  background: transparent;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+}

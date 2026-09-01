@@ -1,6 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useRef } from 'react';
+import type { RespuestaRapida } from '../../../lib/panel-api';
+import { insertar } from './atajos';
 import {
   responder,
   tomar,
@@ -28,15 +30,33 @@ export function Compositor({
   conversationId,
   puedeTextoLibre,
   etiquetaDeVentana,
+  respuestas,
 }: {
   conversationId: string;
   puedeTextoLibre: boolean;
   etiquetaDeVentana: string;
+  respuestas: readonly RespuestaRapida[];
 }) {
   const [estado, accion, pendiente] = useActionState<EstadoBandeja, FormData>(
     responder,
     {},
   );
+  const caja = useRef<HTMLTextAreaElement>(null);
+
+  /**
+   * Pulsar una respuesta rápida la AÑADE al final de lo escrito.
+   *
+   * Se escribe sobre el campo con una referencia en vez de volverlo
+   * controlado: el compositor lo vacía React al terminar la acción, y meterle
+   * estado propio duplicaría esa lógica para ganar nada.
+   */
+  function pegar(cuerpo: string): void {
+    const campo = caja.current;
+    if (!campo) return;
+    campo.value = insertar(campo.value, cuerpo);
+    campo.focus();
+    campo.setSelectionRange(campo.value.length, campo.value.length);
+  }
 
   return (
     <form action={accion} className="compositor">
@@ -55,11 +75,32 @@ export function Compositor({
       <textarea
         id="texto"
         name="text"
+        ref={caja}
         rows={3}
         placeholder={
           puedeTextoLibre ? 'Escribe al cliente…' : 'Nota interna del turno…'
         }
       />
+
+      {respuestas.length > 0 ? (
+        <p className="atajos">
+          <span className="tarjeta__rotulo">Respuestas rápidas</span>
+          {respuestas.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className="atajos__chip"
+              onClick={() => pegar(r.body)}
+              // El texto entero en el título: pegar a ciegas una plantilla que
+              // no se recuerda es cómo se le manda a un cliente la política de
+              // devolución cuando preguntaba por el horario.
+              title={r.body}
+            >
+              /{r.shortcut}
+            </button>
+          ))}
+        </p>
+      ) : null}
 
       <p className="campo">
         <label>

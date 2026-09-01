@@ -1007,7 +1007,11 @@ test.describe('Panel de gestión en navegador', () => {
     await page.getByLabel(/nota interna/i).check();
     await page.getByRole('button', { name: 'Enviar' }).click();
 
-    await expect(page.getByText(/no sale al cliente/i).first()).toBeVisible();
+    // Se espera por «Nota guardada», que SOLO aparece cuando la acción de
+    // servidor terminó. `/no sale al cliente/` no valía: es también el rótulo
+    // de la casilla, que ya estaba en la página antes de pulsar nada, así que
+    // la espera se cumplía sola y el `reload()` cortaba el envío a mitad.
+    await expect(page.getByText(/Nota guardada/i)).toBeVisible();
     await page.reload();
     // `.first()` porque la prueba DEJA la nota puesta: en una segunda pasada
     // sobre la misma semilla hay dos y el modo estricto de Playwright falla —
@@ -1062,6 +1066,69 @@ test.describe('Panel de gestión en navegador', () => {
     // apareciera ahí, no habría sido bloqueado — se lo habría llevado el
     // cliente, y la traza estaría documentando una fuga en vez de evitarla.
     await expect(page.locator('.hilo')).not.toContainText('cada uno a S/ 25');
+  });
+
+  test('UNA RESPUESTA RÁPIDA se escribe una vez y se pega con un clic', async ({
+    page,
+  }) => {
+    // `cnv_quick_replies` existía desde T5.19 con SOLO lectura: llenarla
+    // exigía un INSERT a mano, así que estaba vacía y la bandeja obligaba a
+    // reescribir la dirección de recojo en cada conversación. Eso es cómo se
+    // manda el horario del local equivocado a las nueve de la noche.
+    await entrar(page);
+    await page.goto('/panel/conversaciones/respuestas');
+
+    const atajo = `devolucion-${Date.now()}`;
+    await page.getByLabel('Atajo').fill(`/${atajo}`);
+    await page
+      .getByLabel('Qué se manda')
+      .fill('Se cambia el mismo día con la boleta.');
+    await page.getByRole('button', { name: 'Guardar respuesta' }).click();
+    await expect(
+      page.getByText(new RegExp(`/${atajo} en la bandeja`)),
+    ).toBeVisible();
+
+    // Repetirlo se para ANTES de crear el duplicado, y nombra el que ya está.
+    await page.reload();
+    await page.getByLabel('Atajo').fill(atajo.toUpperCase());
+    await page.getByLabel('Qué se manda').fill('Otra política distinta.');
+    await page.getByRole('button', { name: 'Guardar respuesta' }).click();
+    await expect(
+      page.getByText(new RegExp(`Ya hay una.*/${atajo}`)),
+    ).toBeVisible();
+
+    // Y en la bandeja se pega en el campo sin perder lo ya escrito.
+    await page.goto('/panel/conversaciones');
+    await page.locator('article.ficha').first().getByRole('link').click();
+
+    const caja = page.getByLabel('Mensaje');
+    await caja.fill('Hola Ana,');
+    await page.getByRole('button', { name: `/${atajo}` }).click();
+    await expect(caja).toHaveValue(
+      'Hola Ana,\nSe cambia el mismo día con la boleta.',
+    );
+  });
+
+  test('UN ATAJO ESCRITO A MANO se expande al enviar, no solo con el ratón', async ({
+    page,
+  }) => {
+    // Quien atiende rápido teclea `/recojo` sin soltar el teclado. Si la
+    // expansión solo ocurriera al pulsar el chip, al cliente le llegaría una
+    // barra y una palabra suelta — peor que no tener plantillas.
+    await entrar(page);
+    await page.goto('/panel/conversaciones');
+    await page.locator('article.ficha').first().getByRole('link').click();
+
+    await page.getByLabel('Mensaje').fill('Claro: /recojo');
+    await page.getByRole('button', { name: 'Enviar' }).click();
+
+    await expect(page.getByText(/Enviado\./)).toBeVisible();
+    await page.reload();
+    await expect(page.locator('.hilo')).toContainText(
+      'Claro: Puedes recogerlo en Av. Pardo 123, Miraflores.',
+    );
+    // Y la barra no llegó al cliente.
+    await expect(page.locator('.hilo')).not.toContainText('Claro: /recojo');
   });
 
   test('LOS CHIPS filtran de verdad, y el CSV exporta LO FILTRADO', async ({

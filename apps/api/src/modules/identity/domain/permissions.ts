@@ -96,6 +96,10 @@ export const SYSTEM_ROLES: readonly SystemRole[] = [
       'conversations.read',
       'conversations.reply',
       'conversations.assign',
+      // Escribe las respuestas rápidas del turno. Es quien oye lo que se
+      // pregunta cuarenta veces al día; esperar a que las escriba el dueño es
+      // cómo se acaba sin ninguna.
+      'conversations.manage',
       // Ve cómo responde el agente y por qué; configurarlo queda arriba,
       // porque decide qué dice el negocio por escrito.
       'ai.read',

@@ -97,6 +97,7 @@ suite('Aislamiento — todos los endpoints', () => {
   let seguimientoDeB = '';
   /** Conversación de B: lo que sus clientes le escriben es lo más privado que tiene. */
   let conversacionDeB = '';
+  let respuestaDeB = '';
   /** Fuente de conocimiento de B: su know-how, indexado para el agente. */
   let fuenteDeB = '';
 
@@ -431,6 +432,16 @@ suite('Aislamiento — todos los endpoints', () => {
       'Reclamo SECRETO de un cliente de B',
       'Cliente que escribe a B',
     );
+
+    // Respuesta rápida de B: lleva la dirección de SU local. Que se filtre no
+    // es solo ver algo ajeno — es que el equipo de A le mande a un cliente la
+    // dirección del competidor creyendo que es la suya.
+    const respuesta = await conversationsB.createQuickReply(b.tenantId, {
+      shortcut: 'recojo-secreto-b',
+      body: 'Recoge en la CALLE SECRETA de B 742.',
+    });
+    respuestaDeB = respuesta.id;
+    secretsOfB.push(respuestaDeB, 'recojo-secreto-b', 'CALLE SECRETA de B 742');
 
     // Fuente de conocimiento de B. El RAG busca por SIMILITUD, no por id: si el
     // filtro por tenant fallara, el material de B saldría ordenado por parecido
@@ -1542,6 +1553,37 @@ suite('Aislamiento — todos los endpoints', () => {
             .post(`/api/v1/conversations/${conversacionDeB}/messages`)
             .send({ kind: 'text', text: 'Mensaje intruso' }),
         { expectedStatusForA: [404, 422] },
+      ),
+    );
+  });
+
+  it('GET /quick-replies no trae las plantillas de B', async () => {
+    // Las respuestas rápidas llevan direcciones de local, horarios y políticas
+    // de devolución: el guion con el que un negocio habla con sus clientes.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /quick-replies', (r) => r.get('/api/v1/quick-replies')),
+    );
+  });
+
+  it('DELETE /quick-replies/:id de la plantilla de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'DELETE /quick-replies/:id',
+        (r) => r.delete(`/api/v1/quick-replies/${respuestaDeB}`),
+        { expectedStatusForA: [404] },
+      ),
+    );
+  });
+
+  it('GET /conversations/:id/quick-replies del hilo de B', async () => {
+    await assertEndpointIsolation(
+      app,
+      caseFor(
+        'GET /conversations/:id/quick-replies',
+        (r) => r.get(`/api/v1/conversations/${conversacionDeB}/quick-replies`),
+        { expectedStatusForA: [200, 404] },
       ),
     );
   });

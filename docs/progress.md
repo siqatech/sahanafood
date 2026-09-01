@@ -2836,3 +2836,60 @@ hacían contra un producto de hace diez días. `make e2e-web` sí compila las do
 ejecutar `playwright test` suelto, no. Queda escrito porque el fallo no se
 parece a un fallo de procedimiento: se parece a una regresión, y se persigue
 como tal.
+
+## La tabla de respuestas rápidas solo se podía llenar por SQL
+
+`cnv_quick_replies` existe desde T5.19 y la bandeja ya sabía leerla. Lo que no
+existía era **escribir**: ni endpoint de creación ni pantalla, así que la única
+forma de tener una respuesta rápida era un `INSERT` a mano contra la base. En la
+práctica: cero, en todos los tenants.
+
+La consecuencia no es estética. En una bandeja de WhatsApp la dirección de
+recojo, el horario y la política de cambios se escriben cuarenta veces al día, y
+reescribirlas es exactamente cómo se manda el horario del local equivocado a las
+nueve de la noche con doce conversaciones abiertas.
+
+Ahora hay `/panel/conversaciones/respuestas` para escribirlas, chips en el
+compositor para pegarlas con un clic —**añadiendo**, no sustituyendo lo que ya
+se había tecleado— y expansión de `/atajo` **en el servidor al enviar**. Lo
+segundo sin lo tercero sería medio producto: quien atiende rápido teclea el
+atajo sin soltar el teclado, y una expansión que solo ocurre con el ratón le
+manda al cliente una barra y una palabra suelta.
+
+**Lo que no reconoce se queda como está.** Un `/recojoo` mal escrito NO se traga
+en silencio: se ve antes de darle a enviar. Mandar el mensaje sin el dato es
+peor que mandarlo con la barra de más.
+
+**El atajo se guarda en minúsculas y es único sin distinguir mayúsculas.** Dos
+`/recojo` distintos en la misma marca convierten la ayuda en una lotería, y el
+error nombra **el atajo que ya existe** —no el que se acaba de teclear— porque
+es el que hay que buscar en la lista para cambiarlo.
+
+**Sin marca vale para todas.** Correcto en un «gracias, ya lo anoto» e
+incorrecto en una dirección de recojo, así que la marca se elige en el
+formulario y la lista escribe «Todas» en vez de dejar la celda vacía. La prueba
+que más importa de este módulo es la que comprueba que la plantilla de una marca
+**no** aparece en la conversación de la otra: mandarle a un cliente la dirección
+del otro local del mismo dueño es el error que estas plantillas existen para
+evitar.
+
+Permiso nuevo `conversations.manage`, separado de `reply`: contestar a un
+cliente y fijar lo que **todo** el equipo va a contestar a partir de mañana no
+son la misma decisión. Lo lleva el supervisor —es quien oye lo que se pregunta
+cuarenta veces al día— además de propietario y administrador.
+
+### Una carrera que llevaba ahí desde el principio
+
+Añadir la llamada de expansión hizo fallar la prueba de la nota interna. No era
+la llamada: la prueba esperaba por `/no sale al cliente/`, que **es también el
+rótulo de la casilla** y ya estaba en la página antes de pulsar nada. La espera
+se cumplía sola y el `reload()` cortaba el envío a mitad; solo hacía falta que
+la acción tardase un poco más para que se viera. Ahora espera por «Nota
+guardada», que únicamente aparece cuando la acción terminó.
+
+De paso, las plantillas solo se piden **si el mensaje lleva una barra**: cobrarle
+una llamada de red a cada mensaje escrito a mano retrasa justo lo que tiene que
+ser instantáneo.
+
+Verde: **811 API · 471 dominio · 5 ui · 145 web · 41 POS · 119 print-agent · 83
+navegador**.

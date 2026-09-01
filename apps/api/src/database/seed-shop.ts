@@ -154,6 +154,14 @@ async function main(): Promise<void> {
     text: '¿A qué hora abren hoy?',
   });
 
+  // Una respuesta rápida ya escrita, para que la bandeja demuestre lo que
+  // hace. Solo UNA: la pantalla tiene que enseñar también cómo se añade la
+  // siguiente, y una lista llena esconde justo ese paso.
+  await conversaciones.createQuickReply(tenant.tenantId, {
+    shortcut: 'recojo',
+    body: 'Puedes recogerlo en Av. Pardo 123, Miraflores. Abrimos de 11 a 23.',
+  });
+
   // Las trazas de esa conversación (RN-AIA-05). Se siembran a mano porque la
   // demo no llama a ningún modelo, y sin ellas la pantalla que explica POR QUÉ
   // contestó el asistente se ve vacía justo en la conversación que el bot
