@@ -717,33 +717,58 @@ test.describe('Panel de gestión en navegador', () => {
     );
   });
 
-  test('UNA MARCA SIN COCINA no puede vender, y el panel deja arreglarlo', async ({
+  test('UNA COCINA SIN ESTACIONES no enseña nada en el KDS, y se dice', async ({
     page,
   }) => {
     // Desde el panel se podía crear una marca y un local, pero no una cocina,
-    // ni unirla a la marca, ni crear estaciones. RN-ORG-01 dice que una marca
+    // ni una estación, ni el enlace marca↔cocina. RN-ORG-01 dice que una marca
     // sin cocina asignada NO recibe pedidos: el panel dejaba montar un negocio
     // que estructuralmente no podía vender, y no lo decía en ninguna parte.
+    //
+    // Aquí se comprueba la mitad que se puede observar sin depender del orden
+    // de las demás pruebas: la cocina y sus estaciones. Que el enlace
+    // marca↔cocina llegue al dominio lo comprueba la prueba de API
+    // «LA ESTRUCTURA DICE dónde se produce cada marca», que es donde se puede
+    // afirmar de verdad —consultando `kitchensForBrand`— y no por el color de
+    // una celda.
     await entrar(page);
     await page.goto('/panel/negocio');
 
-    // Una marca nueva nace sin cocina, y la tabla lo dice con todas las letras.
-    await page.getByLabel('Nombre comercial').fill('Marca sin cocina');
-    await page.getByRole('button', { name: 'Crear marca' }).click();
-    await page.reload();
+    // Lo que la pantalla ya sabía decir: dónde se produce cada marca.
+    await expect(page.getByText('Se produce en')).toBeVisible();
 
-    const fila = page
+    // Nombre único: crear cocina es un upsert por nombre, y con uno fijo una
+    // segunda pasada encontraría la cocina ya hecha y con estaciones.
+    const cocina = `Cocina ${Date.now()}`;
+    const local = page
       .locator('tbody tr')
-      .filter({ hasText: 'Marca sin cocina' })
+      .filter({ hasText: 'Local Miraflores' })
       .first();
-    await expect(fila).toContainText('no puede recibir pedidos');
-
-    // Y se arregla desde aquí: se le da una cocina.
-    await fila.getByRole('button', { name: 'Producir aquí' }).click();
-    await page.reload();
+    // Por etiqueta y no por posición: la fila del local ya tiene el campo de
+    // estación de las cocinas que existen, y `.first()` escribía ahí.
+    await local.getByLabel(/Nombre de la cocina nueva/).fill(cocina);
+    await local.getByRole('button', { name: 'Añadir cocina' }).click();
+    // Se espera al RESULTADO de la acción antes de recargar. Recargar sin
+    // esperar cancela la acción a medias: la cocina no llega a crearse y el
+    // fallo parece de la pantalla.
     await expect(
-      page.locator('tbody tr').filter({ hasText: 'Marca sin cocina' }).first(),
-    ).not.toContainText('no puede recibir pedidos');
+      page.getByText(/creada\. Ponle al menos una estación/),
+    ).toBeVisible();
+    await page.reload();
+
+    // Nace sin estaciones, y eso no falla en ninguna parte: la cocina recibe
+    // pedidos y el KDS no enseña nada. Se dice donde se ve.
+    const suya = page.locator('li').filter({ hasText: cocina }).first();
+    await expect(suya).toContainText('sin estaciones');
+
+    await suya.getByLabel(/Nombre de la estación nueva/).fill('Plancha');
+    await suya.getByRole('button', { name: 'Añadir estación' }).click();
+    await expect(page.getByText(/Estación "Plancha" creada/)).toBeVisible();
+    await page.reload();
+
+    const trasEstacion = page.locator('li').filter({ hasText: cocina }).first();
+    await expect(trasEstacion).toContainText('Plancha');
+    await expect(trasEstacion).not.toContainText('sin estaciones');
   });
 
   test('LA PORTADA dice qué hay que arreglar, no solo cuánto se vendió', async ({
@@ -1724,24 +1749,32 @@ test.describe('Panel de gestión en navegador', () => {
       page.getByRole('heading', { name: 'Cocina', exact: true }),
     ).toBeVisible();
 
-    const max = page.getByLabel('Platos a la vez antes de alargar la promesa');
-    const pausa = page.getByLabel('Platos a la vez antes de CERRAR canales');
+    // Acotado a UNA cocina: la página pinta una sección por cocina, y el
+    // negocio de la semilla puede tener más de una. Buscar la etiqueta en toda
+    // la página daba por hecho que solo hay una — que es falso en cuanto
+    // alguien abre la segunda, que es justo para lo que sirve el producto.
+    const suya = page
+      .locator('section')
+      .filter({ hasText: 'Cocina Central' })
+      .first();
+    const max = suya.getByLabel('Platos a la vez antes de alargar la promesa');
+    const pausa = suya.getByLabel('Platos a la vez antes de CERRAR canales');
 
     // Sin orden no se guarda: un umbral que cierra canales sin decir CUÁLES
     // deja que el sistema elija por su cuenta de qué canal deja de entrar
     // dinero.
-    await page.getByLabel('Orden en que se cierran').fill('');
+    await suya.getByLabel('Orden en que se cierran').fill('');
     await max.fill('40');
     await pausa.fill('60');
-    await page.getByRole('button', { name: 'Guardar umbrales' }).click();
+    await suya.getByRole('button', { name: 'Guardar umbrales' }).click();
     await expect(page.getByText(/di en qué orden/i)).toBeVisible();
 
     // Al revés tampoco: cerrar canales antes de haber alargado la promesa
     // apaga ventas sin haber probado lo que no cuesta nada.
-    await page.getByLabel('Orden en que se cierran').fill('rappi, web');
+    await suya.getByLabel('Orden en que se cierran').fill('rappi, web');
     await max.fill('40');
     await pausa.fill('20');
-    await page.getByRole('button', { name: 'Guardar umbrales' }).click();
+    await suya.getByRole('button', { name: 'Guardar umbrales' }).click();
     await expect(page.getByText(/tiene que ser MAYOR/)).toBeVisible();
 
     await pausa.fill('60');
@@ -1755,16 +1788,20 @@ test.describe('Panel de gestión en navegador', () => {
           r.request().method() === 'POST' &&
           r.request().isNavigationRequest() === false,
       ),
-      page.getByRole('button', { name: 'Guardar umbrales' }).click(),
+      suya.getByRole('button', { name: 'Guardar umbrales' }).click(),
     ]);
 
     // Se comprueba el EFECTO: el valor guardado es el que se escribió.
     await page.reload();
+    const releida = page
+      .locator('section')
+      .filter({ hasText: 'Cocina Central' })
+      .first();
     await expect(
-      page.getByLabel('Platos a la vez antes de alargar la promesa'),
+      releida.getByLabel('Platos a la vez antes de alargar la promesa'),
     ).toHaveValue('40');
     await expect(
-      page.getByLabel('Platos a la vez antes de CERRAR canales'),
+      releida.getByLabel('Platos a la vez antes de CERRAR canales'),
     ).toHaveValue('60');
   });
 

@@ -1,6 +1,15 @@
 import { panel, type PasarelaDelPanel } from '../../../lib/panel-api';
 import { cargar } from '../../../lib/panel-guard';
-import { FormularioPasarela } from './formularios';
+import {
+  FormularioPasarela,
+  FormularioTarifa,
+  FormularioLiquidacion,
+} from './formularios';
+import { Vacio } from '../vacio';
+import { solesDeTexto } from '../caja/dinero';
+
+/** Los canales por los que entra dinero y que, por tanto, tienen comisión. */
+const CANALES = ['web', 'pos', 'rappi'];
 
 /**
  * Cobros en línea: la pasarela del negocio.
@@ -40,6 +49,19 @@ export default async function PagosPage({
   );
   const dominios = await panel.dominios().catch(() => []);
   const base = dominios[0]?.host ?? 'tu-dominio.pe';
+
+  // Se degradan solos: quien entra a conectar una pasarela tiene que poder
+  // hacerlo aunque la conciliación no cargue.
+  const [tarifas, liquidaciones] = await Promise.all([
+    panel.tarifas().catch(() => []),
+    panel.liquidaciones().catch(() => []),
+  ]);
+  // Las pasarelas conectadas son las que pueden mandar un corte. Si no hay
+  // ninguna, se ofrece la de referencia para no dejar el desplegable vacío.
+  const proveedores =
+    pasarelas.length > 0
+      ? [...new Set(pasarelas.map((p: PasarelaDelPanel) => p.provider))]
+      : ['culqi'];
 
   return (
     <>
@@ -86,6 +108,127 @@ export default async function PagosPage({
           </table>
         </div>
       )}
+
+      <h2>Comisiones pactadas</h2>
+      <p className="panel__subtitulo">
+        Lo que cobra la pasarela por canal. No es papeleo: sin esto la
+        conciliación sabe si el bruto cuadra, pero no si te cobraron de más.
+      </p>
+      {tarifas.length === 0 ? (
+        <p className="panel__error">
+          Ninguna. Con las liquidaciones se podrá comprobar que el dinero llegó,
+          pero no que la comisión sea la acordada.
+        </p>
+      ) : (
+        <div className="tabla-envoltorio">
+          <table>
+            <thead>
+              <tr>
+                <th>Canal</th>
+                <th>Pasarela</th>
+                <th className="dinero">Comisión</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tarifas.map((t) => (
+                <tr key={t.id}>
+                  <td>{t.channel}</td>
+                  <td>{t.provider ?? 'cualquiera'}</td>
+                  {/* Puntos básicos enteros a porcentaje: 350 → 3.5 %. */}
+                  <td className="dinero">
+                    {(t.percentBps / 100).toFixed(2)} %
+                    {Number(t.fixedAmount) > 0
+                      ? ` + S/ ${solesDeTexto(t.fixedAmount)}`
+                      : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <FormularioTarifa canales={CANALES} />
+
+      <h2>Liquidaciones de la pasarela</h2>
+      <p className="panel__subtitulo">
+        La pasarela deposita por cortes y manda el detalle. Conciliarlo contra
+        los cobros del sistema es lo único que responde a la pregunta que nadie
+        contesta solo: <strong>¿me pagaron lo que dicen?</strong>
+      </p>
+
+      {liquidaciones.length === 0 ? (
+        <Vacio titulo="Ningún corte conciliado todavía">
+          <p>
+            Sube el detalle del último depósito de tu pasarela y se comprobará
+            cobro a cobro.
+          </p>
+        </Vacio>
+      ) : (
+        <div className="tabla-envoltorio">
+          <table>
+            <thead>
+              <tr>
+                <th>Corte</th>
+                <th>Periodo</th>
+                <th className="dinero">Neto</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {liquidaciones.map((l) => (
+                <tr
+                  key={l.id}
+                  className={
+                    l.unmatchedLines > 0 ? 'ficha--revision' : undefined
+                  }
+                >
+                  <td>
+                    <strong>{l.externalRef}</strong>
+                    <br />
+                    <span className="tarjeta__pie">{l.provider}</span>
+                  </td>
+                  <td className="tarjeta__pie">
+                    {l.periodStart} — {l.periodEnd}
+                  </td>
+                  <td className="dinero">S/ {solesDeTexto(l.netAmount)}</td>
+                  <td>
+                    {l.reconciledAt === null ? (
+                      <span className="etiqueta">sin conciliar</span>
+                    ) : (
+                      <>
+                        {/* El hallazgo serio va primero y en rojo: la pasarela
+                            cobró algo que aquí no consta significa dinero
+                            movido sin pedido detrás. */}
+                        {l.unmatchedLines > 0 ? (
+                          <p className="panel__error">
+                            {l.unmatchedLines} cobro
+                            {l.unmatchedLines === 1 ? '' : 's'} suyo
+                            {l.unmatchedLines === 1 ? '' : 's'} que aquí no
+                            consta{l.unmatchedLines === 1 ? '' : 'n'}
+                          </p>
+                        ) : null}
+                        {l.missingLines > 0 ? (
+                          <p className="tarjeta__pie">
+                            {l.missingLines} cobro
+                            {l.missingLines === 1 ? '' : 's'} nuestro
+                            {l.missingLines === 1 ? '' : 's'} sin depositar
+                          </p>
+                        ) : null}
+                        {l.unmatchedLines === 0 && l.missingLines === 0 ? (
+                          <span className="etiqueta etiqueta--unido">
+                            {l.matchedLines} cuadran
+                          </span>
+                        ) : null}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <FormularioLiquidacion proveedores={proveedores} />
 
       <h2>Conectar una pasarela</h2>
       <FormularioPasarela dominio={base} />

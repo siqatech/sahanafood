@@ -1281,6 +1281,28 @@ suite('Aislamiento — todos los endpoints', () => {
     );
   });
 
+  it('GET /payments/settlements', async () => {
+    // Una liquidación lleva las referencias de cobro y los importes de B: es
+    // su facturación por pasarela, cobro a cobro.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /payments/settlements', (r) =>
+        r.get('/api/v1/payments/settlements'),
+      ),
+    );
+  });
+
+  it('GET /payments/tariffs', async () => {
+    // La comisión pactada por B con su pasarela es una condición comercial
+    // suya: saberla es saber su margen.
+    await assertEndpointIsolation(
+      app,
+      caseFor('GET /payments/tariffs', (r) =>
+        r.get('/api/v1/payments/tariffs'),
+      ),
+    );
+  });
+
   it('POST /payments/settlements/:id/reconcile de la liquidación de B', async () => {
     // La conciliación de B dice cuánto le cobra su pasarela: es su estructura
     // de costes, y con ella se sabe con qué margen puede competir.

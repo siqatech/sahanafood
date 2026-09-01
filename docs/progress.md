@@ -2706,3 +2706,58 @@ justo lo que CLAUDE.md prohíbe.
 
 Verde: **801 API · 471 dominio · 5 ui · 110 web · 41 POS · 119 print-agent · 80
 navegador**.
+
+## Nadie comprobaba si la pasarela pagó lo que dice
+
+La conciliación de liquidaciones estaba implementada: tarifas por canal en
+puntos básicos enteros, comisión estimada frente a la liquidada, y un informe
+que distingue tres hallazgos que significan cosas distintas —**la pasarela cobró
+algo que aquí no consta**, un cobro nuestro que la liquidación no menciona, y
+una comisión que se aparta de la pactada—. Con sus pruebas. Y sin pantalla, ni
+forma de listar las liquidaciones ni las tarifas.
+
+El primero de los tres es dinero movido sin pedido detrás. El segundo, dinero
+cobrado al cliente que quizá nunca se depositó. Los dos se descubrían solo si a
+alguien se le ocurría llamar a la API a mano, cosa que nadie hace.
+
+**Se importa y se concilia en el mismo gesto.** Importar sin conciliar deja el
+archivo guardado y la pregunta sin responder, y la pregunta —«¿me pagaron lo que
+dicen?»— es la única razón por la que alguien sube esto. Reimportar el mismo
+corte no lo duplica y **vuelve a conciliar**, que es justo lo que se hace cuando
+aparece el cobro que faltaba.
+
+**El lector del archivo no toca coma flotante en ningún punto.** Acepta coma
+decimal y punto de millar —lo que escribe un Excel en español— y suma con
+enteros: `32.50 + 0.10` en coma flotante da `32.599999999999994`, y aquí eso
+sería una varianza inventada contra la pasarela, o una real que desaparece.
+Doce pruebas, y las que más importan son las que **rechazan** en vez de adivinar:
+`Number('S/ 32')` da `NaN` y `parseFloat` da `32`, y las dos formas de adivinar
+acaban conciliando contra una cifra que nadie escribió.
+
+Las columnas se casan **por nombre y no por posición**, porque cada pasarela
+ordena su archivo a su manera: leer el neto donde está el bruto no da error, da
+una conciliación falsa. Una referencia repetida se para antes de importar — el
+mismo cobro conciliado dos veces diría que la pasarela pagó de más cuando no.
+
+**Las tarifas se enseñan y se avisa si faltan**: sin ellas la conciliación sabe
+que el bruto cuadra, pero no si la comisión es la acordada.
+
+### El gate de aislamiento encontró un 500 antes que yo
+
+Al registrar los dos endpoints nuevos en la suite bloqueante, `GET
+/payments/tariffs` devolvió 500: la tabla se llama `pay_channel_tariffs` y yo
+había escrito `pay_tariffs`, engañado por el nombre de su índice
+(`idx_pay_tariffs_tenant`). El harness no busca fugas solamente: comprueba que el
+dueño reciba 200, y eso atrapó un error que una prueba de camino feliz habría
+tardado en enseñar.
+
+### Y una prueba que daba por hecho que solo hay una cocina
+
+La de umbrales de cocina buscaba `getByLabel(...)` en toda la página. Con una
+sola cocina funciona; con dos —que es para lo que sirve el producto— hay dos
+formularios iguales y Playwright se para. Se acotó a la sección de su cocina. No
+es una concesión a la prueba nueva: la anterior estaba afirmando algo que el
+producto no promete.
+
+Verde: **803 API · 471 dominio · 5 ui · 122 web · 41 POS · 119 print-agent · 80
+navegador**.

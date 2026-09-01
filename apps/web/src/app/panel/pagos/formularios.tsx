@@ -1,7 +1,15 @@
 'use client';
 
+import { COLUMNAS } from './liquidacion';
+
 import { useActionState } from 'react';
-import { conectarPasarela, type EstadoPasarela } from './acciones';
+import {
+  conectarPasarela,
+  ponerTarifa,
+  importarLiquidacion,
+  type EstadoPasarela,
+  type EstadoPagos,
+} from './acciones';
 
 /**
  * Conectar la pasarela.
@@ -102,4 +110,150 @@ export function FormularioPasarela({ dominio }: { dominio: string }) {
       ) : null}
     </form>
   );
+}
+
+/**
+ * La comisión pactada con la pasarela, por canal (ADR-0013).
+ *
+ * Se escribe en porcentaje —«3.5»— porque es como se pacta y como viene en el
+ * contrato; se guarda en puntos básicos enteros, que es como se multiplica sin
+ * coma flotante. Sin esto, la conciliación sabe si el bruto cuadra pero no si
+ * la comisión es la acordada.
+ */
+export function FormularioTarifa({ canales }: { canales: string[] }) {
+  const [estado, accion, pendiente] = useActionState<EstadoPagos, FormData>(
+    ponerTarifa,
+    {},
+  );
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <select name="channel" defaultValue={canales[0]} aria-label="Canal">
+          {canales.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <input
+          name="porcentaje"
+          className="corto"
+          inputMode="decimal"
+          placeholder="3.5"
+          aria-label="Comisión en porcentaje"
+          defaultValue={estado.valores?.['porcentaje'] ?? ''}
+        />
+        <span className="tarjeta__pie">% +</span>
+        <input
+          name="fijo"
+          className="corto"
+          inputMode="decimal"
+          placeholder="0.50"
+          aria-label="Comisión fija por cobro"
+          defaultValue={estado.valores?.['fijo'] ?? ''}
+        />
+        <button type="submit" className="discreto" disabled={pendiente}>
+          {pendiente ? '…' : 'Guardar comisión'}
+        </button>
+      </form>
+      <ResultadoPagos estado={estado} />
+    </>
+  );
+}
+
+/**
+ * Sube el archivo del corte y lo concilia en el acto.
+ *
+ * Las dos cosas juntas a propósito: importar sin conciliar deja el archivo
+ * guardado y la pregunta sin responder, y la pregunta —«¿me pagaron lo que
+ * dicen?»— es la única razón por la que alguien sube esto.
+ *
+ * El archivo se **pega** en vez de subirse: un `<input type="file">` obliga a
+ * leerlo en el navegador y a mandarlo por otra vía, y el archivo de una
+ * pasarela son treinta líneas que se copian de una hoja. Cuando haya que
+ * aceptar el formato nativo de cada proveedor, eso será un adaptador y no un
+ * campo más.
+ */
+export function FormularioLiquidacion({
+  proveedores,
+}: {
+  proveedores: string[];
+}) {
+  const [estado, accion, pendiente] = useActionState<EstadoPagos, FormData>(
+    importarLiquidacion,
+    {},
+  );
+  return (
+    <form action={accion} className="ficha">
+      <h3 style={{ marginTop: 0 }}>Conciliar un corte</h3>
+      <div className="campo">
+        <label htmlFor="liq-proveedor">Pasarela</label>
+        <select
+          id="liq-proveedor"
+          name="provider"
+          defaultValue={proveedores[0]}
+        >
+          {proveedores.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="campo">
+        <label htmlFor="liq-ref">Referencia del corte</label>
+        <input
+          id="liq-ref"
+          name="externalRef"
+          placeholder="LIQ-2026-08-15"
+          defaultValue={estado.valores?.['externalRef'] ?? ''}
+        />
+        <p className="tarjeta__pie">
+          La que trae el archivo de la pasarela. Es lo que evita importar el
+          mismo corte dos veces.
+        </p>
+      </div>
+      <div className="campo en-linea">
+        <label htmlFor="liq-desde">Del</label>
+        <input
+          id="liq-desde"
+          type="date"
+          name="periodStart"
+          defaultValue={estado.valores?.['periodStart'] ?? ''}
+        />
+        <label htmlFor="liq-hasta">al</label>
+        <input
+          id="liq-hasta"
+          type="date"
+          name="periodEnd"
+          defaultValue={estado.valores?.['periodEnd'] ?? ''}
+        />
+      </div>
+      <div className="campo">
+        <label htmlFor="liq-archivo">Cobros del corte</label>
+        <textarea
+          id="liq-archivo"
+          name="archivo"
+          rows={8}
+          placeholder={`${COLUMNAS.join(';')}\nABC-1;32.50;1.14;31.36`}
+          defaultValue={estado.valores?.['archivo'] ?? ''}
+        />
+        <p className="tarjeta__pie">
+          Pega el detalle del archivo de la pasarela, con la cabecera{' '}
+          <code>{COLUMNAS.join(';')}</code>. Los totales se calculan de las
+          líneas: teclearlos aparte solo daría la oportunidad de equivocarse.
+        </p>
+      </div>
+      <button type="submit" disabled={pendiente}>
+        {pendiente ? 'Conciliando…' : 'Importar y conciliar'}
+      </button>
+      <ResultadoPagos estado={estado} />
+    </form>
+  );
+}
+
+function ResultadoPagos({ estado }: { estado: EstadoPagos }) {
+  if (estado.error) return <p className="panel__error">{estado.error}</p>;
+  if (estado.ok) return <p className="tarjeta__pie">{estado.ok}</p>;
+  return null;
 }

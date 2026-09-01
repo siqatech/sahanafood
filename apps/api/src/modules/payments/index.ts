@@ -23,6 +23,8 @@ export {
   type SettlementInput,
   type SettlementLineInput,
   type ReconciliationReport,
+  type SettlementView,
+  type TariffView,
 } from './app/settlements.service.js';
 export {
   WebhookParseError,

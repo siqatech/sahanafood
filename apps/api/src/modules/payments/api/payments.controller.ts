@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  Query,
   Post,
   Req,
 } from '@nestjs/common';
@@ -22,6 +23,8 @@ import {
 import {
   SettlementsService,
   type ReconciliationReport,
+  type SettlementView,
+  type TariffView,
 } from '../app/settlements.service.js';
 
 // Mismo helper local que el resto de controladores del repo. Está duplicado en
@@ -268,6 +271,32 @@ const settlementSchema = z.object({
 @Controller({ path: 'payments', version: '1' })
 export class SettlementsController {
   constructor(private readonly settlements: SettlementsService) {}
+
+  /**
+   * Las liquidaciones importadas, con el resultado de su conciliación.
+   *
+   * Faltaba: se podía importar y conciliar, pero el informe se devolvía una
+   * sola vez y después no había forma de volver a mirarlo. Una conciliación que
+   * solo se ve al hacerla no sirve para reclamarle nada a la pasarela un mes
+   * después.
+   */
+  @Get('settlements')
+  @RequirePermission('payments.read')
+  async listSettlements(
+    @Req() req: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+  ): Promise<SettlementView[]> {
+    return this.settlements.listSettlements(req.auth!.tid, {
+      ...(limit !== undefined ? { limit: Number(limit) } : {}),
+    });
+  }
+
+  /** Las comisiones pactadas. Sin ellas, la varianza no significa nada. */
+  @Get('tariffs')
+  @RequirePermission('payments.read')
+  async listTariffs(@Req() req: AuthenticatedRequest): Promise<TariffView[]> {
+    return this.settlements.listTariffs(req.auth!.tid);
+  }
 
   @Post('tariffs')
   @RequirePermission('payments.manage')

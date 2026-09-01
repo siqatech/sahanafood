@@ -80,6 +80,60 @@ export interface PromocionDelPanel {
   label: string;
 }
 
+/** Una liquidación de la pasarela, con el resultado de su conciliación. */
+export interface LiquidacionDelPanel {
+  id: string;
+  provider: string;
+  externalRef: string;
+  periodStart: string;
+  periodEnd: string;
+  grossAmount: string;
+  feeAmount: string;
+  netAmount: string;
+  currency: string;
+  depositedAt: string | null;
+  status: string;
+  matchedLines: number;
+  /** La pasarela cobró algo que aquí NO consta. El hallazgo más serio. */
+  unmatchedLines: number;
+  /** Cobros nuestros del periodo que la liquidación no menciona. */
+  missingLines: number;
+  reconciledAt: string | null;
+  createdAt: string;
+}
+
+/** La comisión pactada con la pasarela para un canal (ADR-0013). */
+export interface TarifaDelPanel {
+  id: string;
+  channel: string;
+  provider: string | null;
+  brandId: string | null;
+  /** Puntos básicos ENTEROS: 350 = 3,5 %. Nunca un decimal. */
+  percentBps: number;
+  fixedAmount: string;
+  minimumAmount: string;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+/** El informe de una conciliación (spec 10). */
+export interface InformeDeConciliacion {
+  settlementId: string;
+  status: 'reconciled' | 'discrepant';
+  matched: number;
+  unmatched: number;
+  missing: number;
+  significantVariances: Array<{
+    intentId: string;
+    estimated: string;
+    settled: string;
+    difference: string;
+    differenceBps: number;
+  }>;
+  totalsMatch: boolean;
+}
+
 export interface Problema {
   detail?: string;
   code?: string;
@@ -1192,6 +1246,56 @@ export const panel = {
     llamar('/org/brand-kitchens', {
       method: 'POST',
       body: JSON.stringify(input),
+    }),
+
+  /**
+   * Conciliación de liquidaciones (spec 10).
+   *
+   * Estaba implementada —tarifas por canal, comisión estimada frente a la
+   * liquidada, y un informe que distingue «la pasarela cobró algo que aquí no
+   * consta» de «un cobro nuestro que no menciona»— y **no la llamaba ninguna
+   * pantalla**. Sin ella nadie comprueba nunca si la pasarela pagó lo que dice.
+   */
+  liquidaciones: (): Promise<LiquidacionDelPanel[]> =>
+    llamar<LiquidacionDelPanel[]>('/payments/settlements'),
+
+  tarifas: (): Promise<TarifaDelPanel[]> =>
+    llamar<TarifaDelPanel[]>('/payments/tariffs'),
+
+  ponerTarifa: (input: {
+    channel: string;
+    provider?: string;
+    percentBps: number;
+    fixedAmount?: string;
+  }): Promise<{ id: string }> =>
+    llamar<{ id: string }>('/payments/tariffs', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  importarLiquidacion: (input: {
+    provider: string;
+    externalRef: string;
+    periodStart: string;
+    periodEnd: string;
+    grossAmount: string;
+    feeAmount: string;
+    netAmount: string;
+    lines: Array<{
+      providerRef: string;
+      grossAmount: string;
+      feeAmount: string;
+      netAmount: string;
+    }>;
+  }): Promise<{ id: string; alreadyImported: boolean }> =>
+    llamar<{ id: string; alreadyImported: boolean }>('/payments/settlements', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  conciliar: (id: string): Promise<InformeDeConciliacion> =>
+    llamar<InformeDeConciliacion>(`/payments/settlements/${id}/reconcile`, {
+      method: 'POST',
     }),
 
   crearMarca: (input: {

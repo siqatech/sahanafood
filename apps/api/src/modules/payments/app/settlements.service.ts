@@ -72,6 +72,42 @@ export interface ReconciliationReport {
   totalsMatch: boolean;
 }
 
+/** Una liquidación importada, con el resultado de su conciliación. */
+export interface SettlementView {
+  id: string;
+  provider: string;
+  externalRef: string;
+  periodStart: string;
+  periodEnd: string;
+  grossAmount: string;
+  feeAmount: string;
+  netAmount: string;
+  currency: string;
+  depositedAt: string | null;
+  status: string;
+  matchedLines: number;
+  /** La pasarela cobró algo que aquí NO consta. El hallazgo más serio. */
+  unmatchedLines: number;
+  /** Cobros nuestros del periodo que la liquidación no menciona. */
+  missingLines: number;
+  reconciledAt: string | null;
+  createdAt: string;
+}
+
+/** La comisión pactada con la pasarela para un canal (ADR-0013). */
+export interface TariffView {
+  id: string;
+  channel: string;
+  provider: string | null;
+  brandId: string | null;
+  percentBps: number;
+  fixedAmount: string;
+  minimumAmount: string;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
 @Injectable()
 export class SettlementsService {
   private readonly logger = new Logger(SettlementsService.name);
@@ -240,6 +276,110 @@ export class SettlementsService {
    * Importar dos veces el mismo depósito no puede duplicar comisiones: sería
    * contarle al dueño el doble de gasto y hundir un margen que estaba bien.
    */
+  /**
+   * Las liquidaciones importadas, la última primero.
+   *
+   * No existía forma de listarlas: se podía importar una y conciliarla, pero el
+   * informe se devolvía una sola vez y después no se podía volver a mirar. Una
+   * conciliación que solo se ve en el momento de hacerla no sirve para
+   * reclamarle nada a la pasarela un mes después.
+   */
+  async listSettlements(
+    tenantId: string,
+    query: { limit?: number } = {},
+  ): Promise<SettlementView[]> {
+    const limite = Math.min(Math.max(query.limit ?? 24, 1), 100);
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        id: string;
+        provider: string;
+        external_ref: string;
+        period_start: string;
+        period_end: string;
+        gross_amount: string;
+        fee_amount: string;
+        net_amount: string;
+        currency: string;
+        deposited_at: Date | null;
+        status: string;
+        matched_lines: number;
+        unmatched_lines: number;
+        missing_lines: number;
+        reconciled_at: Date | null;
+        created_at: Date;
+      }>(
+        `SELECT id, provider, external_ref, period_start, period_end,
+                gross_amount, fee_amount, net_amount, currency, deposited_at,
+                status, matched_lines, unmatched_lines, missing_lines,
+                reconciled_at, created_at
+           FROM pay_settlements
+          ORDER BY period_end DESC, created_at DESC
+          LIMIT $1`,
+        [limite],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        externalRef: r.external_ref,
+        periodStart: r.period_start,
+        periodEnd: r.period_end,
+        grossAmount: r.gross_amount,
+        feeAmount: r.fee_amount,
+        netAmount: r.net_amount,
+        currency: r.currency,
+        depositedAt: r.deposited_at?.toISOString() ?? null,
+        status: r.status,
+        matchedLines: r.matched_lines,
+        unmatchedLines: r.unmatched_lines,
+        missingLines: r.missing_lines,
+        reconciledAt: r.reconciled_at?.toISOString() ?? null,
+        createdAt: r.created_at.toISOString(),
+      }));
+    });
+  }
+
+  /**
+   * Las tarifas vigentes, que son las que hacen que la varianza signifique algo.
+   *
+   * Sin tarifa no hay comisión estimada, así que la conciliación puede decir que
+   * el bruto cuadra pero no si la pasarela cobró de más. Enseñarlas es la única
+   * forma de que se note que faltan.
+   */
+  async listTariffs(tenantId: string): Promise<TariffView[]> {
+    return withTenant(this.pool, tenantId, async (ctx) => {
+      const { rows } = await ctx.client.query<{
+        id: string;
+        channel: string;
+        provider: string | null;
+        brand_id: string | null;
+        percent_bps: number;
+        fixed_amount: string;
+        minimum_amount: string;
+        currency: string;
+        effective_from: Date;
+        effective_to: Date | null;
+      }>(
+        `SELECT id, channel, provider, brand_id, percent_bps, fixed_amount,
+                minimum_amount, currency, effective_from, effective_to
+           FROM pay_channel_tariffs
+          WHERE effective_to IS NULL
+          ORDER BY channel, provider NULLS FIRST`,
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        channel: r.channel,
+        provider: r.provider,
+        brandId: r.brand_id,
+        percentBps: r.percent_bps,
+        fixedAmount: r.fixed_amount,
+        minimumAmount: r.minimum_amount,
+        currency: r.currency,
+        effectiveFrom: r.effective_from.toISOString(),
+        effectiveTo: r.effective_to?.toISOString() ?? null,
+      }));
+    });
+  }
+
   async importSettlement(
     tenantId: string,
     input: SettlementInput,
