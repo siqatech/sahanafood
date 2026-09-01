@@ -1,7 +1,11 @@
 'use client';
 
 import { useActionState } from 'react';
-import { pedirDevolucion, type EstadoDevolucion } from './acciones';
+import {
+  pedirDevolucion,
+  crearEnlaceDePago,
+  type EstadoDevolucion,
+} from './acciones';
 
 /**
  * Pedir una devolución (RN-PAY-03).
@@ -83,5 +87,85 @@ export function FormularioDevolucion({
       {estado.error ? <p className="panel__error">{estado.error}</p> : null}
       {estado.ok ? <p className="tarjeta__pie">{estado.ok}</p> : null}
     </form>
+  );
+}
+
+/**
+ * Emitir el enlace de pago y dejarlo listo para copiar.
+ *
+ * La pasarela va en el formulario y no se adivina: un negocio puede tener más
+ * de una conectada —una por marca— y cobrar por la que no toca manda el dinero
+ * a la cuenta equivocada.
+ */
+export function BotonEnlaceDePago({
+  orderId,
+  pasarelas,
+}: {
+  orderId: string;
+  pasarelas: Array<{ id: string; provider: string }>;
+}) {
+  const [estado, accion, pendiente] = useActionState<
+    EstadoDevolucion,
+    FormData
+  >(crearEnlaceDePago, {});
+
+  if (pasarelas.length === 0) {
+    return (
+      <p className="tarjeta__pie">
+        No hay ninguna pasarela conectada, así que no se puede cobrar por
+        enlace. Se conecta en <a href="/panel/pagos">Pagos</a>.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <form action={accion} className="en-linea">
+        <input type="hidden" name="orderId" value={orderId} />
+        {/* El origen sale del navegador porque el panel de cada cliente vive
+            en SU dominio. Sin JavaScript se queda vacío y la acción devuelve
+            la ruta relativa, que sigue sirviendo para pegarla a mano. */}
+        <input
+          type="hidden"
+          name="origen"
+          value={typeof window === 'undefined' ? '' : window.location.origin}
+        />
+        {pasarelas.length === 1 ? (
+          <input type="hidden" name="provider" value={pasarelas[0]!.provider} />
+        ) : (
+          <select
+            name="provider"
+            aria-label="Con qué pasarela se cobra"
+            defaultValue={pasarelas[0]!.provider}
+          >
+            {pasarelas.map((p) => (
+              <option key={p.id} value={p.provider}>
+                {p.provider}
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="submit" disabled={pendiente}>
+          {pendiente ? 'Emitiendo…' : 'Cobrar por enlace'}
+        </button>
+      </form>
+      {estado.ok ? (
+        <>
+          <input
+            className="enlace-copiable"
+            type="text"
+            readOnly
+            value={estado.ok}
+            aria-label="Enlace de pago"
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <p className="tarjeta__pie">
+            Mándaselo al cliente. Caduca, y quien lo tenga puede pagar: no lo
+            publiques donde lo vea alguien más.
+          </p>
+        </>
+      ) : null}
+      {estado.error ? <p className="panel__error">{estado.error}</p> : null}
+    </>
   );
 }

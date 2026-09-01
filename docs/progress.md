@@ -2893,3 +2893,58 @@ ser instantáneo.
 
 Verde: **811 API · 471 dominio · 5 ui · 145 web · 41 POS · 119 print-agent · 83
 navegador**.
+
+## Al cliente se le mandaba una URL rota para que pagase
+
+`POST /payments/links` existía desde T5.05, entero: token público de ADR-0017,
+caducidad, registro en auditoría —con el token deliberadamente FUERA del
+registro, porque quien lea la auditoría podría cobrar en nombre de otro—, y un
+endpoint público que devuelve lo mínimo. Devolvía la URL `/pay/{token}`.
+
+**Esa página no existía.** Y ninguna pantalla llamaba al endpoint, así que la
+única forma de cobrarle a quien pidió por WhatsApp era un `curl` que emitía un
+enlace a un 404. Es el mismo agujero que tuvo el seguimiento hasta T5.16, con la
+diferencia de que aquí lo que se pierde es la venta.
+
+Ahora el pedido tiene **«Cobrar por enlace»** y la URL emitida lleva a una
+página de pago de verdad. La prueba de navegador recorre el camino completo:
+emite el enlace en el panel, **lo lee del campo** y navega a él. Una prueba que
+solo comprobara que el botón devuelve una URL habría pasado en verde durante
+todo el tiempo que la página no existió.
+
+**El botón desaparece en cuanto hay un cobro vivo** —capturado, autorizado o
+pendiente—. Dos enlaces vivos sobre el mismo pedido es cómo un cliente paga dos
+veces y el negocio acaba devolviendo dinero.
+
+**La acción NO revalida la página.** Al emitir el enlace nace un cobro
+pendiente, la pantalla dejaría de ofrecer el botón, y el enlace recién emitido
+—que vive en el estado de ese formulario— desaparecería antes de que a nadie le
+diera tiempo a copiarlo.
+
+**La pasarela se elige, no se adivina**: un negocio puede tener más de una
+conectada —una por marca— y cobrar por la que no toca manda el dinero a la
+cuenta equivocada. Con una sola conectada no se pregunta nada.
+
+### La página de pago no ofrece pagar lo que ya está pagado
+
+Es el error caro de esta pantalla. `authorized` significa que el banco ya
+retuvo el importe: un botón de «pagar» encima es un cliente que paga dos veces y
+una devolución que tramitar. Se dice con todas las letras —«No vuelvas a
+pagar»— y hay una prueba de que esa frase está escrita.
+
+Un estado que la página no conoce **tampoco** se ofrece como pagable: ante la
+duda se manda a hablar con una persona. Y hay una prueba que recorre
+`PAYMENT_STATES` de `@sahana/domain` entero, para que un estado nuevo sin texto
+se cace aquí y no en la pantalla de un comprador.
+
+La hora de caducidad se dice como hora de Lima y no como cuenta atrás: la página
+se sirve desde el servidor, y un «quedan 27 minutos» renderizado allí se queda
+congelado en el móvil del cliente enseñando algo que dejó de ser cierto al
+segundo siguiente.
+
+Un token inventado y uno caducado se contestan igual, como en seguimiento:
+distinguirlos convertiría la página en una forma de averiguar qué cobros
+existieron.
+
+Verde: **811 API · 471 dominio · 5 ui · 152 web · 41 POS · 119 print-agent · 86
+navegador**.

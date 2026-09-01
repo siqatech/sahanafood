@@ -1485,6 +1485,80 @@ test.describe('Panel de gestión en navegador', () => {
     ).toHaveCount(0);
   });
 
+  test('COBRAR POR ENLACE emite una URL que LLEVA a una página de pago', async ({
+    page,
+  }) => {
+    // `POST /payments/links` existía desde T5.05 —token público de ADR-0017,
+    // caducidad, auditoría— y devolvía la URL `/pay/{token}`. Ninguna pantalla
+    // lo llamaba, y esa página NO EXISTÍA: al cliente se le mandaba una URL
+    // rota para que pagase. Esta prueba recorre el camino entero.
+    await entrar(page);
+    await page.goto('/panel/pedidos');
+    await page.getByLabel('Buscar pedidos').fill('Cliente sin declarar');
+    await page.getByRole('button', { name: 'Buscar' }).click();
+    await page
+      .locator('tbody tr')
+      .first()
+      .getByRole('link', { name: 'Ver' })
+      .click();
+
+    await page.getByRole('button', { name: 'Cobrar por enlace' }).click();
+
+    const campo = page.getByLabel('Enlace de pago');
+    await expect(campo).toBeVisible();
+    const enlace = await campo.inputValue();
+    expect(enlace, 'el enlace emitido no apunta a /pay/').toContain('/pay/');
+
+    // Y ahora lo que de verdad importa: que esa URL lleve a algún sitio.
+    await page.goto(enlace);
+    await expect(
+      page.getByRole('heading', { name: /listo para pagar/i }),
+    ).toBeVisible();
+    // El importe se ve —es el dato por el que se abre el enlace— y hay a dónde
+    // ir a pagarlo.
+    await expect(page.locator('.importe-pago')).toContainText(/S\/\s*\d/);
+    await expect(
+      page.getByRole('button', { name: 'Pagar ahora' }),
+    ).toBeVisible();
+  });
+
+  test('UN ENLACE INVENTADO no dice si existió, y ofrece la carta', async ({
+    page,
+  }) => {
+    // Un token caducado y uno inventado se contestan igual: distinguirlos
+    // convertiría esta página en una forma de averiguar qué cobros existieron.
+    await page.goto('/pay/token-que-no-existe-en-ninguna-parte');
+    await expect(
+      page.getByRole('heading', { name: /ya no sirve/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/Escríbenos/)).toBeVisible();
+    // Y no se queda en una vía muerta.
+    await expect(
+      page.getByRole('button', { name: 'Ver la carta' }),
+    ).toBeVisible();
+  });
+
+  test('UN PEDIDO YA COBRADO no ofrece emitir otro enlace', async ({
+    page,
+  }) => {
+    // Dos enlaces vivos sobre el mismo pedido es cómo un cliente paga dos
+    // veces y el negocio acaba devolviendo dinero.
+    await entrar(page);
+    await page.goto('/panel/pedidos');
+    await page.getByLabel('Buscar pedidos').fill('Cliente que pagó online');
+    await page.getByRole('button', { name: 'Buscar' }).click();
+    await page
+      .locator('tbody tr')
+      .first()
+      .getByRole('link', { name: 'Ver' })
+      .click();
+
+    await expect(page.getByText(/ya está cobrado/i)).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Cobrar por enlace' }),
+    ).toHaveCount(0);
+  });
+
   test('EL HISTÓRICO dice QUIÉN, no un UUID, y se filtra por lo que se busca', async ({
     page,
   }) => {

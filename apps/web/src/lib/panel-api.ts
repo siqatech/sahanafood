@@ -1542,6 +1542,34 @@ export const panel = {
   pasarelas: (): Promise<PasarelaDelPanel[]> =>
     llamar<PasarelaDelPanel[]>('/payments/connections'),
 
+  /**
+   * Emite un enlace de pago para un pedido (RN-PAY-02).
+   *
+   * Devuelve una ruta —`/pay/{token}`— y no una URL completa: el dominio lo
+   * pone quien está en el panel, que es por el que ya entró. Componerlo con
+   * una variable de entorno daría el dominio equivocado en cuanto un cliente
+   * use el suyo, y el fallo lo descubriría el comprador.
+   */
+  crearEnlaceDePago: (input: {
+    orderId: string;
+    provider: string;
+    ttlMinutes?: number;
+  }): Promise<{
+    token: string;
+    url: string;
+    expiresAt: string;
+    intentId: string;
+  }> =>
+    llamar<{
+      token: string;
+      url: string;
+      expiresAt: string;
+      intentId: string;
+    }>('/payments/links', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
   conectarPasarela: (input: {
     provider: string;
     brandId?: string;

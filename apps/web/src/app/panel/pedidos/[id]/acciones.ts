@@ -68,3 +68,51 @@ export async function pedirDevolucion(
     return { error: 'No se pudo pedir la devolución. Inténtalo de nuevo.' };
   }
 }
+
+/**
+ * Emite un enlace de pago para el pedido (RN-PAY-02).
+ *
+ * El módulo lo sabía hacer desde T5.05 —con token público, caducidad y
+ * auditoría— y **ninguna pantalla lo llamaba**: la única forma de cobrarle a un
+ * cliente que pidió por WhatsApp era un `curl`. Ahora se emite desde el pedido
+ * y se devuelve para COPIARLO: quien atiende decide por dónde se lo manda, y
+ * mandarlo solo exigiría saber a qué número — justo el dato que un pedido de
+ * marketplace no trae.
+ */
+export async function crearEnlaceDePago(
+  _prev: EstadoDevolucion,
+  form: FormData,
+): Promise<EstadoDevolucion> {
+  const orderId = String(form.get('orderId') ?? '');
+  const provider = String(form.get('provider') ?? '').trim();
+  const origen = String(form.get('origen') ?? '').trim();
+
+  if (provider === '') {
+    return {
+      error:
+        'No hay ninguna pasarela conectada. Conéctala en Pagos antes de cobrar por enlace.',
+    };
+  }
+
+  try {
+    const { url } = await panel.crearEnlaceDePago({ orderId, provider });
+    // NO se revalida la página a propósito. Al emitirlo aparece un cobro
+    // pendiente, la pantalla dejaría de ofrecer el botón y el enlace recién
+    // emitido —que está en el estado de ese formulario— desaparecería de la
+    // pantalla antes de que a nadie le diera tiempo a copiarlo.
+    //
+    // La URL se compone con el origen del navegador de quien está en el panel,
+    // que es el dominio por el que ya entró. Con una variable de entorno daría
+    // el dominio equivocado en cuanto un cliente use el suyo, y el fallo lo
+    // descubriría el comprador al abrir el enlace.
+    return { ok: `${origen}${url}` };
+  } catch (error) {
+    if (error instanceof SesionCaducada) {
+      return {
+        error: 'Tu sesión caducó. Recarga la página y vuelve a entrar.',
+      };
+    }
+    if (error instanceof PanelApiError) return { error: error.message };
+    return { error: 'No se pudo emitir el enlace. Inténtalo de nuevo.' };
+  }
+}

@@ -242,6 +242,15 @@ export const shop = {
    */
   seguimiento: (token: string): Promise<Seguimiento> =>
     call<Seguimiento>(`/tracking/${token}`),
+  /**
+   * Un enlace de pago por su token público.
+   *
+   * Tampoco cuelga de `/shop`: quien lo abre no tiene carrito ni sesión —le
+   * pasaron una URL por WhatsApp— y el módulo de pagos resuelve el token sin
+   * saber de qué dominio se abre.
+   */
+  enlaceDePago: (token: string): Promise<EnlaceDePago> =>
+    call<EnlaceDePago>(`/payments/links/${token}`),
   applyCoupon: (token: string, code: string): Promise<Cart> =>
     call<Cart>(`/shop/carts/${token}/coupon`, {
       method: 'POST',
@@ -281,6 +290,22 @@ export interface Seguimiento {
   /** Nombre de PILA. Ni apellido, ni teléfono, ni matrícula. */
   courierFirstName: string | null;
   brandName: string;
+}
+
+/**
+ * Lo que ve quien abre un enlace de pago.
+ *
+ * Igual de pobre que el de seguimiento, y por lo mismo: ni el id del pedido,
+ * ni el del cobro, ni el nombre de nadie. Solo cuánto, en qué moneda y a dónde
+ * ir a pagarlo. El enlace se reenvía y acaba en capturas.
+ */
+export interface EnlaceDePago {
+  status: string;
+  amount: string;
+  currency: string;
+  /** A dónde manda la pasarela. `null` cuando ya no hay nada que pagar. */
+  checkoutUrl: string | null;
+  expiresAt: string;
 }
 
 export interface CheckoutResult {

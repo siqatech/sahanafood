@@ -897,6 +897,15 @@ main.con-barra {
   margin: var(--espacio) 0;
 }
 
+/* El importe de un enlace de pago. Grande porque es el dato por el que se abre
+   el enlace, y lo primero que alguien comprueba antes de meter una tarjeta:
+   tener que buscarlo en un párrafo es tener que releerlo dos veces. */
+.importe-pago {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  margin: var(--espacio) 0;
+}
+
 /* El enlace de seguimiento, listo para copiar. Monoespaciado porque es una URL
    con un token: en proporcional, distinguir un 1 de una l al leerlo en voz alta
    por teléfono es imposible. */

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { panel, type CobroDelPanel } from '../../../../lib/panel-api';
 import { cargar } from '../../../../lib/panel-guard';
 import { soles, solesDeTexto } from '../../caja/dinero';
-import { FormularioDevolucion } from './formularios';
+import { FormularioDevolucion, BotonEnlaceDePago } from './formularios';
 import { Canal } from '../../canal';
 import { SenalCliente } from '../../senal-cliente';
 import { momento } from '../../fechas';
@@ -58,6 +58,18 @@ export default async function PedidoPage({
   // mayoría entra aquí.
   const cobros = await panel.cobrosDe(id).catch((): CobroDelPanel[] => []);
   const equipo = await panel.usuarios().catch(() => []);
+  // Igual: sin `payments.read` no hay pasarelas que ofrecer, y el pedido tiene
+  // que seguir leyéndose.
+  const pasarelas = await panel.pasarelas().catch(() => []);
+
+  /**
+   * Ya cobrado: hay un cobro capturado, o uno vivo esperando a que el cliente
+   * pague. Emitir un segundo enlace sobre cualquiera de los dos es cómo un
+   * cliente acaba pagando dos veces y el negocio devolviendo dinero.
+   */
+  const yaCobrado = cobros.some((c) =>
+    ['captured', 'authorized', 'pending'].includes(c.status),
+  );
   // Se ofrecen como aprobadores los que PUEDEN devolver dinero. El permiso lo
   // comprueba la API de todas formas; ofrecer a todo el equipo solo conseguiría
   // que la mitad de los intentos fallara con «no tiene el permiso».
@@ -156,9 +168,26 @@ export default async function PedidoPage({
         <p className="tarjeta__pie">Nota: {pedido.notes}</p>
       ) : null}
 
+      <h2>Cobros</h2>
+
+      {/* El enlace se ofrece mientras el pedido NO esté cobrado. Es la única
+          forma de cobrarle a quien pidió por WhatsApp o por teléfono: el
+          módulo lo sabía hacer desde T5.05 y no había ninguna pantalla, así
+          que la alternativa era un `curl` o cobrar a la entrega. */}
+      {yaCobrado ? (
+        <p className="tarjeta__pie">
+          Este pedido ya está cobrado. No se emite otro enlace: dos enlaces
+          vivos sobre el mismo pedido es cómo un cliente paga dos veces.
+        </p>
+      ) : (
+        <BotonEnlaceDePago
+          orderId={id}
+          pasarelas={pasarelas.map((p) => ({ id: p.id, provider: p.provider }))}
+        />
+      )}
+
       {cobros.length > 0 ? (
         <>
-          <h2>Cobros</h2>
           {cobros.map((c) => (
             <article key={c.id} className="ficha">
               <p>
